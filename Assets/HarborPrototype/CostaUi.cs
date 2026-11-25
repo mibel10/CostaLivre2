@@ -13,6 +13,19 @@ namespace CostaLivre
         internal static void Update()
         {
             click = held = false;
+            if (Touchscreen.current != null && CostaTouch.Available)
+            {
+                foreach (var finger in Touchscreen.current.touches)
+                {
+                    if (!finger.press.wasPressedThisFrame && !finger.press.isPressed)
+                        continue;
+                    active = true;
+                    pointer = CostaTouch.ScreenPoint(finger.position.ReadValue());
+                    click = finger.press.wasPressedThisFrame;
+                    held = finger.press.isPressed;
+                    return;
+                }
+            }
             Gamepad pad = Gamepad.current;
             if (pad == null || Mouse.current?.delta.ReadValue().sqrMagnitude > 0.1f)
                 active = false;
@@ -61,7 +74,7 @@ namespace CostaLivre
 
         internal static void DrawPointer()
         {
-            if (!active || Event.current.type != EventType.Repaint)
+            if (!active || CostaTouch.Available && Gamepad.current == null || Event.current.type != EventType.Repaint)
                 return;
             Matrix4x4 matrix = GUI.matrix;
             Color color = GUI.color;

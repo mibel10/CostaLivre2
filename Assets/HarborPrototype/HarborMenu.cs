@@ -18,6 +18,7 @@ namespace CostaLivre
         private readonly Texture2D gradient;
         private ScreenPage page;
         private SettingsPage settings;
+        private bool editTouch;
         private int quality = PlayerPrefs.GetInt("CostaQuality", 1);
         private int frameCap = PlayerPrefs.GetInt("CostaFrameCap", 60);
         private bool vsync = PlayerPrefs.GetInt("CostaVSync", 0) != 0;
@@ -56,8 +57,15 @@ namespace CostaLivre
         }
 
         internal void Draw(bool resume, Action deploy, Action continueRun, Action quit, CostaJobs jobs, Action<int> selectJob,
-            CostaOnlinePanel online, HarborArsenal arsenal, bool sessionActive)
+            CostaOnlinePanel online, HarborArsenal arsenal, bool sessionActive, CostaTouch touch)
         {
+            if (editTouch)
+            {
+                if (touch.DrawEditor())
+                    editTouch = false;
+                return;
+            }
+
             if (headline == null)
                 CreateStyles();
 
@@ -161,6 +169,9 @@ namespace CostaLivre
                 settings = SettingsPage.Graphics;
             if (MenuButton(new Rect(x + 230, tab, 120, 33), L("Language", "Idioma"), settings == SettingsPage.Language))
                 settings = SettingsPage.Language;
+
+            if (CostaTouch.Available && MenuButton(new Rect(x + 355, tab, 135, 33), L("Touch layout", "Toque"), false))
+                editTouch = true;
 
             float y = tab + 48;
             switch (settings)

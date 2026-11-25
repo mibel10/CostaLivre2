@@ -99,7 +99,11 @@ namespace CostaLivre
                 string address = $"VILA {i + 1:00}";
                 Venue(address, Estate[i], 16, 11, 4.3f, i == 1 ? Stone : new Color(0.74f, 0.66f, 0.54f), Glass);
                 HouseDoors[i] = art.Box("Property entrance", Estate[i] + new Vector3(0, 1.27f, -2.03f),
-                    new Vector3(2.65f, 2.54f, 0.22f), Glass, true);
+                    new Vector3(2.65f, 2.54f, 0.22f), Glass, true, bake: false);
+                var obstacle = HouseDoors[i].AddComponent<UnityEngine.AI.NavMeshObstacle>();
+                obstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
+                obstacle.size = Vector3.one;
+                obstacle.carving = true;
                 Desk(Estate[i] + new Vector3(3.4f, 0, 2.3f), Brass);
                 Tree(Estate[i] + new Vector3(-9, 0, 2));
                 Tree(Estate[i] + new Vector3(9, 0, 4));

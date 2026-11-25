@@ -364,12 +364,12 @@ namespace CostaLivre
         }
 
         internal GameObject Box(string name, Vector3 position, Vector3 size, Color color, bool solid = false,
-            string surface = null, Vector2 tiling = default)
+            string surface = null, Vector2 tiling = default, bool bake = true)
         {
             GameObject box = Part(root, PrimitiveType.Cube, name, position, size, color, solid);
             if (surface != null)
                 box.GetComponent<Renderer>().sharedMaterial = Surface(surface, color, tiling);
-            if (solid)
+            if (solid && bake)
             {
                 walkableGeometry.Add(new NavMeshBuildSource
                 {

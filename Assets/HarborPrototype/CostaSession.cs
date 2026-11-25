@@ -81,7 +81,6 @@ namespace CostaLivre
             internal float LastPacket;
             internal float LastPose;
             internal float HeldUntil;
-            internal float NextAction;
             internal float ArrestAfter;
             internal readonly CostaBag Bag = new();
         }
@@ -398,9 +397,8 @@ namespace CostaLivre
                     UpdatePose(peer, msg.pose, now);
                 return;
             }
-            if (now < peer.HeldUntil || now < peer.NextAction)
+            if (now < peer.HeldUntil && msg.type != "outfit")
                 return;
-            peer.NextAction = now + 0.15f;
 
             switch (msg.type)
             {

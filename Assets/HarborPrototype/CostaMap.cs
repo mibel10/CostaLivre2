@@ -101,7 +101,8 @@ namespace CostaLivre
 
         internal void CheckWaypoint(Vector3 position)
         {
-            if (Waypoint is Vector3 point && CostaJobs.Near(position, point, 3.0f))
+            if (Waypoint is Vector3 point && CostaJobs.Near(position, point, 3.0f)
+                && !Physics.Linecast(position + Vector3.up, point + Vector3.up, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                 ClearWaypoint();
         }
 
@@ -318,7 +319,8 @@ namespace CostaLivre
             }
 
             Vector3 destination = projection.World(mouse);
-            if (OnLand(destination))
+            if (OnLand(destination) && !Physics.CheckCapsule(destination + Vector3.up * 0.4f,
+                destination + Vector3.up * 1.4f, 0.32f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
             {
                 selected = -1;
                 Waypoint = destination;

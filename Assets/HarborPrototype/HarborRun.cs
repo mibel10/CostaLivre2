@@ -120,6 +120,7 @@ namespace CostaLivre
         private bool needsSprintRelease;
         private bool gamepad;
         private bool pursuit;
+        private bool independentAlert;
 
         private void Awake()
         {
@@ -726,7 +727,7 @@ namespace CostaLivre
             else if (robberies.Take(site, jobs))
             {
                 cargoPack.SetActive(true);
-                StartPursuit(0.45f);
+                StartPursuit(0.45f, lootOnly: true);
             }
             return true;
         }
@@ -738,7 +739,7 @@ namespace CostaLivre
             else
             {
                 jobs.SellLoot(item);
-                if (jobs.Bag.Count == 0 && state != RunState.Escape)
+                if (jobs.Bag.Count == 0 && !independentAlert)
                     StopPursuit();
             }
         }
@@ -757,6 +758,7 @@ namespace CostaLivre
 
         private void StopPursuit()
         {
+            independentAlert = false;
             pursuit = false;
             foreach (Guard guard in guards)
                 if (guard.Active)
@@ -1059,8 +1061,10 @@ namespace CostaLivre
             }
         }
 
-        private void StartPursuit(float delay)
+        private void StartPursuit(float delay, bool lootOnly = false)
         {
+            if (!session.Online && !lootOnly)
+                independentAlert = true;
             if (session.Online || pursuit || state == RunState.Delivered || state == RunState.Caught)
                 return;
 
@@ -1103,6 +1107,7 @@ namespace CostaLivre
 
         private void ResetRun()
         {
+            independentAlert = false;
             state = RunState.FindCargo;
             pursuit = false;
             jobs.Select(jobs.Active);

@@ -64,6 +64,11 @@ namespace CostaLivre
             body = Root.gameObject.AddComponent<BoxCollider>();
             body.center = Vector3.up * (collisionSize.y / 2 + 0.01f);
             body.size = collisionSize;
+            var obstacle = Root.gameObject.AddComponent<UnityEngine.AI.NavMeshObstacle>();
+            obstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
+            obstacle.size = body.size;
+            obstacle.center = body.center;
+            obstacle.carving = true;
             Reset();
         }
 

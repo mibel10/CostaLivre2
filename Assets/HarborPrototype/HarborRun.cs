@@ -440,7 +440,8 @@ namespace CostaLivre
                     UpdateMenuPreview();
                     return;
                 }
-                if (!menu.OnlinePage && (restart.WasPressedThisFrame() || Keyboard.current?.enterKey.wasPressedThisFrame == true))
+                if ((!menu.OnlinePage || session.Online)
+                    && (restart.WasPressedThisFrame() || Keyboard.current?.enterKey.wasPressedThisFrame == true))
                 {
                     gamepad = restart.activeControl?.device is Gamepad;
                     if (CanResume())

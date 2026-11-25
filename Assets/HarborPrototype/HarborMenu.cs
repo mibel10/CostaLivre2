@@ -70,7 +70,7 @@ namespace CostaLivre
             Fill(new Rect(0, 0, width, 4), Copper);
             Fill(new Rect(0, height - 40, width, 40), Carbon);
             Text(new Rect(28, height - 40, 390, 40), "COSTA LIVRE 2   /   PORTO DE SANTA LUZ", label, Grey);
-            Text(new Rect(width - 218, height - 40, 195, 40), L("ENTER / START   PLAY", "ENTER / START   JOGAR"), label, Grey);
+            Text(new Rect(width - 218, height - 40, 195, 40), page == ScreenPage.Online && !sessionActive ? "" : L("ENTER / START   PLAY", "ENTER / START   JOGAR"), label, Grey);
             Text(new Rect(29, 21, 260, 26), "COSTA LIVRE 2", subhead, Paper);
 
             float x = 173;
@@ -88,9 +88,9 @@ namespace CostaLivre
             switch (page)
             {
                 case ScreenPage.Deploy:
-                    Text(new Rect(x, top, 394, 21), L("PORTO DE SANTA LUZ  /  SINGLE PLAYER", "PORTO DE SANTA LUZ  /  UM JOGADOR"), label, Copper);
+                    Text(new Rect(x, top, 394, 21), sessionActive ? "PORTO DE SANTA LUZ  /  MULTIPLAYER" : L("PORTO DE SANTA LUZ  /  SINGLE PLAYER", "PORTO DE SANTA LUZ  /  UM JOGADOR"), label, Copper);
                     Text(new Rect(x, top + 19, 417, 75), L("Santa Luz", "Santa Luz"), headline, Paper);
-                    Text(new Rect(x, top + 94, 365, 57), L("Explore the waterfront and the city. Pick a contract from the jobs board when you want one.", "Explore a orla e a cidade. Escolha um contrato no quadro de missões quando quiser."), subhead, Paper);
+                    Text(new Rect(x, top + 94, 365, 57), sessionActive ? L("Explore Santa Luz with your session.", "Explore Santa Luz com sua sessão.") : L("Explore the waterfront and the city. Pick a contract from the jobs board when you want one.", "Explore a orla e a cidade. Escolha um contrato no quadro de missões quando quiser."), subhead, Paper);
                     if (MenuButton(new Rect(x, top + 176, 202, 49), resume ? L("Resume", "Continuar") : L("Enter the city", "Entrar na cidade"), true))
                         (resume ? continueRun : deploy)();
                     if (resume && !sessionActive && MenuButton(new Rect(x, top + 236, 202, 36), L("Restart", "Recomeçar"), false))

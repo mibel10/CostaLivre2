@@ -54,6 +54,8 @@ Estas configurações são estimativas para o jogo compilado. Os dois alvos de F
 
 A 1920 × 1080 de saída, o Médio renderiza a 1632 × 918, usa MSAA 2×, sombras de 2048 com duas cascatas até 65 m e câmera até 245 m. O Ultra renderiza a 2496 × 1404, usa MSAA 4×, sombras de 4096 com quatro cascatas até 145 m e câmera até 540 m. O Ultra processa cerca de 2,34 vezes mais pixels antes do antialiasing e mantém mais geometria visível. A geração procedural da cidade e a navegação aumentam o custo de carregamento, enquanto o tráfego de jogadores e os NPCs aumentam o trabalho da CPU durante a partida. [Configuração do Médio](Assets/Settings/Medium_RPAsset.asset) · [Configuração do Ultra](Assets/Settings/Ultra_RPAsset.asset)
 
+Em uma medição curta no centro de Santa Luz, com Core i5-4210U, Intel HD Graphics 4400 e Linux/OpenGL, a câmera renderizou para um alvo de 1080p sem MSAA. O Médio ficou em cerca de 12 FPS e o Ultra em 6 FPS. A tentativa de repetir com MSAA no alvo de teste apresentou avisos de renderização. Essa referência mede apenas o desempenho da máquina testada.
+
 Para validar os alvos, meça no executável a 1920 × 1080 com VSync desligado e limite de 60 FPS. Depois do carregamento, faça o mesmo percurso pela região central e repita durante uma missão com NPCs. Compare o tempo de quadro no percentil 95 com 33,3 ms no Médio e 16,7 ms no Ultra. Registre também o pico de RAM e VRAM.
 
 ## Multiplayer e controles

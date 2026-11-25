@@ -1161,6 +1161,8 @@ namespace CostaLivre
         private void EndRun(RunState result)
         {
             state = result;
+            if (result == RunState.Caught && jobs.Bag.Count > 0)
+                jobs.ConfiscateLoot();
             SetCursor(false);
             arsenal.HideEffects();
             foreach (Guard guard in guards)

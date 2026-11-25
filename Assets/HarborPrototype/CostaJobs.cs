@@ -211,6 +211,12 @@ namespace CostaLivre
             return true;
         }
 
+        internal void ConfiscateLoot()
+        {
+            Bag.Clear();
+            Save();
+        }
+
         internal void SellLoot(int item)
         {
             int amount = Bag.Sell(item);

@@ -57,7 +57,7 @@ namespace CostaLivre
         private bool runningPose;
         private int netRevision = -1;
         private int pendingBuy = -1;
-        private int lastMenuWeapon;
+        private int appliedSelection;
         private CostaBag CurrentBag => session.Online ? session.Bag : jobs.Bag;
         private int CurrentCash => session.Online ? session.Cash : jobs.Credits;
         private bool IsPolice => session.Online && session.Local.police;
@@ -253,10 +253,10 @@ namespace CostaLivre
         {
             if (session.Online)
                 enteredRun = true;
-            if (menu.SelectedWeapon != lastMenuWeapon)
+            if (menu.SelectionVersion != appliedSelection)
             {
-                lastMenuWeapon = menu.SelectedWeapon;
-                arsenal.Select(lastMenuWeapon);
+                appliedSelection = menu.SelectionVersion;
+                arsenal.Select(menu.SelectedWeapon);
             }
             inMenu = false;
             menuBody.Root.gameObject.SetActive(false);

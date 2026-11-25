@@ -33,6 +33,7 @@ namespace CostaLivre
         private GUIStyle label;
         private GUIStyle button;
         internal int SelectedWeapon { get; private set; }
+        internal int SelectionVersion { get; private set; }
         internal float Sensitivity { get; private set; } = PlayerPrefs.GetFloat("HarborSensitivity", 1f);
         internal float Volume { get; private set; } = PlayerPrefs.GetFloat("HarborVolume", 0.85f);
 
@@ -103,7 +104,10 @@ namespace CostaLivre
                         if (arsenal.Owned(i))
                         {
                             if (MenuButton(new Rect(x, top + 102 + i * 34, 222, 30), Weapon(i), i == SelectedWeapon))
+                            {
                                 SelectedWeapon = i;
+                                SelectionVersion++;
+                            }
                         }
                         else
                         {

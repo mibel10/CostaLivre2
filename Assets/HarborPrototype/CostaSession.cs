@@ -12,7 +12,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 1;
+        private const int Protocol = 2;
         private const float Interval = 0.083f;
         private const int PoliceKit = (1 << 0) | (1 << 3);
         internal static readonly Vector3 CriminalSpawn = CostaCity.CitySpawn + Vector3.left * 2.8f;
@@ -60,6 +60,7 @@ namespace CostaLivre
             public int notice;
             public int noticeVersion;
             public string name;
+            public string resumeKey;
             public Avatar pose;
             public Avatar[] players;
             public Vehicle[] vehicles;
@@ -72,6 +73,7 @@ namespace CostaLivre
             internal CostaWire Wire;
             internal Avatar Pose;
             internal bool Ready;
+            internal string ResumeKey;
             internal int Credits = 4500;
             internal int Weapons;
             internal int Notice;
@@ -85,6 +87,8 @@ namespace CostaLivre
         }
 
         private readonly List<Peer> peers = new();
+        private readonly Dictionary<string, Peer> disconnected = new();
+        private readonly string resumeKey = LoadResumeKey();
         private readonly CostaVehicle[] sceneVehicles;
         private readonly float[] restock = new float[CostaRobberies.Sites.Length];
         private readonly int[] initialHomes;
@@ -195,7 +199,7 @@ namespace CostaLivre
                     connecting = null;
                     connection = new CostaWire(pendingClient);
                     pendingClient = null;
-                    Send(new Frame { type = "hello", protocol = Protocol, name = playerName });
+                    Send(new Frame { type = "hello", protocol = Protocol, name = playerName, resumeKey = resumeKey });
                     nextWatchdog = now + 8f;
                 }
                 else if (connecting.IsFaulted || connecting.IsCanceled || now >= connectDeadline)
@@ -281,6 +285,8 @@ namespace CostaLivre
                     peer.Wire.Dispose();
                     peers.RemoveAt(index);
                     left |= peer.Ready;
+                    if (peer.Ready)
+                        disconnected[peer.ResumeKey] = peer;
                     continue;
                 }
                 for (int n = 0; n < 12 && peer.Wire.Receive(out string text); n++)
@@ -294,11 +300,31 @@ namespace CostaLivre
                     peer.LastPacket = now;
                     if (!peer.Ready)
                     {
-                        if (message.type != "hello" || message.protocol != Protocol)
+                        if (message.type != "hello" || message.protocol != Protocol
+                            || !Guid.TryParseExact(message.resumeKey, "N", out _)
+                            || peers.Exists(other => other.Ready && other.ResumeKey == message.resumeKey))
                         {
                             peer.Wire.Dispose();
                             break;
                         }
+                        peer.ResumeKey = message.resumeKey;
+                        if (disconnected.TryGetValue(peer.ResumeKey, out Peer saved))
+                        {
+                            disconnected.Remove(peer.ResumeKey);
+                            peer.Pose = saved.Pose;
+                            peer.Pose.name = SafeName(message.name);
+                            peer.Credits = saved.Credits;
+                            peer.Weapons = saved.Weapons;
+                            peer.Bag.Replace(saved.Bag.Amounts);
+                            peer.HeldUntil = saved.HeldUntil;
+                            peer.ArrestAfter = saved.ArrestAfter;
+                            peer.Ready = true;
+                            peer.LastPose = now;
+                            if (peer.Pose.police && CountPolice() > AllowedPolice(CountPlayers()))
+                                SetRole(peer, false);
+                            continue;
+                        }
+
                         peer.Ready = true;
                         var id = ++nextIdentity;
                         Vector3 position = CriminalSpawn + new Vector3(-2.2f * (id % 3), 0, -2.0f * (id % 2));
@@ -625,6 +651,18 @@ namespace CostaLivre
             catch (ArgumentException) { return null; }
         }
 
+        private static string LoadResumeKey()
+        {
+            string value = PlayerPrefs.GetString("CostaResumeKey", "");
+            if (!Guid.TryParseExact(value, "N", out _))
+            {
+                value = Guid.NewGuid().ToString("N");
+                PlayerPrefs.SetString("CostaResumeKey", value);
+                PlayerPrefs.Save();
+            }
+            return value;
+        }
+
         private static string SafeName(string value)
         {
             string result = "";
@@ -658,6 +696,7 @@ namespace CostaLivre
             foreach (Peer peer in peers)
                 peer.Wire.Dispose();
             peers.Clear();
+            disconnected.Clear();
             Array.Clear(restock, 0, restock.Length);
             Players = Array.Empty<Avatar>();
             Cars = null;

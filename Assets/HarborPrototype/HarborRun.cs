@@ -1336,7 +1336,7 @@ namespace CostaLivre
                 : robberies.Notice.Length > 0 ? robberies.Notice : jobs.Notice;
             hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? -1 : jobs.Remaining,
                 session.Online ? session.Local.wanted : pursuit, notice, prompt, stamina / FullStamina,
-                car != null ? car.Speed : -1, session.Online ? session.Local.health : -1, arsenal, CostaTouch.Available);
+                car != null ? car.Speed : -1, session.Online ? session.Local.health : -1, arsenal, CostaTouch.Available, gamepad);
         }
 
         private Vector3? MissionLocation()

@@ -24,7 +24,7 @@ namespace CostaLivre
 
         internal void DrawRun(Vector3 player, float heading, Vector3? destination, Vector3 viewport, float side,
             string objective, float timer, bool pursuit, string notice, string prompt, float stamina, float speed,
-            int health, HarborArsenal arsenal, bool touch)
+            int health, HarborArsenal arsenal, bool touch, bool gamepad)
         {
             Matrix4x4 old = GUI.matrix;
             Begin(out float width, out float height);
@@ -58,14 +58,11 @@ namespace CostaLivre
             if (health >= 0 && health < 100)
                 DrawMeter(18, meterY, L($"Health {health}", $"Vida {health}"), health / 100f, Danger);
 
-            if (speed < 0 && arsenal.Armed)
+            if (speed < 0)
             {
-                string ammunition = arsenal.Reloading ? L("Reloading…", "Recarregando…") : $"{arsenal.Loaded} / {arsenal.Capacity}";
-                string weapon = $"{Weapon(arsenal.Slot)}   {ammunition}";
-                float weaponWidth = TextWidth(weapon, 12, 240);
-                Chip(touch ? 18 : width - 18 - weaponWidth, touch ? 201 : height - 53, weapon,
-                    arsenal.Loaded == 0 ? HarborBlockout.Amber : Paper, 240);
-                DrawCrosshair(width / 2, height / 2, arsenal.HitVisible);
+                DrawLoadout(width, height, arsenal, touch, gamepad);
+                if (arsenal.Armed)
+                    DrawCrosshair(width / 2, height / 2, arsenal.HitVisible);
             }
 
             if (notice.Length > 0)
@@ -107,6 +104,43 @@ namespace CostaLivre
         private void CenterChip(float width, float y, string text, Color color, float maxWidth)
         {
             Chip((width - TextWidth(text, 12, maxWidth)) / 2, y, text, color, maxWidth);
+        }
+
+        private void DrawLoadout(float width, float height, HarborArsenal arsenal, bool touch, bool gamepad)
+        {
+            float slotWidth = 126;
+            float start = touch ? 18 : width - 24 - slotWidth * 2;
+            float slotsY = touch ? 249 : height - 59;
+            if (touch)
+                slotWidth = 106;
+            for (int i = 0; i < 2; i++)
+            {
+                int weapon = i == 0 ? 0 : arsenal.Heavy;
+                bool selected = weapon >= 0 && weapon == arsenal.Slot;
+                Rect slot = new(start + i * slotWidth, slotsY, slotWidth - 3, 25);
+                Box(slot, selected ? new Color(0.28f, 0.32f, 0.27f, 0.96f) : Panel);
+                bool owned = arsenal.Owned(weapon);
+                Color edge = selected ? HarborBlockout.Amber : owned ? Edge : Color.clear;
+                Box(new Rect(slot.x, slot.y + slot.height - 2, slot.width, 2), edge);
+                string category = i == 0 ? L("Pistol", "Pistola") : L("Heavy", "Pesada");
+                string slotText = owned ? Weapon(weapon) : category + " —";
+                string label = touch || gamepad ? slotText : $"{i + 1} {slotText}";
+                Label(slot, label, centered, selected ? Paper : Muted);
+            }
+
+            Rect card = new(touch ? start : width - 173, slotsY - 50, 146, 47);
+            Box(card, Panel);
+            if (!arsenal.Armed)
+            {
+                Label(new Rect(card.x + 8, card.y + 2, 130, 19), L("UNARMED", "DESARMADO"), small, Muted);
+                Label(new Rect(card.x + 8, card.y + 18, 130, 25), L("Shop on map", "Armaria no mapa"), small, Paper);
+                return;
+            }
+
+            Label(new Rect(card.x + 8, card.y + 2, 130, 19), Weapon(arsenal.Slot).ToUpperInvariant(), small, Muted);
+            string loaded = arsenal.Reloading ? L("Reloading…", "Recarregando…") : $"{arsenal.Loaded:00} / {arsenal.Capacity:00}";
+            Label(new Rect(card.x + 8, card.y + 18, 130, 25), loaded, title,
+                arsenal.Loaded == 0 ? HarborBlockout.Amber : Paper);
         }
 
         private static void DrawCrosshair(float x, float y, bool hit)

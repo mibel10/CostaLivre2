@@ -229,6 +229,12 @@ namespace CostaLivre
             while (connection.Receive(out string text))
             {
                 Frame frame = Parse(text);
+                if (frame != null && frame.protocol == Protocol && frame.type == "full")
+                {
+                    Dispose();
+                    status = L("The room is full.", "A sala está cheia.");
+                    return;
+                }
                 if (frame == null || frame.type != "state" || frame.protocol != Protocol || frame.players == null
                     || frame.players.Length > MaxPlayers || frame.vehicles == null || frame.vehicles.Length != sceneVehicles.Length
                     || Array.Exists(frame.players, avatar => avatar == null || avatar.vehicle < -1 || avatar.vehicle >= sceneVehicles.Length)
@@ -283,7 +289,7 @@ namespace CostaLivre
             {
                 TcpClient client = listener.AcceptTcpClient();
                 if (peers.Count >= MaxPlayers)
-                    client.Close();
+                    _ = CostaWire.Reject(client, JsonUtility.ToJson(new Frame { type = "full", protocol = Protocol }));
                 else
                     peers.Add(new Peer { Wire = new CostaWire(client), LastPacket = now });
             }

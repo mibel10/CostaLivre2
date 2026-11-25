@@ -44,13 +44,34 @@ namespace CostaLivre
             if (Closed)
                 return;
 
-            byte[] textBytes = Encoding.UTF8.GetBytes(text);
-            if (textBytes.Length > Limit || Interlocked.Increment(ref outCount) > 96)
+            if (Encoding.UTF8.GetByteCount(text) > Limit || Interlocked.Increment(ref outCount) > 96)
             {
                 Dispose();
                 return;
             }
 
+            outgoing.Enqueue(Encode(text));
+            pending.Release();
+        }
+
+        internal static async Task Reject(TcpClient client, string text)
+        {
+            using (client)
+            {
+                try
+                {
+                    byte[] response = Encode(text);
+                    await client.GetStream().WriteAsync(response, 0, response.Length).ConfigureAwait(false);
+                }
+                catch (Exception e) when (e is System.IO.IOException || e is SocketException || e is ObjectDisposedException)
+                {
+                }
+            }
+        }
+
+        private static byte[] Encode(string text)
+        {
+            byte[] textBytes = Encoding.UTF8.GetBytes(text);
             byte[] frame = new byte[textBytes.Length + 4];
             int length = textBytes.Length;
             frame[0] = (byte)(length >> 24);
@@ -58,8 +79,7 @@ namespace CostaLivre
             frame[2] = (byte)(length >> 8);
             frame[3] = (byte)length;
             Buffer.BlockCopy(textBytes, 0, frame, 4, length);
-            outgoing.Enqueue(frame);
-            pending.Release();
+            return frame;
         }
 
         private async Task ReadLoop()

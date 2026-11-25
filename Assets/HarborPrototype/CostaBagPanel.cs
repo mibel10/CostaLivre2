@@ -29,7 +29,12 @@ namespace CostaLivre
             float height = Screen.height / scale;
             GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
             Box(new Rect(0, 0, width, height), new Color(0.03f, 0.06f, 0.07f, 0.74f));
-            Rect bounds = new((width - 590) / 2, (height - 456) / 2, 590, 456);
+            int rows = 0;
+            foreach (int count in bag.Amounts)
+                if (count > 0)
+                    rows++;
+            float panelHeight = rows == 0 ? 151 : 142 + rows * 36;
+            Rect bounds = new((width - 590) / 2, (height - panelHeight) / 2, 590, panelHeight);
             Box(bounds, Background);
             Box(new Rect(bounds.x, bounds.y, bounds.width, 3), Gold);
             Text(new Rect(bounds.x + 20, bounds.y + 12, 420, 38),
@@ -58,10 +63,13 @@ namespace CostaLivre
                     sell(i);
             }
 
-            Text(new Rect(bounds.x + 20, bounds.yMax - 50, 334, 35),
-                L("Total value  ", "Valor total  ") + Money(bag.Value), label, Ink);
-            if (vendor && Button(new Rect(bounds.xMax - 176, bounds.yMax - 47, 156, 32), L("Sell all", "Vender tudo"), bag.Count > 0))
-                sell(-1);
+            if (rows > 0)
+            {
+                Text(new Rect(bounds.x + 20, bounds.yMax - 43, 334, 30),
+                    L("Total value  ", "Valor total  ") + Money(bag.Value), label, Ink);
+                if (vendor && Button(new Rect(bounds.xMax - 176, bounds.yMax - 43, 156, 30), L("Sell all", "Vender tudo"), true))
+                    sell(-1);
+            }
             GUI.matrix = before;
         }
 

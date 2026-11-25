@@ -1,26 +1,80 @@
 # Costa Livre 2
 
-Jogo de mundo aberto em terceira pessoa na cidade de Santa Luz. Explore a cidade, dirija carros e motos e jogue sozinho ou em sessões LAN.
+Jogo de mundo aberto em terceira pessoa para jogar solo ou em rede local. Explore Santa Luz, Calado City, Antutu City e Vice City, dirija carros e motos e escolha missões no quadro da campanha solo.
 
-## Abrir o projeto
+## Compilar o jogo
 
-Abra esta pasta no Unity Hub com o Unity **6000.3.29f1**. A cena do jogo fica em `Assets/Scenes/HarborRun.unity`.
+1. Clone [mibel10/CostaLivre2](https://github.com/mibel10/CostaLivre2) com uma conta que tenha acesso ao repositório.
+2. Instale o **Unity 6000.3.29f1** pelo Unity Hub e adicione o módulo da plataforma de destino. Para Android, instale também o SDK, o NDK e o OpenJDK oferecidos pelo Hub. [Requisitos do Unity 6.3](https://docs.unity.com/en-us/engine/6000.3/manual/get-started/install-and-upgrade/getting-started-installing-unity/system-requirements)
+3. Adicione a pasta do projeto ao Unity Hub e aguarde a importação dos pacotes. Para conferir o jogo no Editor, abra `Assets/Scenes/HarborRun.unity` e pressione **Play**.
 
-## Multiplayer
+### Windows e Linux pelo Editor
 
-No menu **Multiplayer**, um jogador seleciona **Hospedar LAN**. Os demais usam **Entrar por IP** com o IPv4 do anfitrião e a mesma porta. A porta padrão é `7777`.
+Em **File → Build Profiles**, selecione **Windows** ou **Linux**, escolha a arquitetura x86-64 e clique em **Switch Platform** se necessário. Confirme que `Assets/Scenes/HarborRun.unity` está habilitada na lista de cenas. Clique em **Build** e salve em uma pasta como `Builds/Windows` ou `Builds/Linux`. Ao mover ou empacotar a build, mantenha o executável junto à pasta de dados e às bibliotecas geradas. [Build Profiles do Unity 6.3](https://docs.unity.com/en-us/engine/6000.3/manual/building-and-publishing/build-settings/build-profiles)
 
-## Controles principais
+### Windows e Linux por linha de comando
 
-| Tecla | Ação |
+Execute na raiz do projeto com o Editor desse projeto fechado. Ajuste o caminho do Unity se o Hub estiver em outro diretório. [Opções de linha de comando do Unity 6.3](https://docs.unity.com/en-us/engine/6000.3/manual/unity-editor/command-line-arguments/editor)
+
+**Linux (Bash)**
+
+```bash
+unity="$HOME/Unity/Hub/Editor/6000.3.29f1/Editor/Unity"
+mkdir -p Builds/Linux
+"$unity" -batchmode -nographics -quit -projectPath "$PWD" \
+  -buildTarget Linux64 -buildLinux64Player "$PWD/Builds/Linux/CostaLivre2.x86_64" \
+  -logFile "$PWD/Builds/Linux/build.log"
+```
+
+**Windows (PowerShell)**
+
+```powershell
+$unity = "$env:ProgramFiles\Unity\Hub\Editor\6000.3.29f1\Editor\Unity.exe"
+New-Item -ItemType Directory -Force Builds/Windows | Out-Null
+& $unity -batchmode -nographics -quit -projectPath "$PWD" `
+  -buildTarget Win64 -buildWindows64Player "$PWD/Builds/Windows/CostaLivre2.exe" `
+  -logFile "$PWD/Builds/Windows/build.log"
+```
+
+### Android e Xbox
+
+- **Android** — ative a plataforma Android em **Build Profiles** e use **Costa Livre → Build → Android APK**. O APK sai em `Builds/Android/CostaLivre2.apk`. Para automatizar, use `-buildTarget Android -executeMethod CostaLivre.Editor.CostaPlatformBuild.Android` com as opções de projeto e log acima. Defina `COSTA_BUILD_OUTPUT` para mudar o destino. [Builds Android no Unity](https://docs.unity.com/en-us/engine/6000.3/manual/platform-specific/android/building-and-delivering/build-process)
+- **Xbox** — no Windows com acesso aprovado ao módulo Xbox do Unity e ao Microsoft GDK, ative o alvo correspondente e use **Costa Livre → Build → Xbox Series X|S** ou **Xbox One**. As saídas padrão ficam em `Builds/XboxSeries` e `Builds/XboxOne`. Para detalhes do ambiente e da implantação, consulte a documentação inclusa no módulo Xbox. [Plataformas fechadas no Unity](https://docs.unity.com/en-us/engine/6000.3/manual/building-and-publishing/build-settings/build-profiles-reference)
+
+## Requisitos de PC estimados
+
+| Componente | Mínimo estimado para 1080p, Médio, 30 FPS | Recomendado estimado para 1080p, Ultra, 60 FPS |
+| --- | --- | --- |
+| Processador | Core i5-8400 ou Ryzen 5 2600 | Core i5-12400F ou Ryzen 5 5600 |
+| Placa de vídeo dedicada | GeForce GTX 1650 4 GB ou Radeon RX 5500 XT 4 GB | GeForce RTX 3060 Ti 8 GB ou Radeon RX 6700 XT 12 GB |
+| RAM | 8 GB | 16 GB |
+| Espaço livre para o jogo | 2 GB | 2 GB em SSD |
+
+Estas configurações são estimativas para o jogo compilado. Os dois alvos de FPS ainda precisam ser medidos no hardware listado. A build Linux de referência ocupa cerca de 156 MiB, e a tabela reserva espaço para logs e atualizações. Para PC x86-64, o Unity Player lista Windows 10 21H1 ou posterior e Ubuntu 22.04 ou 24.04. O Editor e seus módulos têm requisitos próprios. [Plataformas e requisitos do Unity 6.3](https://docs.unity.com/en-us/engine/6000.3/manual/get-started/install-and-upgrade/getting-started-installing-unity/system-requirements)
+
+A 1920 × 1080 de saída, o Médio renderiza a 1632 × 918, usa MSAA 2×, sombras de 2048 com duas cascatas até 65 m e câmera até 245 m. O Ultra renderiza a 2496 × 1404, usa MSAA 4×, sombras de 4096 com quatro cascatas até 145 m e câmera até 540 m. O Ultra processa cerca de 2,34 vezes mais pixels antes do antialiasing e mantém mais geometria visível. A geração procedural da cidade e a navegação aumentam o custo de carregamento, enquanto o tráfego de jogadores e os NPCs aumentam o trabalho da CPU durante a partida. [Configuração do Médio](Assets/Settings/Medium_RPAsset.asset) · [Configuração do Ultra](Assets/Settings/Ultra_RPAsset.asset)
+
+Para validar os alvos, meça no executável a 1920 × 1080 com VSync desligado e limite de 60 FPS. Depois do carregamento, faça o mesmo percurso pela região central e repita durante uma missão com NPCs. Compare o tempo de quadro no percentil 95 com 33,3 ms no Médio e 16,7 ms no Ultra. Registre também o pico de RAM e VRAM.
+
+## Multiplayer e controles
+
+No menu **Multiplayer**, um jogador seleciona **Hospedar LAN**. Os demais usam **Entrar por IP** com o IPv4 do anfitrião e a mesma porta. A porta padrão é `7777`. Todos devem usar a mesma versão da build.
+
+| Entrada | Ação |
 | --- | --- |
 | E | Interagir e entrar ou sair do veículo |
+| Shift esquerdo | Correr |
 | I | Mochila |
 | M | Mapa |
 | Ctrl esquerdo | Agachar |
 | 1 | Pistola |
 | 2 | Arma pesada |
+| 3 | Faca |
+| Botão esquerdo do mouse ou RT | Atacar com a arma equipada |
+| LB / RB ou botão **Trocar** na tela | Alternar entre as armas disponíveis |
 
-## Surface textures
+Todo jogador começa com uma faca, que fica no terceiro slot. Equipá-la aumenta a velocidade de corrida. Armas pesadas reduzem a velocidade de caminhada.
 
-The 2K asphalt and concrete maps use ambientCG's Asphalt 010 and Concrete 034 assets (CC0).
+## Texturas
+
+As texturas de asfalto e concreto 2K usam os assets Asphalt 010 e Concrete 034 do ambientCG, sob CC0.

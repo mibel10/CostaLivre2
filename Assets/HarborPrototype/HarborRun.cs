@@ -195,9 +195,8 @@ namespace CostaLivre
             remotes = new CostaRemoteView(harbor, transform);
             touch = new CostaTouch();
             BindControls();
-            followCamera.farClipPlane = 320f;
             followCamera.nearClipPlane = 0.07f;
-            menu = new HarborMenu(bindings, padBindings);
+            menu = new HarborMenu(bindings, padBindings, followCamera);
             CreateMenuPreview();
             deploy = StartRun;
             resume = ResumeRun;

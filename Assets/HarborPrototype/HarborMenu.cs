@@ -19,7 +19,11 @@ namespace CostaLivre
         private ScreenPage page;
         private SettingsPage settings;
         private bool editTouch;
-        private int quality = PlayerPrefs.GetInt("CostaQuality", 1);
+        private const string PresetKey = "CostaGraphicsPreset";
+        private static readonly float[] ViewDistances = { 95f, 155f, 245f, 360f, 540f };
+        private int quality = Mathf.Clamp(PlayerPrefs.GetInt(PresetKey,
+            PlayerPrefs.GetInt("CostaQuality", Application.isMobilePlatform ? 0 : 1) == 0 ? 1 : 3), 0, 4);
+        private readonly Camera camera;
         private int frameCap = PlayerPrefs.GetInt("CostaFrameCap", 60);
         private bool vsync = PlayerPrefs.GetInt("CostaVSync", 0) != 0;
         private readonly CostaBindings bindings;
@@ -48,10 +52,11 @@ namespace CostaLivre
         internal float Sensitivity { get; private set; } = PlayerPrefs.GetFloat("HarborSensitivity", 1f);
         internal float Volume { get; private set; } = PlayerPrefs.GetFloat("HarborVolume", 0.85f);
 
-        internal HarborMenu(CostaBindings bindings, CostaPadBindings padBindings)
+        internal HarborMenu(CostaBindings bindings, CostaPadBindings padBindings, Camera camera)
         {
             this.bindings = bindings;
             this.padBindings = padBindings;
+            this.camera = camera;
             ApplyGraphics();
             int fullscreen = PlayerPrefs.GetInt("CostaFullscreen", -1);
             if (fullscreen >= 0)
@@ -280,16 +285,17 @@ namespace CostaLivre
 
         private void DrawGraphics(float x, float y)
         {
+            string[] presets = { L("Super Low (Potato)", "Super baixa (Batata)"), L("Low", "Baixa"),
+                L("Medium", "Média"), L("High", "Alta"), "Ultra" };
             Text(new Rect(x, y, 115, 24), L("Quality", "Qualidade"), label, Paper);
-            if (MenuButton(new Rect(x + 105, y, 108, 26), L("Performance", "Desempenho"), quality == 0))
+            for (int i = 0; i < presets.Length; i++)
             {
-                quality = 0;
+                float left = i == 0 ? x + 105 : x + 250 + (i - 1) * 72;
+                if (!MenuButton(new Rect(left, y, i == 0 ? 139 : 66, 26), presets[i], quality == i) || quality == i)
+                    continue;
+                quality = i;
                 ApplyGraphics();
-            }
-            if (MenuButton(new Rect(x + 219, y, 118, 26), L("High", "Alta"), quality == 1))
-            {
-                quality = 1;
-                ApplyGraphics();
+                PlayerPrefs.Save();
             }
 
             Text(new Rect(x, y + 39, 115, 26), L("Display", "Tela"), label, Paper);
@@ -327,10 +333,13 @@ namespace CostaLivre
 
         private void ApplyGraphics()
         {
-            QualitySettings.SetQualityLevel(Mathf.Clamp(quality, 0, QualitySettings.names.Length - 1), true);
+            int level = Mathf.Clamp(quality, 0, QualitySettings.names.Length - 1);
+            if (QualitySettings.GetQualityLevel() != level)
+                QualitySettings.SetQualityLevel(level, true);
+            camera.farClipPlane = ViewDistances[quality];
             QualitySettings.vSyncCount = vsync ? 1 : 0;
             Application.targetFrameRate = frameCap;
-            PlayerPrefs.SetInt("CostaQuality", quality);
+            PlayerPrefs.SetInt(PresetKey, quality);
             PlayerPrefs.SetInt("CostaFrameCap", frameCap);
             PlayerPrefs.SetInt("CostaVSync", vsync ? 1 : 0);
         }

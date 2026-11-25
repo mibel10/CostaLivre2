@@ -10,9 +10,11 @@ namespace CostaLivre
         private static bool click;
         private static bool held;
 
-        internal static void Update()
+        internal static void Update(bool capturing)
         {
             click = held = false;
+            if (capturing)
+                return;
             if (Touchscreen.current != null && CostaTouch.Available)
             {
                 foreach (var finger in Touchscreen.current.touches)
@@ -61,7 +63,11 @@ namespace CostaLivre
 
         internal static bool Button(Rect area, string label, GUIStyle style)
         {
-            return GUI.Button(area, label, style) || Pick(area);
+            if (!CostaTouch.Available)
+                return GUI.Button(area, label, style) || Pick(area);
+            if (Event.current.type == EventType.Repaint)
+                style.Draw(area, new GUIContent(label), false, held && area.Contains(Position), false, false);
+            return Pick(area);
         }
 
         internal static float Slider(Rect area, float value, float min, float max)

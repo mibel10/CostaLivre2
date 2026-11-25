@@ -42,7 +42,8 @@ namespace CostaLivre
         private CostaMap cityMap;
         private CostaGunShop gunShop;
         private FieldOverlay overlay;
-        private readonly CostaTouch touch = new();
+        private CostaTouch touch;
+        private CostaPadBindings padBindings;
         private InputAction mapKey;
         private InputAction bagKey;
         private InputAction crouchKey;
@@ -192,10 +193,11 @@ namespace CostaLivre
             session = new CostaSession(cars);
             onlinePanel = new CostaOnlinePanel(session);
             remotes = new CostaRemoteView(harbor, transform);
+            touch = new CostaTouch();
             BindControls();
             followCamera.farClipPlane = 320f;
             followCamera.nearClipPlane = 0.07f;
-            menu = new HarborMenu(bindings);
+            menu = new HarborMenu(bindings, padBindings);
             CreateMenuPreview();
             deploy = StartRun;
             resume = ResumeRun;
@@ -301,7 +303,9 @@ namespace CostaLivre
             crouchKey = AddButton(map, "Crouch stance", "<Keyboard>/leftCtrl", "<Gamepad>/dpad/down");
             for (int i = 0; i < weaponSlots.Length; i++)
                 weaponSlots[i] = AddButton(map, $"Weapon slot {i + 1}", $"<Keyboard>/{i + 1}");
-            bindings = new CostaBindings(controls, sprint, jump, roll, interact, reload);
+            bindings = new CostaBindings(sprint, jump, roll, interact, reload);
+            padBindings = new CostaPadBindings(sprint, jump, roll, interact, reload, shoot, aim,
+                nextWeapon, previousWeapon, crouchKey, mapKey, bagKey, openMenu, jobsBoard);
         }
 
         private static InputAction AddButton(InputActionMap map, string name, string binding, string secondary = null)
@@ -498,7 +502,7 @@ namespace CostaLivre
             touch.Update(!inMenu && overlay == FieldOverlay.None && !pausedForFocus,
                 car != null, !session.Online && (state == RunState.Caught || state == RunState.Delivered));
             if (inMenu || overlay != FieldOverlay.None)
-                CostaUi.Update();
+                CostaUi.Update(menu.CapturingKey);
             if (pausedForFocus)
                 return;
             if (inMenu)
@@ -1364,14 +1368,14 @@ namespace CostaLivre
 
         private string InteractionPrompt(Vector3 target)
         {
-            string use = CostaTouch.Available ? L("Use", "Usar") : gamepad ? "Y" : bindings.Name(3);
+            string use = CostaTouch.Available ? L("Use", "Usar") : gamepad ? padBindings.Name(3) : bindings.Name(3);
             if (session.Online && session.Local.held > 0)
                 return L($"Detained · {session.Local.held}s", $"Detido · {session.Local.held}s");
             if (car != null && Time.unscaledTime < blockedExitUntil)
                 return L("Both sides are blocked", "Saída bloqueada dos dois lados");
             if (car != null)
-                return L($"{use} Exit   {(gamepad ? "A" : bindings.Name(1))} Brake",
-                    $"{use} Sair   {(gamepad ? "A" : bindings.Name(1))} Frear");
+                return L($"{use} Exit   {(gamepad ? padBindings.Name(1) : bindings.Name(1))} Brake",
+                    $"{use} Sair   {(gamepad ? padBindings.Name(1) : bindings.Name(1))} Frear");
             if (IsPolice && remotes.ArrestCandidate(player.transform.position) != null)
                 return L($"{use} Arrest", $"{use} Prender");
             if (!IsPolice && CostaSession.AtVendor(player.transform.position))
@@ -1408,7 +1412,8 @@ namespace CostaLivre
             if (!gamepad && Cursor.lockState != CursorLockMode.Locked)
                 return L("Click to capture the mouse", "Clique para capturar o mouse");
 
-            return gamepad ? L("→ Map   ↑ Backpack   ↓ Crouch   A Jump", "→ Mapa   ↑ Mochila   ↓ Agachar   A Pular")
+            return gamepad ? L($"{padBindings.Name(10)} Map   {padBindings.Name(11)} Backpack   {padBindings.Name(9)} Crouch",
+                    $"{padBindings.Name(10)} Mapa   {padBindings.Name(11)} Mochila   {padBindings.Name(9)} Agachar")
                 : L($"M Map   I Backpack   CTRL Crouch   {bindings.Name(1)} Jump   {bindings.Name(2)} Roll   ESC Menu",
                     $"M Mapa   I Mochila   CTRL Agachar   {bindings.Name(1)} Pular   {bindings.Name(2)} Rolar   ESC Menu");
         }

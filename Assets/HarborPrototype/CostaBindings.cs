@@ -6,16 +6,14 @@ namespace CostaLivre
 {
     internal sealed class CostaBindings
     {
-        private readonly InputActionAsset asset;
         private readonly InputAction[] actions;
         private readonly int[] keyboard;
         private int pending = -1;
         internal bool Waiting => pending >= 0;
         internal string Error { get; private set; } = "";
 
-        internal CostaBindings(InputActionAsset asset, params InputAction[] actions)
+        internal CostaBindings(params InputAction[] actions)
         {
-            this.asset = asset;
             this.actions = actions;
             keyboard = new int[actions.Length];
             for (int i = 0; i < actions.Length; i++)
@@ -67,7 +65,8 @@ namespace CostaLivre
         {
             pending = -1;
             Error = "";
-            asset.RemoveAllBindingOverrides();
+            for (int i = 0; i < actions.Length; i++)
+                actions[i].RemoveBindingOverride(keyboard[i]);
             for (int i = 0; i < actions.Length; i++)
                 PlayerPrefs.DeleteKey($"CostaKey{i}");
             PlayerPrefs.Save();

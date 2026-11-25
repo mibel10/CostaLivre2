@@ -24,8 +24,18 @@ namespace CostaLivre
         private bool vsync = PlayerPrefs.GetInt("CostaVSync", 0) != 0;
         private readonly CostaBindings bindings;
 
-        internal bool CapturingKey => bindings.Waiting;
-        internal void ReadBinding() => bindings.Tick();
+        private readonly CostaPadBindings padBindings;
+        private bool showPadBindings;
+        private int padPage;
+
+        internal bool CapturingKey => bindings.Waiting || padBindings.Waiting;
+        internal void ReadBinding()
+        {
+            if (padBindings.Waiting)
+                padBindings.Tick();
+            else
+                bindings.Tick();
+        }
         internal void ShowJobs() => page = ScreenPage.Jobs;
         internal void ShowOnline() => page = ScreenPage.Online;
         internal bool OnlinePage => page == ScreenPage.Online;
@@ -38,9 +48,10 @@ namespace CostaLivre
         internal float Sensitivity { get; private set; } = PlayerPrefs.GetFloat("HarborSensitivity", 1f);
         internal float Volume { get; private set; } = PlayerPrefs.GetFloat("HarborVolume", 0.85f);
 
-        internal HarborMenu(CostaBindings bindings)
+        internal HarborMenu(CostaBindings bindings, CostaPadBindings padBindings)
         {
             this.bindings = bindings;
+            this.padBindings = padBindings;
             ApplyGraphics();
             int fullscreen = PlayerPrefs.GetInt("CostaFullscreen", -1);
             if (fullscreen >= 0)
@@ -193,8 +204,18 @@ namespace CostaLivre
 
         private void DrawControls(float x, float y)
         {
-            Text(new Rect(x, y, 396, 23), L("WASD Move  ·  M Map  ·  TAB Jobs  ·  Mouse Aim / Fire",
-                "WASD Mover  ·  M Mapa  ·  TAB Missões"), label, Paper);
+            bool old = GUI.enabled;
+            GUI.enabled = old && !CapturingKey;
+            if (MenuButton(new Rect(x, y, 120, 25), L("Keyboard", "Teclado"), !showPadBindings))
+                showPadBindings = false;
+            if (MenuButton(new Rect(x + 130, y, 120, 25), L("Gamepad", "Controle"), showPadBindings))
+                showPadBindings = true;
+            GUI.enabled = old;
+            if (showPadBindings)
+            {
+                DrawPadBindings(x, y);
+                return;
+            }
             string[] names = { L("Run", "Correr"), L("Jump / brake", "Pular / frear"), L("Roll", "Rolar"),
                 L("Interact / enter car", "Interagir / entrar no carro"), L("Reload", "Recarregar") };
             for (int i = 0; i < names.Length; i++)
@@ -217,6 +238,35 @@ namespace CostaLivre
                 Sensitivity = sensitivity;
                 PlayerPrefs.SetFloat("HarborSensitivity", sensitivity);
             }
+        }
+
+        private void DrawPadBindings(float x, float y)
+        {
+            string[] actions = { L("Run", "Correr"), L("Jump / brake", "Pular / frear"), L("Roll", "Rolar"),
+                L("Interact / vehicle", "Interagir / veículo"), L("Reload", "Recarregar"), L("Fire", "Atirar"),
+                L("Aim", "Mirar"), L("Next weapon", "Próxima arma"), L("Previous weapon", "Arma anterior"),
+                L("Crouch", "Agachar"), L("Map", "Mapa"), L("Backpack", "Mochila"),
+                "Menu", L("Jobs", "Missões") };
+            bool old = GUI.enabled;
+            GUI.enabled = old && !padBindings.Waiting;
+            const int pageSize = 5;
+            for (int i = padPage * pageSize; i < Mathf.Min((padPage + 1) * pageSize, padBindings.Count); i++)
+            {
+                float row = y + 34 + (i % pageSize) * 28;
+                Text(new Rect(x, row, 205, 24), actions[i], label, Grey);
+                if (MenuButton(new Rect(x + 211, row, 128, 24), padBindings.Name(i), false))
+                    padBindings.Begin(i);
+            }
+            if (padPage > 0 && MenuButton(new Rect(x, y + 204, 42, 26), "‹", false))
+                padPage--;
+            if ((padPage + 1) * pageSize < padBindings.Count && MenuButton(new Rect(x + 53, y + 204, 42, 26), "›", false))
+                padPage++;
+            if (MenuButton(new Rect(x + 213, y + 204, 127, 26), L("Reset gamepad", "Restaurar"), false))
+                padBindings.Reset();
+            GUI.enabled = old;
+            if (padBindings.Waiting)
+                Text(new Rect(x, y + 175, 425, 24), padBindings.Error.Length > 0 ? padBindings.Error :
+                    L("Press a button. Menu / Esc cancels.", "Pressione um botão. Menu / Esc cancela."), label, Copper);
         }
 
         private void DrawGraphics(float x, float y)

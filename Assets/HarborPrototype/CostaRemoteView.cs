@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using static CostaLivre.CostaText;
 
@@ -11,6 +12,7 @@ namespace CostaLivre
             internal HarborCharacter Body;
             internal CostaLook Look;
             internal GameObject Pack;
+            internal Mesh[] UniformMeshes;
             internal CostaSession.Avatar State;
         }
 
@@ -36,6 +38,9 @@ namespace CostaLivre
                 {
                     HarborCharacter body = art.Person("Remote player", root, avatar.pos, Color.white);
                     model = new Rendered { Body = body, Look = new CostaLook(art, body), Pack = art.Pack(body.Root, body.Chest) };
+                    model.UniformMeshes = body.Root.GetComponentsInChildren<MeshFilter>(true)
+                        .Where(filter => filter.name == "Front vest" || filter.name == "Back vest")
+                        .Select(filter => filter.sharedMesh).ToArray();
                     models.Add(avatar.id, model);
                 }
                 model.State = avatar;
@@ -146,9 +151,11 @@ namespace CostaLivre
             models.Clear();
         }
 
-        private static void Release(Rendered model)
+        private void Release(Rendered model)
         {
             model.Body.Release();
+            foreach (Mesh mesh in model.UniformMeshes)
+                art.ReleaseModel(mesh);
             Object.Destroy(model.Body.Root.gameObject);
         }
     }

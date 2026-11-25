@@ -206,6 +206,12 @@ namespace CostaLivre
                 new(0.115f, 0.115f, 0.21f), Amber).transform;
         }
 
+        internal void ReleaseModel(Mesh mesh)
+        {
+            if (models.Remove(mesh))
+                Object.Destroy(mesh);
+        }
+
         internal void ReleaseMaterials()
         {
             if (signMaterial != null)

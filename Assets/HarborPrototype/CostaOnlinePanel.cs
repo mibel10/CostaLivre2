@@ -124,7 +124,7 @@ namespace CostaLivre
             bool old = GUI.enabled;
             GUI.enabled = old && active;
             buttons.normal.textColor = active ? Text : Muted;
-            bool result = GUI.Button(area, value, buttons);
+            bool result = CostaUi.Button(area, value, buttons);
             GUI.enabled = old;
             return result;
         }

@@ -71,7 +71,7 @@ namespace CostaLivre
             bool old = GUI.enabled;
             GUI.enabled = old && active;
             button.normal.textColor = Background;
-            bool clicked = GUI.Button(area, text, button);
+            bool clicked = CostaUi.Button(area, text, button);
             GUI.enabled = old;
             return clicked;
         }

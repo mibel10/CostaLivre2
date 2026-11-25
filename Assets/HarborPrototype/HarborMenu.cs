@@ -199,7 +199,7 @@ namespace CostaLivre
 
             if (MenuButton(new Rect(x + 213, y + 204, 127, 26), L("Reset keys", "Restaurar"), false))
                 bindings.Reset();
-            float sensitivity = GUI.HorizontalSlider(new Rect(x, y + 217, 188, 18), Sensitivity, 0.35f, 2.1f);
+            float sensitivity = CostaUi.Slider(new Rect(x, y + 217, 188, 18), Sensitivity, 0.35f, 2.1f);
             Text(new Rect(x, y + 194, 206, 22), L($"Mouse   {sensitivity:0.00}", $"Sensibilidade   {sensitivity:0.00}"), label, Paper);
             if (!Mathf.Approximately(Sensitivity, sensitivity))
             {
@@ -246,7 +246,7 @@ namespace CostaLivre
             }
 
             Text(new Rect(x, y + 120, 280, 24), L($"Master volume   {Volume:P0}", $"Volume geral   {Volume:P0}"), label, Paper);
-            float volume = GUI.HorizontalSlider(new Rect(x, y + 149, 229, 20), Volume, 0f, 1f);
+            float volume = CostaUi.Slider(new Rect(x, y + 149, 229, 20), Volume, 0f, 1f);
             if (!Mathf.Approximately(Volume, volume))
             {
                 Volume = volume;
@@ -296,7 +296,7 @@ namespace CostaLivre
             float required = button.CalcSize(new GUIContent(name)).x;
             if (required > available)
                 button.fontSize = Mathf.Max(11, Mathf.FloorToInt(fontSize * available / required));
-            bool pressed = GUI.Button(bounds, name, button);
+            bool pressed = CostaUi.Button(bounds, name, button);
             button.fontSize = fontSize;
             GUI.contentColor = before;
             return pressed;

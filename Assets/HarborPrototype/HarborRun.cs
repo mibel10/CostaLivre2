@@ -294,7 +294,7 @@ namespace CostaLivre
             restart = AddButton(map, "Restart run", "<Keyboard>/f5", "<Gamepad>/start");
             openMenu = AddButton(map, "Open menu", "<Keyboard>/escape", "<Gamepad>/select");
             jobsBoard = AddButton(map, "Jobs board", "<Keyboard>/tab", "<Gamepad>/rightStickPress");
-            mapKey = AddButton(map, "City map", "<Keyboard>/m");
+            mapKey = AddButton(map, "City map", "<Keyboard>/m", "<Gamepad>/dpad/right");
             bagKey = AddButton(map, "Backpack", "<Keyboard>/i", "<Gamepad>/dpad/up");
             crouchKey = AddButton(map, "Crouch stance", "<Keyboard>/leftCtrl", "<Gamepad>/dpad/down");
             for (int i = 0; i < weaponSlots.Length; i++)
@@ -489,6 +489,8 @@ namespace CostaLivre
         private void Update()
         {
             TickNetwork();
+            if (inMenu || overlay != FieldOverlay.None)
+                CostaUi.Update();
             if (pausedForFocus)
                 return;
             if (inMenu)
@@ -1240,6 +1242,13 @@ namespace CostaLivre
 
         private void OnGUI()
         {
+            DrawInterface();
+            if (inMenu || overlay != FieldOverlay.None)
+                CostaUi.DrawPointer();
+        }
+
+        private void DrawInterface()
+        {
             if (inMenu)
             {
                 menu.Draw(CanResume(), deploy, resume, quit, jobs, selectJob, onlinePanel, arsenal, session.Online);
@@ -1381,7 +1390,7 @@ namespace CostaLivre
             if (!gamepad && Cursor.lockState != CursorLockMode.Locked)
                 return L("Click to capture the mouse", "Clique para capturar o mouse");
 
-            return gamepad ? L("↑ Backpack   ↓ Crouch   A Jump   B Roll", "↑ Mochila   ↓ Agachar   A Pular   B Rolar")
+            return gamepad ? L("→ Map   ↑ Backpack   ↓ Crouch   A Jump", "→ Mapa   ↑ Mochila   ↓ Agachar   A Pular")
                 : L($"M Map   I Backpack   CTRL Crouch   {bindings.Name(1)} Jump   {bindings.Name(2)} Roll   ESC Menu",
                     $"M Mapa   I Mochila   CTRL Agachar   {bindings.Name(1)} Pular   {bindings.Name(2)} Rolar   ESC Menu");
         }

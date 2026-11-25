@@ -65,7 +65,7 @@ namespace CostaLivre
             bool enabled = GUI.enabled;
             GUI.enabled = enabled && active;
             button.normal.textColor = active ? Dark : Paper;
-            bool pressed = GUI.Button(bounds, name, button);
+            bool pressed = CostaUi.Button(bounds, name, button);
             GUI.enabled = enabled;
             return pressed;
         }

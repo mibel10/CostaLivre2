@@ -181,6 +181,8 @@ namespace CostaLivre
                 PickDestination(projection, input.mousePosition, size);
                 input.Use();
             }
+            if (CostaUi.Pick(new Rect(Vector2.zero, size)))
+                PickDestination(projection, CostaUi.Position, size);
             DrawBase(size, projection);
             if (objective is Vector3 tracked)
                 PinDot(projection.Point(tracked), Accent, 9);
@@ -407,7 +409,7 @@ namespace CostaLivre
         {
             Fill(area, selected ? Accent : new Color(0.18f, 0.24f, 0.26f));
             button.normal.textColor = selected ? Frame : Text;
-            return GUI.Button(area, text, button);
+            return CostaUi.Button(area, text, button);
         }
 
         private static void Label(Rect area, string value, GUIStyle style, Color color)

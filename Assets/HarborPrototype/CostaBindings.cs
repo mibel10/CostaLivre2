@@ -111,7 +111,7 @@ namespace CostaLivre
                     }
                 }
 
-                if (key.keyCode == Key.Enter || (key.keyCode >= Key.Digit1 && key.keyCode <= Key.Digit5))
+                if (key.keyCode == Key.Enter)
                 {
                     Error = CostaText.L("That key is reserved.", "Essa tecla é reservada.");
                     return;

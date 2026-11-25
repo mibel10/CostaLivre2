@@ -516,7 +516,9 @@ namespace CostaLivre
                     }
                     break;
                 case "exit":
-                    if (avatar.vehicle >= 0 && msg.pose != null && ValidPoint(msg.pose.pos))
+                    if (avatar.vehicle >= 0 && msg.pose != null && ValidPoint(msg.pose.pos)
+                        && !Physics.CheckCapsule(msg.pose.pos + Vector3.up * 0.38f, msg.pose.pos + Vector3.up * 1.46f, 0.32f,
+                            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                     {
                         Vehicle car = hostCars[avatar.vehicle];
                         if (Near(car.pos, msg.pose.pos, 4.6f))
@@ -542,6 +544,16 @@ namespace CostaLivre
             float elapsed = Mathf.Clamp(now - peer.LastPose, 0.03f, 1.25f);
             if (Vector3.Distance(avatar.pos, pose.pos) > elapsed * speedLimit + 0.9f)
                 return;
+
+            Vector3 movement = pose.pos - avatar.pos;
+            float distance = movement.magnitude;
+            if (distance > 0.02f && MovementBlocked(avatar, pose, movement / distance, distance))
+            {
+                avatar.revision++;
+                if (avatar.vehicle >= 0)
+                    hostCars[avatar.vehicle].speed = 0;
+                return;
+            }
 
             peer.LastPose = now;
             avatar.pos = pose.pos;
@@ -619,6 +631,26 @@ namespace CostaLivre
                 victim.RespawnProtection = now + 3;
                 SetNotice(victim, 11);
             }
+        }
+
+        private bool MovementBlocked(Avatar avatar, Avatar pose, Vector3 direction, float distance)
+        {
+            if (avatar.vehicle >= 0)
+            {
+                var car = hostCars[avatar.vehicle];
+                Quaternion orientation = Quaternion.Euler(0, car.yaw, 0);
+                return sceneVehicles[avatar.vehicle].SimulatedTravel(car.pos, orientation, direction, distance) + 0.12f < distance;
+            }
+
+            float height = pose.rollPose >= 0 ? 1.0f : pose.crouched ? 1.16f : 1.8f;
+            const float radius = 0.27f;
+            Vector3 lower = avatar.pos + Vector3.up * 0.43f;
+            Vector3 upper = avatar.pos + Vector3.up * (height - radius - 0.08f);
+            return (Physics.CapsuleCast(lower, upper, radius, direction, out RaycastHit hit, distance,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) && hit.distance + 0.10f < distance)
+                || Physics.CheckCapsule(pose.pos + Vector3.up * 0.43f,
+                    pose.pos + Vector3.up * (height - radius - 0.08f), radius,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
         }
 
         private void TryArrest(Peer officer, int id, float now)

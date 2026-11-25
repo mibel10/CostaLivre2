@@ -1,0 +1,26 @@
+fileFormatVersion: 2
+guid: 2e518567f5304ab797d22beaa1bcb974
+ModelImporter:
+  serializedVersion: 22200
+  materialImportMode: 0
+  globalScale: 1
+  importAnimation: 1
+  animationType: 2
+  animations:
+    animationCompression: 0
+    resampleCurves: 1
+    clipAnimations: []
+  meshes:
+    globalScale: 1
+    meshCompression: 0
+    importCameras: 0
+    importLights: 0
+    preserveHierarchy: 1
+    optimizeBones: 0
+    maxBonesPerVertex: 4
+  rigImportErrors:
+  rigImportWarnings:
+  avatarSetup: 1
+  userData:
+  assetBundleName:
+  assetBundleVariant:

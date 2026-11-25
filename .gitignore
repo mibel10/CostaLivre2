@@ -1,0 +1,22 @@
+# Unity-generated files and local preferences
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Bb]uild/
+/[Bb]uilds/
+/.harbor-build-work/
+/.plastic/
+
+# IDE-generated files
+/.vs/
+/.idea/
+*.csproj
+*.sln
+*.user
+*.userprefs
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -45,8 +45,48 @@ namespace CostaLivre
                 Vector3 point = Sites[i].Point;
                 art.Box("Display pedestal", point + Vector3.up * 0.38f, new Vector3(0.78f, 0.76f, 0.69f),
                     new Color(0.22f, 0.25f, 0.24f), true);
-                cases[i] = art.Box("Robbery loot", point + Vector3.up * 0.90f, new Vector3(0.53f, 0.28f, 0.42f),
-                    HarborBlockout.Amber);
+                Transform display = art.Box("Loot display tray", point + Vector3.up * 0.78f,
+                    new Vector3(0.63f, 0.04f, 0.53f), new Color(0.12f, 0.14f, 0.15f)).transform;
+                display.localScale = Vector3.one;
+                cases[i] = display.gameObject;
+                // Child sizes are in metres. The tray is a separate mesh.
+                art.Part(display, PrimitiveType.Cube, "Tray", Vector3.zero, new(0.63f, 0.04f, 0.53f),
+                    new Color(0.12f, 0.14f, 0.15f));
+                display.GetComponent<Renderer>().enabled = false;
+                DressDisplay(art, display, i);
+            }
+        }
+
+        private static void DressDisplay(HarborBlockout art, Transform display, int site)
+        {
+            Color gold = HarborBlockout.Amber;
+            Color dark = new(0.08f, 0.12f, 0.15f);
+            switch (site)
+            {
+                case 0:
+                    art.Part(display, PrimitiveType.Cube, "Gold watch strap", new(-0.14f, 0.05f, 0), new(0.08f, 0.05f, 0.32f), gold);
+                    art.Part(display, PrimitiveType.Cylinder, "Watch dial", new(-0.14f, 0.07f, 0.02f), new(0.15f, 0.04f, 0.15f), dark);
+                    art.Part(display, PrimitiveType.Capsule, "Silverware", new(0.15f, 0.05f, 0), new(0.07f, 0.05f, 0.27f), Color.gray);
+                    break;
+                case 1:
+                    art.Part(display, PrimitiveType.Cube, "Painting frame", new(-0.14f, 0.19f, 0.08f), new(0.28f, 0.32f, 0.05f), gold);
+                    art.Part(display, PrimitiveType.Cube, "Painted canvas", new(-0.14f, 0.19f, 0.048f), new(0.23f, 0.27f, 0.015f), new Color(0.20f, 0.44f, 0.42f));
+                    art.Part(display, PrimitiveType.Sphere, "Historic vase", new(0.16f, 0.12f, 0), new(0.15f, 0.21f, 0.15f), new Color(0.65f, 0.36f, 0.18f));
+                    break;
+                case 2:
+                    for (int i = -1; i <= 1; i++)
+                    {
+                        var gem = art.Part(display, PrimitiveType.Cube, i == 0 ? "Diamond" : "Ruby",
+                            new(i * 0.16f, 0.075f, 0), new(0.093f, 0.093f, 0.093f),
+                            i == 0 ? new Color(0.76f, 0.95f, 1f) : new Color(0.76f, 0.09f, 0.23f));
+                        gem.transform.localRotation = Quaternion.Euler(30, 45, 28);
+                    }
+                    break;
+                default:
+                    art.Part(display, PrimitiveType.Cube, "Laptop keyboard", new(0, 0.05f, -0.04f), new(0.39f, 0.04f, 0.26f), dark);
+                    art.Part(display, PrimitiveType.Cube, "Laptop screen", new(0, 0.18f, 0.10f), new(0.39f, 0.24f, 0.035f), new Color(0.25f, 0.54f, 0.66f));
+                    art.Part(display, PrimitiveType.Cube, "Graphics card", new(0, 0.08f, -0.18f), new(0.21f, 0.035f, 0.085f), Color.gray);
+                    break;
             }
         }
 

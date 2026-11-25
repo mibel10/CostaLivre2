@@ -20,3 +20,7 @@ No menu **Multiplayer**, um jogador seleciona **Hospedar LAN**. Os demais usam *
 | Ctrl esquerdo | Agachar |
 | 1 | Pistola |
 | 2 | Arma pesada |
+
+## Surface textures
+
+The 2K asphalt and concrete maps use ambientCG's Asphalt 010 and Concrete 034 assets (CC0).

@@ -1232,11 +1232,16 @@ namespace CostaLivre
             }
 
             Vector3? missionLocation = MissionLocation();
-            Vector3 target = missionLocation ?? cityMap.Waypoint ?? player.transform.position;
+            Vector3 target = cityMap.Waypoint ?? missionLocation ?? player.transform.position;
             bool marked = missionLocation.HasValue || cityMap.Waypoint.HasValue;
             string objective = L("Explore Santa Luz", "Explore Santa Luz");
             string marker = "";
-            if (harborJob)
+            if (cityMap.Waypoint.HasValue)
+            {
+                objective = cityMap.WaypointTitle;
+                marker = L("WAYPOINT", "MARCADOR");
+            }
+            else if (harborJob)
             {
                 objective = escaping ? L("Reach the safehouse", "Vá ao esconderijo") : L("Retrieve the case", "Recolha a maleta");
                 marker = escaping ? L("SAFEHOUSE", "ESCONDERIJO") : L("CARGO CASE", "MALETA");
@@ -1245,11 +1250,6 @@ namespace CostaLivre
             {
                 objective = jobs.Current.Title;
                 marker = $"{jobs.StepNumber:00} / {CostaJobs.List[jobs.Active].Steps.Length:00}";
-            }
-            else if (cityMap.Waypoint.HasValue)
-            {
-                objective = cityMap.WaypointTitle;
-                marker = L("WAYPOINT", "MARCADOR");
             }
             else if (CurrentBag.Count > 0)
             {
@@ -1262,7 +1262,7 @@ namespace CostaLivre
                 marker = L("POLICE", "POLÍCIA");
             }
 
-            string prompt = InteractionPrompt(target);
+            string prompt = InteractionPrompt(missionLocation ?? target);
             Vector3 viewport = followCamera.WorldToViewportPoint(target + Vector3.up * 1.35f);
             float side = Vector3.Dot(target - player.transform.position, followCamera.transform.right);
             string notice = session.Online ? session.CurrentNotice

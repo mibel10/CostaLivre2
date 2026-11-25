@@ -374,6 +374,7 @@ namespace CostaLivre
                     remotes.Clear();
                     arsenal.SetOnlineWeapons(null);
                     localLook.Apply(0, false);
+                    jobs.SetOnlineDoors(false);
                     CloseOverlay();
                     ResetRun();
                     menu.ShowOnline();
@@ -386,6 +387,7 @@ namespace CostaLivre
             if (joined)
             {
                 wasOnline = true;
+                jobs.SetOnlineDoors(true);
                 pursuit = false;
                 harborJob = false;
                 jobs.Select(-1);

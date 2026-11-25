@@ -101,6 +101,12 @@ namespace CostaLivre
                 doors[i].SetActive(!Owned(i));
         }
 
+        internal void SetOnlineDoors(bool online)
+        {
+            for (int i = 0; i < doors.Length; i++)
+                doors[i].SetActive(online || !Owned(i));
+        }
+
         internal bool Completed(int job) => (completed & (1 << job)) != 0;
         internal bool Owned(int index) => (owned & (1 << index)) != 0;
 

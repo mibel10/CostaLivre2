@@ -120,12 +120,13 @@ namespace CostaLivre
             return new[] { helmet.gameObject, brim.gameObject, vest.gameObject };
         }
 
-        internal GameObject Pack(Transform wearer)
+        internal GameObject Pack(Transform wearer, Transform chest)
         {
             Color canvas = new(0.21f, 0.23f, 0.19f);
             GameObject pack = new GameObject("Cargo backpack");
             pack.transform.SetParent(wearer, false);
             pack.transform.localPosition = new Vector3(0, 1.13f, -0.17f);
+            pack.transform.SetParent(chest, true);
             Part(pack.transform, PrimitiveType.Capsule, "Canvas shell", new(0, 0.02f, -0.04f),
                 new(0.32f, 0.25f, 0.21f), canvas);
             Part(pack.transform, PrimitiveType.Cube, "Front pocket", new(0, -0.072f, -0.14f),

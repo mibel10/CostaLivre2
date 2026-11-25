@@ -153,7 +153,7 @@ namespace CostaLivre
             player.stepOffset = 0.2f;
             playerBody = harbor.Person("Runner model", runner.transform, HarborBlockout.Spawn, new Color(0.89f, 0.90f, 0.86f));
             playerModel = playerBody.Root;
-            cargoPack = harbor.Pack(playerModel);
+            cargoPack = harbor.Pack(playerModel, playerBody.Chest);
             localLook = new CostaLook(harbor, playerBody);
 
             arsenal = new HarborArsenal(harbor, playerModel, blockoutShader, jobs);

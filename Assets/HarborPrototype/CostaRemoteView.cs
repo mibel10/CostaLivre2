@@ -35,7 +35,7 @@ namespace CostaLivre
                 if (!models.TryGetValue(avatar.id, out Rendered model))
                 {
                     HarborCharacter body = art.Person("Remote player", root, avatar.pos, Color.white);
-                    model = new Rendered { Body = body, Look = new CostaLook(art, body), Pack = art.Pack(body.Root) };
+                    model = new Rendered { Body = body, Look = new CostaLook(art, body), Pack = art.Pack(body.Root, body.Chest) };
                     models.Add(avatar.id, model);
                 }
                 model.State = avatar;

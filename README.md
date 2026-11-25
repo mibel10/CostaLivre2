@@ -58,6 +58,19 @@ Em uma medição curta no centro de Santa Luz, com Core i5-4210U, Intel HD Graph
 
 Para validar os alvos, meça no executável a 1920 × 1080 com VSync desligado e limite de 60 FPS. Depois do carregamento, faça o mesmo percurso pela região central e repita durante uma missão com NPCs. Compare o tempo de quadro no percentil 95 com 33,3 ms no Médio e 16,7 ms no Ultra. Registre também o pico de RAM e VRAM.
 
+## Requisitos estimados para Android e iPhone
+
+| Plataforma | Mínimo estimado para Baixo, 30 FPS | Recomendado estimado para Médio, 60 FPS |
+| --- | --- | --- |
+| Android | Snapdragon 778G ou equivalente, 6 GB de RAM | Snapdragon 8 Gen 2 ou equivalente, 8 GB de RAM |
+| iPhone | iPhone 11 (A13 Bionic) | iPhone 15 Pro (A17 Pro) |
+
+O projeto configura Android 7.1 (API 25) ou posterior, ARM64 e Vulkan ou OpenGL ES 3, e iOS 15 ou posterior com Metal. Esses limites são de compatibilidade da plataforma. A tabela indica aparelhos de referência para avaliação de desempenho. A exportação para iPhone ainda precisa ser validada em um aparelho. [Configuração do projeto](ProjectSettings/ProjectSettings.asset) · [Requisitos do Unity 6.3](https://docs.unity.com/en-us/engine/6000.3/manual/get-started/install-and-upgrade/getting-started-installing-unity/system-requirements)
+
+O preset Baixo renderiza a 70% da largura e da altura da resolução de saída, com sombras até 30 m. O Médio renderiza a 85%, com sombras até 65 m. A resolução da tela e o aquecimento durante sessões longas podem afetar o FPS. As metas de desempenho ainda precisam ser medidas nos aparelhos indicados. [Configuração do Baixo](Assets/Settings/Mobile_RPAsset.asset) · [Configuração do Médio](Assets/Settings/Medium_RPAsset.asset)
+
+Referências dos modelos e chips. [Snapdragon 778G](https://www.qualcomm.com/smartphones/products/7-series/snapdragon-778g-5g-mobile-platform) · [Snapdragon 8 Gen 2](https://www.qualcomm.com/smartphones/products/8-series/snapdragon-8-gen-2-mobile-platform) · [iPhone 11](https://support.apple.com/en-us/111865) · [iPhone 15 Pro](https://support.apple.com/en-us/111829)
+
 ## Multiplayer e controles
 
 No menu **Multiplayer**, um jogador seleciona **Hospedar LAN**. Os demais usam **Entrar por IP** com o IPv4 do anfitrião e a mesma porta. A porta padrão é `7777`. Todos devem usar a mesma versão da build.

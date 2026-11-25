@@ -328,7 +328,7 @@ namespace CostaLivre
 
                         peer.Ready = true;
                         var id = ++nextIdentity;
-                        Vector3 position = CriminalSpawn + new Vector3(-2.2f * (id % 3), 0, -2.0f * (id % 2));
+                        Vector3 position = FindCriminalSpawn();
                         peer.Pose = new Avatar { id = id, name = SafeName(message.name), pos = position, yaw = 350, revision = 1 };
                         peer.LastPose = now;
                     }
@@ -565,10 +565,35 @@ namespace CostaLivre
             peer.Pose.standing = true;
             peer.Pose.crouched = peer.Pose.moving = peer.Pose.running = false;
             peer.Pose.wanted = !police && peer.Bag.Count > 0;
-            peer.Pose.pos = police ? PoliceSpawn + Vector3.right * (peer.Pose.id % 4) : CriminalSpawn;
+            peer.Pose.pos = police ? PoliceSpawn + Vector3.right * (peer.Pose.id % 4) : FindCriminalSpawn();
             peer.Pose.yaw = police ? 180 : 350;
             peer.Pose.revision++;
             SetNotice(peer, police ? 2 : 9);
+        }
+
+        private Vector3 FindCriminalSpawn()
+        {
+            Vector3 best = CriminalSpawn;
+            float bestClearance = -1f;
+            for (int lane = 0; lane < 5; lane++)
+            {
+                for (int row = 0; row < 6; row++)
+                {
+                    Vector3 point = CriminalSpawn + new Vector3(-4 - lane * 1.7f, 0, 9 + row * 1.7f);
+                    if (Physics.CheckCapsule(point + Vector3.up * 0.42f, point + Vector3.up * 1.35f, 0.39f,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                        continue;
+                    float clearance = float.PositiveInfinity;
+                    foreach (Peer peer in peers)
+                        if (peer.Ready && peer.Pose != null)
+                            clearance = Mathf.Min(clearance, (peer.Pose.pos - point).sqrMagnitude);
+                    if (clearance <= bestClearance)
+                        continue;
+                    bestClearance = clearance;
+                    best = point;
+                }
+            }
+            return best;
         }
 
         private void Rebalance()

@@ -52,6 +52,13 @@ namespace CostaLivre
         private CostaLook menuLook;
         private bool wasOnline;
         private bool enteredOnlineWorld;
+        private bool soloResumable;
+        private bool soloHarborJob;
+        private RunState soloState;
+        private Vector3 soloPosition;
+        private float soloYaw;
+        private float soloPitch;
+        private float soloEscapeElapsed;
         private bool pausedForFocus;
         private bool wasPolice;
         private bool crouching;
@@ -378,8 +385,25 @@ namespace CostaLivre
                     arsenal.SetOnlineWeapons(null);
                     localLook.Apply(0, false);
                     jobs.SetOnlineDoors(false);
+                    jobs.ResumeAfterSession();
                     CloseOverlay();
-                    ResetRun();
+                    ResetRun(resetJob: false);
+                    if (soloResumable)
+                    {
+                        player.enabled = false;
+                        player.transform.position = soloPosition;
+                        player.enabled = true;
+                        yaw = soloYaw;
+                        pitch = soloPitch;
+                        playerModel.rotation = Quaternion.Euler(0, yaw, 0);
+                    }
+                    harborJob = soloHarborJob;
+                    enteredRun = soloResumable;
+                    state = soloState;
+                    escapeStartedAt = Time.time - soloEscapeElapsed;
+                    cargo.SetActive(harborJob && state == RunState.FindCargo);
+                    if (state == RunState.Escape || jobs.Active == 4 && jobs.StepNumber == 2)
+                        StartPursuit(0.45f);
                     menu.ShowOnline();
                     ShowMenu();
                 }
@@ -389,11 +413,19 @@ namespace CostaLivre
             bool joined = !wasOnline;
             if (joined)
             {
+                soloResumable = CanResume();
+                soloHarborJob = harborJob;
+                soloState = state;
+                soloPosition = player.transform.position;
+                soloYaw = yaw;
+                soloPitch = pitch;
+                soloEscapeElapsed = state == RunState.Escape ? Time.time - escapeStartedAt : 0;
+                jobs.PauseForSession();
+
                 wasOnline = true;
                 jobs.SetOnlineDoors(true);
                 pursuit = false;
                 harborJob = false;
-                jobs.Select(-1);
                 cargo.SetActive(false);
                 foreach (Guard guard in guards)
                     guard.Agent.gameObject.SetActive(false);
@@ -817,7 +849,7 @@ namespace CostaLivre
                 || (!session.Online && jobs.NearbyProperty(player.transform.position) >= 0)
                 || (!IsPolice && state != RunState.Escape && robberies.Nearby(player.transform.position) >= 0)
                 || (harborJob && state == RunState.FindCargo && IsNear(HarborBlockout.Cargo, InteractionRadius))
-                || (jobs.InProgress && jobs.Current.Mode != CostaJobs.Action.Drive
+                || (!session.Online && jobs.InProgress && jobs.Current.Mode != CostaJobs.Action.Drive
                     && CostaJobs.Near(player.transform.position, jobs.Current.Point, jobs.Current.Radius)))
             {
                 return false;
@@ -1116,12 +1148,13 @@ namespace CostaLivre
             }
         }
 
-        private void ResetRun()
+        private void ResetRun(bool resetJob = true)
         {
             independentAlert = false;
             state = RunState.FindCargo;
             pursuit = false;
-            jobs.Select(jobs.Active);
+            if (resetJob)
+                jobs.Select(jobs.Active);
             crouching = walking = runningPose = false;
             car = null;
             foreach (CostaVehicle vehicle in cars)
@@ -1257,7 +1290,7 @@ namespace CostaLivre
                 objective = escaping ? L("Reach the safehouse", "Vá ao esconderijo") : L("Retrieve the case", "Recolha a maleta");
                 marker = escaping ? L("SAFEHOUSE", "ESCONDERIJO") : L("CARGO CASE", "MALETA");
             }
-            else if (jobs.InProgress)
+            else if (!session.Online && jobs.InProgress)
             {
                 objective = jobs.Current.Title;
                 marker = $"{jobs.StepNumber:00} / {CostaJobs.List[jobs.Active].Steps.Length:00}";
@@ -1287,7 +1320,7 @@ namespace CostaLivre
         {
             if (harborJob)
                 return state == RunState.Escape ? HarborBlockout.Safehouse : HarborBlockout.Cargo;
-            if (jobs.InProgress)
+            if (!session.Online && jobs.InProgress)
                 return jobs.Current.Point;
             if (CurrentBag.Count == 0 || cityMap.Waypoint.HasValue)
                 return null;
@@ -1315,7 +1348,7 @@ namespace CostaLivre
                 return L($"{use} Open gun shop", $"{use} Abrir armaria");
             if (harborJob && state == RunState.FindCargo && IsNear(target, InteractionRadius))
                 return L($"{use} Take the case", $"{use} Pegar a maleta");
-            if (jobs.InProgress && IsNear(target, jobs.Current.Radius))
+            if (!session.Online && jobs.InProgress && IsNear(target, jobs.Current.Radius))
             {
                 if (jobs.Current.Mode == CostaJobs.Action.Drive)
                     return L("Cross this checkpoint in a car", "Passe por este ponto em um carro");

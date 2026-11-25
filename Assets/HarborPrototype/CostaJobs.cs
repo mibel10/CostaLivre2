@@ -123,10 +123,14 @@ namespace CostaLivre
             return true;
         }
 
-        internal void PauseDeadline()
+        private float pausedAt;
+
+        internal void PauseForSession() => pausedAt = Time.time;
+
+        internal void ResumeAfterSession()
         {
             if (deadline > 0)
-                deadline += Time.deltaTime;
+                deadline += Time.time - pausedAt;
         }
 
         internal void Select(int job)

@@ -652,11 +652,12 @@ namespace CostaLivre
 
         private void SelectJob(int index)
         {
-            if (!enteredRun || state == RunState.Caught || state == RunState.Delivered)
+            bool start = !enteredRun || state == RunState.Caught || state == RunState.Delivered;
+            harborJob = index == -2;
+            if (start)
                 ResetRun();
 
             enteredRun = true;
-            harborJob = index == -2;
             jobs.Select(index >= 0 ? index : -1);
             state = RunState.FindCargo;
             cargo.SetActive(harborJob);

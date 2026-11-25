@@ -352,7 +352,8 @@ namespace CostaLivre
 
         private void Shape(string name, PrimitiveType primitive, Vector3 center, Vector3 size, Color color)
         {
-            art.Part(root, primitive, name, center, size, color);
+            art.Part(root, primitive, name, center, size, color,
+                name == "Tree trunk" || name == "Fountain basin" || name == "Fountain column");
         }
     }
 }

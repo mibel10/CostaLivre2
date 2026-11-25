@@ -396,6 +396,8 @@ namespace CostaLivre
             }
 
             CostaSession.Avatar avatar = session.Local;
+            if (avatar.held > 0 && overlay != FieldOverlay.None)
+                CloseOverlay();
             for (int i = 0; i < cars.Length; i++)
             {
                 CostaSession.Vehicle vehicle = session.Cars[i];

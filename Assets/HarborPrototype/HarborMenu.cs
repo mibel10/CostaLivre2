@@ -218,6 +218,7 @@ namespace CostaLivre
             }
             string[] names = { L("Run", "Correr"), L("Jump / brake", "Pular / frear"), L("Roll", "Rolar"),
                 L("Interact / enter car", "Interagir / entrar no carro"), L("Reload", "Recarregar") };
+            GUI.enabled = old && !bindings.Waiting;
             for (int i = 0; i < names.Length; i++)
             {
                 float row = y + 30 + i * 28;
@@ -226,10 +227,14 @@ namespace CostaLivre
                     bindings.Begin(i);
             }
 
+            GUI.enabled = old;
             if (bindings.Waiting)
+            {
                 Text(new Rect(x, y + 175, 405, 22), bindings.Error.Length > 0 ? bindings.Error : L("Press a key or Esc to cancel.", "Pressione uma tecla ou Esc para cancelar."), label, Copper);
-
-            if (MenuButton(new Rect(x + 213, y + 204, 127, 26), L("Reset keys", "Restaurar"), false))
+                if (MenuButton(new Rect(x + 213, y + 204, 127, 26), L("Cancel", "Cancelar"), false))
+                    bindings.Cancel();
+            }
+            else if (MenuButton(new Rect(x + 213, y + 204, 127, 26), L("Reset keys", "Restaurar"), false))
                 bindings.Reset();
             float sensitivity = CostaUi.Slider(new Rect(x, y + 217, 188, 18), Sensitivity, 0.35f, 2.1f);
             Text(new Rect(x, y + 194, 206, 22), L($"Mouse   {sensitivity:0.00}", $"Sensibilidade   {sensitivity:0.00}"), label, Paper);
@@ -265,8 +270,12 @@ namespace CostaLivre
                 padBindings.Reset();
             GUI.enabled = old;
             if (padBindings.Waiting)
+            {
                 Text(new Rect(x, y + 175, 425, 24), padBindings.Error.Length > 0 ? padBindings.Error :
                     L("Press a button. Menu / Esc cancels.", "Pressione um botão. Menu / Esc cancela."), label, Copper);
+                if (MenuButton(new Rect(x + 213, y + 204, 127, 26), L("Cancel", "Cancelar"), false))
+                    padBindings.Cancel();
+            }
         }
 
         private void DrawGraphics(float x, float y)

@@ -13,8 +13,6 @@ namespace CostaLivre
         internal static void Update(bool capturing)
         {
             click = held = false;
-            if (capturing)
-                return;
             if (Touchscreen.current != null && CostaTouch.Available)
             {
                 foreach (var finger in Touchscreen.current.touches)
@@ -28,6 +26,8 @@ namespace CostaLivre
                     return;
                 }
             }
+            if (capturing)
+                return;
             Gamepad pad = Gamepad.current;
             if (pad == null || Mouse.current?.delta.ReadValue().sqrMagnitude > 0.1f)
                 active = false;

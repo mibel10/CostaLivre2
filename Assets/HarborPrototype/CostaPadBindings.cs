@@ -46,6 +46,12 @@ namespace CostaLivre
             Error = "";
         }
 
+        internal void Cancel()
+        {
+            pending = -1;
+            Error = "";
+        }
+
         internal void Reset()
         {
             pending = -1;

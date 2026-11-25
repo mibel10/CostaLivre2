@@ -89,7 +89,7 @@ namespace CostaLivre
             foreach (Rendered model in models.Values)
             {
                 CostaSession.Avatar other = model.State;
-                if (other.police || other.vehicle >= 0 || other.held > 0)
+                if (other.police || other.vehicle >= 0 || other.held > 0 || other.arrestProtected)
                     continue;
                 float separation = Vector3.Distance(other.pos, position);
                 if (separation >= range

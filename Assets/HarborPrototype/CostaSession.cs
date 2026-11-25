@@ -36,6 +36,7 @@ namespace CostaLivre
             public int vehicle = -1;
             public int revision;
             public int held;
+            public bool arrestProtected;
         }
 
         [Serializable]
@@ -340,6 +341,7 @@ namespace CostaLivre
                 if (!peer.Ready)
                     continue;
                 peer.Pose.held = Mathf.CeilToInt(Mathf.Max(0, peer.HeldUntil - now));
+                peer.Pose.arrestProtected = now < peer.ArrestAfter;
                 active.Add(peer.Pose);
             }
             Avatar[] players = active.ToArray();

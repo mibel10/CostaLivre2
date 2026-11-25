@@ -18,12 +18,15 @@ namespace CostaLivre
         private GUIStyle labels;
         private GUIStyle title;
         private GUIStyle buttons;
+        private TouchScreenKeyboard keyboard;
+        private int editing;
 
         internal int Outfit { get; private set; } = Mathf.Clamp(PlayerPrefs.GetInt("CostaOutfit", 0), 0, 242);
         internal CostaOnlinePanel(CostaSession session) => this.session = session;
 
         internal void Draw(float x, float y, float height, Action play)
         {
+            ReadKeyboard();
             if (labels == null)
             {
                 labels = Style(14, TextAnchor.MiddleLeft);
@@ -36,11 +39,11 @@ namespace CostaLivre
             if (!session.Online)
             {
                 Label(new Rect(x + 8, row, 350, 22), L("PLAYER NAME", "NOME DO JOGADOR"), labels, Muted);
-                name = GUI.TextField(new Rect(x + 8, row + 27, 362, 24), name, 20);
+                name = Input(new Rect(x + 8, row + 27, 362, 24), name, 20, 1, TouchScreenKeyboardType.Default);
                 Label(new Rect(x + 8, row + 61, 230, 20), L("HOST IPV4", "IPV4 DO ANFITRIÃO"), labels, Muted);
                 Label(new Rect(x + 286, row + 61, 76, 20), L("PORT", "PORTA"), labels, Muted);
-                ip = GUI.TextField(new Rect(x + 8, row + 86, 264, 24), ip, 15);
-                port = GUI.TextField(new Rect(x + 286, row + 86, 84, 24), port, 5);
+                ip = Input(new Rect(x + 8, row + 86, 264, 24), ip, 15, 2, TouchScreenKeyboardType.NumbersAndPunctuation);
+                port = Input(new Rect(x + 286, row + 86, 84, 24), port, 5, 3, TouchScreenKeyboardType.NumberPad);
                 if (Button(new Rect(x + 8, row + 127, 174, 34), L("Host LAN", "Hospedar LAN"), !session.Connecting))
                     Start(true);
                 if (Button(new Rect(x + 195, row + 127, 175, 34), L("Join by IP", "Entrar por IP"), !session.Connecting))
@@ -80,6 +83,34 @@ namespace CostaLivre
             if (Button(new Rect(x + 8, row + 270, 174, 34), L("Play", "Jogar"), true))
                 play();
             Label(new Rect(x + 190, row + 266, 186, 38), session.CurrentNotice, labels, Gold);
+        }
+
+        private string Input(Rect rect, string value, int limit, int field, TouchScreenKeyboardType type)
+        {
+            if (!TouchScreenKeyboard.isSupported)
+                return GUI.TextField(rect, value, limit);
+            if (CostaUi.Button(rect, value, GUI.skin.textField))
+            {
+                keyboard = TouchScreenKeyboard.Open(value, type, false, false, false, false, "", limit);
+                editing = field;
+            }
+            return value;
+        }
+
+        private void ReadKeyboard()
+        {
+            if (keyboard == null || keyboard.status == TouchScreenKeyboard.Status.Visible)
+                return;
+            if (keyboard.status == TouchScreenKeyboard.Status.Done)
+            {
+                switch (editing)
+                {
+                    case 1: name = keyboard.text; break;
+                    case 2: ip = keyboard.text; break;
+                    case 3: port = keyboard.text; break;
+                }
+            }
+            keyboard = null;
         }
 
         private void Start(bool host)

@@ -323,7 +323,7 @@ namespace CostaLivre
             if (inMenu || overlay != FieldOverlay.None)
                 Time.timeScale = 1;
             session?.Dispose();
-            remotes?.Clear();
+            remotes?.Dispose();
             menu?.Release();
             menuBody?.Release();
             playerBody?.Release();
@@ -365,6 +365,7 @@ namespace CostaLivre
                 yaw = car != null ? car.Root.eulerAngles.y : playerModel.eulerAngles.y,
                 revision = netRevision,
                 playing = enteredOnlineWorld,
+                equipped = arsenal.Slot,
                 standing = grounded && !crouching && rollClock <= 0 && car == null,
                 crouched = crouching,
                 jumpPose = car == null && (!grounded || landing > 0)
@@ -637,6 +638,7 @@ namespace CostaLivre
             }
 
             CycleWeapons();
+            bool wasReloading = arsenal.Reloading;
             if (reload.WasPressedThisFrame())
                 arsenal.Reload();
 
@@ -651,8 +653,13 @@ namespace CostaLivre
             if (arsenal.Update(followCamera, playerBody.WeaponHand, pitch, fireEnabled && shoot.WasPressedThisFrame(),
                 fireEnabled && shoot.IsPressed(), aiming, HitGuard))
             {
-                StartPursuit(0.25f);
+                if (session.Online)
+                    session.Fire(arsenal.Slot, arsenal.ShotDirection);
+                else
+                    StartPursuit(0.25f);
             }
+            if (session.Online && !wasReloading && arsenal.Reloading)
+                session.Request("reload", arsenal.Slot);
 
             bool originalInteraction = harborJob && state == RunState.FindCargo
                 && IsNear(HarborBlockout.Cargo, InteractionRadius) && interaction;
@@ -1327,7 +1334,8 @@ namespace CostaLivre
                 : robberies.Notice.Length > 0 ? robberies.Notice : jobs.Notice;
             hud.DrawRun(marked, session.Online ? session.Local.wanted : pursuit, stamina / FullStamina,
                 viewport, side, prompt, arsenal, gamepad, player.transform.position, target, yaw, objective, marker,
-                CurrentCash, session.Online ? -1 : jobs.Remaining, notice, car != null ? car.Speed : -1);
+                CurrentCash, session.Online ? -1 : jobs.Remaining, notice, car != null ? car.Speed : -1,
+                session.Online ? session.Local.health : -1);
         }
 
         private Vector3? MissionLocation()

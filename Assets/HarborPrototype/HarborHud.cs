@@ -24,7 +24,7 @@ namespace CostaLivre
 
         internal void DrawRun(bool marked, bool pursuit, float stamina, Vector3 viewport, float side, string prompt,
             HarborArsenal arsenal, bool gamepad, Vector3 player, Vector3 target, float heading, string objective,
-            string markerName, int cash, float timer, string notice, float speed)
+            string markerName, int cash, float timer, string notice, float speed, int health)
         {
             Matrix4x4 old = GUI.matrix;
             Begin(out float width, out float height);
@@ -54,6 +54,14 @@ namespace CostaLivre
             else
             {
                 Label(new Rect(endurance.x + 8, endurance.y, 118, 29), $"{speed * 3.6f:00} km/h", title, Paper);
+            }
+
+            if (health >= 0)
+            {
+                Rect life = new(24, height - 98, 135, 30);
+                Box(life, Panel);
+                Label(new Rect(life.x + 8, life.y, 120, 20), L($"HEALTH  {health}", $"VIDA  {health}"), small, Paper);
+                Box(new Rect(life.x + 8, life.y + 22, 119 * Mathf.Clamp01(health / 100f), 3), Danger);
             }
 
             if (notice.Length > 0)

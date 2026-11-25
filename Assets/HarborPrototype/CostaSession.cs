@@ -34,6 +34,10 @@ namespace CostaLivre
             public bool running;
             public float jumpPose = -1;
             public float rollPose = -1;
+            public int equipped = -1;
+            public int shotNumber;
+            public int shotWeapon = -1;
+            public int health = 100;
             public bool wanted;
             public int outfit;
             public int vehicle = -1;
@@ -69,6 +73,7 @@ namespace CostaLivre
             public Vehicle[] vehicles;
             public int[] bag;
             public bool[] sites;
+            public Vector3 direction;
         }
 
         private sealed class Peer
@@ -85,6 +90,10 @@ namespace CostaLivre
             internal float LastPose;
             internal float HeldUntil;
             internal float ArrestAfter;
+            internal float NextShot;
+            internal float RespawnProtection;
+            internal readonly int[] UsedRounds = new int[HarborArsenal.WeaponNames.Length];
+            internal readonly float[] ReloadEnds = new float[HarborArsenal.WeaponNames.Length];
             internal readonly CostaBag Bag = new();
         }
 
@@ -321,6 +330,10 @@ namespace CostaLivre
                             peer.Bag.Replace(saved.Bag.Amounts);
                             peer.HeldUntil = saved.HeldUntil;
                             peer.ArrestAfter = saved.ArrestAfter;
+                            peer.NextShot = saved.NextShot;
+                            peer.RespawnProtection = saved.RespawnProtection;
+                            Array.Copy(saved.UsedRounds, peer.UsedRounds, peer.UsedRounds.Length);
+                            Array.Copy(saved.ReloadEnds, peer.ReloadEnds, peer.ReloadEnds.Length);
                             peer.Ready = true;
                             peer.LastPose = now;
                             if (peer.Pose.police && CountPolice() > AllowedPolice(CountPlayers()))
@@ -371,6 +384,14 @@ namespace CostaLivre
                     continue;
                 peer.Pose.held = Mathf.CeilToInt(Mathf.Max(0, peer.HeldUntil - now));
                 peer.Pose.arrestProtected = now < peer.ArrestAfter;
+                for (int i = 0; i < peer.ReloadEnds.Length; i++)
+                {
+                    if (peer.ReloadEnds[i] > 0 && now >= peer.ReloadEnds[i])
+                    {
+                        peer.ReloadEnds[i] = 0;
+                        peer.UsedRounds[i] = 0;
+                    }
+                }
                 active.Add(peer.Pose);
             }
             Avatar[] players = active.ToArray();
@@ -467,6 +488,13 @@ namespace CostaLivre
                         SetNotice(peer, 8);
                     }
                     break;
+                case "fire":
+                    Fire(peer, msg.index, msg.direction, now);
+                    break;
+                case "reload":
+                    if (CanShoot(peer, msg.index) && peer.UsedRounds[msg.index] > 0 && peer.ReloadEnds[msg.index] == 0)
+                        peer.ReloadEnds[msg.index] = now + HarborArsenal.ShotRules(msg.index).reload;
+                    break;
                 case "arrest":
                     TryArrest(peer, msg.index, now);
                     break;
@@ -521,6 +549,7 @@ namespace CostaLivre
             avatar.standing = pose.standing && !avatar.crouched && avatar.vehicle < 0;
             avatar.moving = pose.moving;
             avatar.running = pose.running;
+            avatar.equipped = CanShoot(peer, pose.equipped) ? pose.equipped : -1;
             avatar.jumpPose = Finite(pose.jumpPose) ? Mathf.Clamp(pose.jumpPose, -1, 1) : -1;
             avatar.rollPose = Finite(pose.rollPose) ? Mathf.Clamp(pose.rollPose, -1, 1) : -1;
             if (avatar.vehicle >= 0)
@@ -529,6 +558,63 @@ namespace CostaLivre
                 car.pos = new Vector3(pose.pos.x, 0, pose.pos.z);
                 car.yaw = avatar.yaw;
                 car.speed = Mathf.Clamp(pose.held / 10f, -8, 42);
+            }
+        }
+
+        private static bool CanShoot(Peer peer, int index)
+        {
+            return peer.Pose.playing && peer.Pose.vehicle < 0 && index >= 0 && index < HarborArsenal.WeaponNames.Length
+                && ((peer.Pose.police ? PoliceKit : peer.Weapons) & (1 << index)) != 0;
+        }
+
+        private void Fire(Peer shooter, int weapon, Vector3 direction, float now)
+        {
+            if (!CanShoot(shooter, weapon) || now + 0.025f < shooter.NextShot
+                || !Finite(direction.x) || !Finite(direction.y) || !Finite(direction.z)
+                || direction.sqrMagnitude < 0.85f || direction.sqrMagnitude > 1.15f)
+                return;
+            var rules = HarborArsenal.ShotRules(weapon);
+            if (shooter.UsedRounds[weapon] >= rules.magazine || shooter.ReloadEnds[weapon] > 0)
+                return;
+            shooter.UsedRounds[weapon]++;
+            shooter.NextShot = now + rules.interval;
+            shooter.Pose.shotWeapon = weapon;
+            shooter.Pose.shotNumber++;
+            direction.Normalize();
+
+            Vector3 origin = shooter.Pose.pos + Vector3.up * (shooter.Pose.crouched ? 0.90f : 1.22f);
+            float closest = Physics.Raycast(origin, direction, out RaycastHit cover, rules.range,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) ? cover.distance : rules.range;
+            Peer victim = null;
+            foreach (Peer candidate in peers)
+            {
+                Avatar avatar = candidate.Pose;
+                if (!candidate.Ready || candidate == shooter || !avatar.playing || avatar.vehicle >= 0
+                    || now < candidate.HeldUntil || now < candidate.RespawnProtection)
+                    continue;
+                Vector3 center = avatar.pos + Vector3.up * (avatar.crouched ? 0.59f : 0.91f);
+                float distance = Vector3.Dot(center - origin, direction);
+                Vector3 point = origin + direction * distance;
+                float height = avatar.crouched ? 0.24f : 0.56f;
+                center.y += Mathf.Clamp(point.y - center.y, -height, height);
+                if (distance > 0 && distance < closest && (point - center).sqrMagnitude <= 0.32f * 0.32f)
+                {
+                    victim = candidate;
+                    closest = distance;
+                }
+            }
+
+            if (victim == null)
+                return;
+            victim.Pose.health -= rules.damage;
+            SetNotice(victim, 10);
+            if (victim.Pose.health <= 0)
+            {
+                victim.Pose.health = 100;
+                victim.Pose.pos = victim.Pose.police ? PoliceSpawn : FindCriminalSpawn();
+                victim.Pose.revision++;
+                victim.RespawnProtection = now + 3;
+                SetNotice(victim, 11);
             }
         }
 
@@ -567,6 +653,10 @@ namespace CostaLivre
         {
             ReleaseVehicle(peer);
             peer.Pose.police = police;
+            peer.Pose.equipped = -1;
+            peer.Pose.health = 100;
+            Array.Clear(peer.UsedRounds, 0, peer.UsedRounds.Length);
+            Array.Clear(peer.ReloadEnds, 0, peer.ReloadEnds.Length);
             peer.Pose.standing = true;
             peer.Pose.jumpPose = peer.Pose.rollPose = -1;
             peer.Pose.crouched = peer.Pose.moving = peer.Pose.running = false;
@@ -678,6 +768,8 @@ namespace CostaLivre
                 case 7: return L("Items sold.", "Itens vendidos.");
                 case 8: return L("Weapon purchased.", "Arma comprada.");
                 case 9: return L("Criminal role assigned.", "Função de criminoso atribuída.");
+                case 10: return L("You were hit.", "Você foi atingido.");
+                case 11: return L("You respawned.", "Você voltou à cidade.");
                 default: return "";
             }
         }
@@ -718,6 +810,9 @@ namespace CostaLivre
         private void Send(Frame frame) => connection?.Send(JsonUtility.ToJson(frame));
 
         internal void Request(string type, int index = 0) => Send(new Frame { type = type, index = index });
+
+        internal void Fire(int weapon, Vector3 direction) =>
+            Send(new Frame { type = "fire", index = weapon, direction = direction });
 
         internal void ExitVehicle(Vector3 point) => Send(new Frame { type = "exit", pose = new Avatar { pos = point } });
 

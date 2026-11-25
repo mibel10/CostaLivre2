@@ -13,6 +13,12 @@ namespace CostaLivre
             internal CostaLook Look;
             internal GameObject Pack;
             internal Mesh[] UniformMeshes;
+            internal Transform Mount;
+            internal Transform Flash;
+            internal AudioSource Audio;
+            internal int Weapon = -1;
+            internal int LastShot;
+            internal float FlashUntil;
             internal CostaSession.Avatar State;
         }
 
@@ -21,6 +27,8 @@ namespace CostaLivre
         private readonly HarborBlockout art;
         private readonly Transform root;
         private GUIStyle nameTag;
+        private GameObject[] weapons;
+        private AudioClip[] shotClips;
 
         internal CostaRemoteView(HarborBlockout art, Transform root)
         {
@@ -38,6 +46,12 @@ namespace CostaLivre
                 {
                     HarborCharacter body = art.Person("Remote player", root, avatar.pos, Color.white);
                     model = new Rendered { Body = body, Look = new CostaLook(art, body), Pack = art.Pack(body.Root, body.Chest) };
+                    model.Mount = new GameObject("Remote weapon mount").transform;
+                    model.Mount.SetParent(body.Root, false);
+                    model.Flash = art.WeaponFlash(model.Mount);
+                    model.Audio = body.Root.gameObject.AddComponent<AudioSource>();
+                    model.Audio.spatialBlend = 1f;
+                    model.LastShot = avatar.shotNumber;
                     model.UniformMeshes = body.Root.GetComponentsInChildren<MeshFilter>(true)
                         .Where(filter => filter.name == "Front vest" || filter.name == "Back vest")
                         .Select(filter => filter.sharedMesh).ToArray();
@@ -74,6 +88,7 @@ namespace CostaLivre
                             : HarborCharacter.Motion.Idle, avatar.crouched ? 0.55f : 1f);
                     if (avatar.crouched)
                         model.Body.CrouchPose();
+                    DrawWeapon(model, avatar);
                 }
             }
 
@@ -89,6 +104,60 @@ namespace CostaLivre
             {
                 Release(models[id]);
                 models.Remove(id);
+            }
+        }
+
+        private void DrawWeapon(Rendered model, CostaSession.Avatar avatar)
+        {
+            if (model.Weapon != avatar.equipped)
+            {
+                model.Weapon = avatar.equipped;
+                for (int i = model.Mount.childCount - 1; i >= 0; i--)
+                {
+                    Transform child = model.Mount.GetChild(i);
+                    if (child == model.Flash)
+                        continue;
+                    child.gameObject.SetActive(false);
+                    Object.Destroy(child.gameObject);
+                }
+                if (model.Weapon >= 0 && model.Weapon < HarborArsenal.WeaponNames.Length)
+                {
+                    EnsureWeaponTemplates();
+                    Object.Instantiate(weapons[model.Weapon], model.Mount, false).SetActive(true);
+                }
+            }
+
+            if (model.Weapon >= 0 && avatar.rollPose < 0)
+                model.Body.HoldWeapon(false, 0, false);
+            model.Mount.SetPositionAndRotation(model.Body.WeaponHand, model.Body.Root.rotation);
+            if (avatar.shotNumber != model.LastShot)
+            {
+                model.LastShot = avatar.shotNumber;
+                if (avatar.shotWeapon >= 0 && avatar.shotWeapon < HarborArsenal.WeaponNames.Length)
+                {
+                    EnsureWeaponTemplates();
+                    model.Audio.PlayOneShot(shotClips[avatar.shotWeapon], 0.42f);
+                    model.Flash.localPosition = Vector3.forward * 0.50f;
+                    model.FlashUntil = Time.unscaledTime + 0.055f;
+                }
+            }
+            model.Flash.gameObject.SetActive(Time.unscaledTime < model.FlashUntil);
+        }
+
+        private void EnsureWeaponTemplates()
+        {
+            if (weapons != null)
+                return;
+            weapons = new GameObject[HarborArsenal.WeaponNames.Length];
+            shotClips = new AudioClip[weapons.Length];
+            for (int i = 0; i < weapons.Length; i++)
+            {
+                GameObject template = new GameObject(HarborArsenal.WeaponNames[i]);
+                template.transform.SetParent(root, false);
+                template.SetActive(false);
+                HarborArsenal.BuildModel(art, template.transform, i);
+                weapons[i] = template;
+                shotClips[i] = HarborArsenal.MakeShot(template.name, i);
             }
         }
 
@@ -154,6 +223,17 @@ namespace CostaLivre
             foreach (Rendered model in models.Values)
                 Release(model);
             models.Clear();
+        }
+
+        internal void Dispose()
+        {
+            Clear();
+            if (weapons == null)
+                return;
+            foreach (GameObject weapon in weapons)
+                Object.Destroy(weapon);
+            foreach (AudioClip shot in shotClips)
+                Object.Destroy(shot);
         }
 
         private void Release(Rendered model)

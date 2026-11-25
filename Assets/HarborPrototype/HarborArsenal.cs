@@ -22,6 +22,8 @@ namespace CostaLivre
             internal Transform Muzzle;
             internal AudioClip Shot;
 
+            internal Weapon Copy() => (Weapon)MemberwiseClone();
+
             internal Weapon(string name, int capacity, int damage, int pellets, float range, float interval,
                 float spread, float reloadTime, float aimFov, bool automatic)
             {
@@ -46,7 +48,7 @@ namespace CostaLivre
             new(0.26f, 0.29f, 0.29f), new(0.25f, 0.28f, 0.23f), new(0.27f, 0.30f, 0.32f)
         };
 
-        private readonly Weapon[] weapons =
+        private static readonly Weapon[] weaponRules =
         {
             new("Pistol", 12, 32, 1, 36, 0.25f, 0.009f, 1.05f, 53, false),
             new("Shotgun", 5, 19, 8, 19, 0.72f, 0.065f, 1.55f, 57, false),
@@ -55,6 +57,13 @@ namespace CostaLivre
             new("Sniper", 4, 115, 1, 100, 1.05f, 0.002f, 1.8f, 27, false)
         };
 
+        internal static (float range, float interval, int damage, int magazine, float reload) ShotRules(int index)
+        {
+            Weapon weapon = weaponRules[index];
+            return (weapon.Range, weapon.Interval, weapon.Damage, weapon.Capacity, weapon.ReloadTime);
+        }
+
+        private readonly Weapon[] weapons = System.Array.ConvertAll(weaponRules, rule => rule.Copy());
         private readonly Transform mount;
         private readonly AudioSource audio;
         private readonly Transform flash;
@@ -98,6 +107,7 @@ namespace CostaLivre
         internal int Loaded => Armed ? Current.Loaded : 0;
         internal int Capacity => Armed ? Current.Capacity : 0;
         internal float AimFov => Armed ? Current.AimFov : 66f;
+        internal Vector3 ShotDirection { get; private set; }
         internal bool Reloading => reloadedAt > 0;
         internal bool HitVisible => Time.time < hitUntil;
 
@@ -242,6 +252,7 @@ namespace CostaLivre
             if (Vector3.Dot(forward, view.direction) <= 0.1f)
                 forward = view.direction;
 
+            ShotDirection = forward;
             Vector3 tracerEnd = origin + forward * weapon.Range;
             float spread = weapon.Spread * (aiming && weapon.Pellets == 1 ? 0.35f : 1);
             for (int i = 0; i < weapon.Pellets; i++)
@@ -291,7 +302,7 @@ namespace CostaLivre
             UnityEngine.Object.Destroy(tracerMaterial);
         }
 
-        private static AudioClip MakeShot(string name, int index)
+        internal static AudioClip MakeShot(string name, int index)
         {
             const int rate = 22050;
             const int sampleCount = 2600;

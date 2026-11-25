@@ -5,22 +5,37 @@ namespace CostaLivre
 {
     internal sealed class CostaJobs
     {
-        internal enum Action { Inspect, Checkpoint, Drive, Alert }
+        internal enum Action { Inspect, Checkpoint, Drive, Alert, Breach, Collect, Fight, Seize, DeliverVehicle }
+        internal enum Haul { Case, Bullion, Gems, Drives, Records, Artifact }
+        internal const int OriginalCount = 6;
 
         internal readonly struct Step
         {
             internal readonly Vector3 Point;
             internal readonly Action Mode;
+            internal readonly int Count;
+            internal readonly int Vehicle;
+            internal readonly Haul Loot;
             private readonly string english;
             private readonly string portuguese;
 
             internal string Title => L(english, portuguese);
-            internal float Radius => Mode == Action.Drive ? 5.4f : Mode == Action.Checkpoint ? 3.4f : 2.15f;
+            internal float Radius => Mode switch
+            {
+                Action.Drive or Action.DeliverVehicle => 5.4f,
+                Action.Checkpoint => 3.4f,
+                Action.Seize => 3.25f,
+                _ => 2.15f
+            };
 
-            internal Step(Vector3 point, Action action, string en, string pt)
+            internal Step(Vector3 point, Action action, string en, string pt, int count = 1, int vehicle = -1,
+                Haul loot = Haul.Case)
             {
                 Point = point;
                 Mode = action;
+                Count = count;
+                Vehicle = vehicle;
+                Loot = loot;
                 english = en;
                 portuguese = pt;
             }
@@ -46,7 +61,7 @@ namespace CostaLivre
             }
         }
 
-        internal static readonly Job[] List =
+        private static readonly Job[] Original =
         {
             new("Hotel courier", "Entrega no hotel", 3500, 0,
                 new(CostaCity.CitySpawn + Vector3.left * 4, Action.Inspect, "Pick up the guest package", "Recolha o pacote do hóspede"),
@@ -72,6 +87,16 @@ namespace CostaLivre
                 new(CostaCity.Estate[1] + Vector3.back * 4, Action.Inspect, "Inspect Vila 02", "Vistorie a Vila 02"),
                 new(CostaCity.Estate[2] + Vector3.back * 4, Action.Inspect, "Submit the final property report", "Entregue o laudo da última vila"))
         };
+
+        internal static readonly Job[] List = BuildList();
+
+        private static Job[] BuildList()
+        {
+            Job[] list = new Job[Original.Length + CostaContracts.List.Length];
+            Original.CopyTo(list, 0);
+            CostaContracts.List.CopyTo(list, Original.Length);
+            return list;
+        }
 
         internal static readonly int[] Prices = { 3800, 7200, 12900 };
         private readonly GameObject[] doors;
@@ -155,13 +180,19 @@ namespace CostaLivre
                 return false;
 
             Step step = Current;
-            if (!Near(position, step.Point, step.Radius))
+            if (step.Mode > Action.Alert || !Near(position, step.Point, step.Radius))
                 return false;
 
             bool reached = step.Mode == Action.Checkpoint || (step.Mode == Action.Drive ? driving : !driving && interact);
             if (!reached)
                 return false;
 
+            CompleteStep();
+            return step.Mode == Action.Alert;
+        }
+
+        internal void CompleteStep()
+        {
             Job job = List[Active];
             if (stage == 0 && job.TimeLimit > 0)
                 deadline = Time.time + job.TimeLimit;
@@ -181,8 +212,6 @@ namespace CostaLivre
                 }
                 Select(-1);
             }
-
-            return step.Mode == Action.Alert;
         }
 
         internal int NearbyProperty(Vector3 position)

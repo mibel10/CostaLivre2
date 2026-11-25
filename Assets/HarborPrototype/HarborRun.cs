@@ -38,6 +38,7 @@ namespace CostaLivre
         private HarborBlockout harbor;
         private CostaCity city;
         private CostaJobs jobs;
+        private CostaEncounter encounter;
         private CostaRobberies robberies;
         private CostaMap cityMap;
         private CostaGunShop gunShop;
@@ -62,6 +63,10 @@ namespace CostaLivre
         private float soloYaw;
         private float soloPitch;
         private float soloEscapeElapsed;
+        private CostaVehicle soloContractCar;
+        private Vector3 soloContractCarPosition;
+        private float soloContractCarYaw;
+        private bool soloDrivingContractCar;
         private bool pausedForFocus;
         private bool wasPolice;
         private bool crouching;
@@ -193,6 +198,7 @@ namespace CostaLivre
                 new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[2].Center - 3), 90, new Color(0.65f, 0.22f, 0.35f), style: CostaVehicle.Style.Super)
             };
 
+            encounter = new CostaEncounter(harbor, transform, jobs, cars);
             session = new CostaSession(cars);
             onlinePanel = new CostaOnlinePanel(session);
             remotes = new CostaRemoteView(harbor, transform);
@@ -342,6 +348,7 @@ namespace CostaLivre
             Destroy(navMesh);
             Destroy(controls);
             arsenal?.Dispose();
+            encounter?.Dispose();
             harbor?.ReleaseMaterials();
         }
 
@@ -402,6 +409,10 @@ namespace CostaLivre
                     jobs.ResumeAfterSession();
                     CloseOverlay();
                     ResetRun(resetJob: false);
+                    if (soloContractCar != null)
+                        soloContractCar.ApplyNetwork(soloContractCarPosition, soloContractCarYaw, 0, true);
+                    encounter.SetOnline(false);
+                    UpdateContractWeapon();
                     if (soloResumable)
                     {
                         player.enabled = false;
@@ -410,7 +421,10 @@ namespace CostaLivre
                         yaw = soloYaw;
                         pitch = soloPitch;
                         playerModel.rotation = Quaternion.Euler(0, yaw, 0);
+                        if (soloDrivingContractCar)
+                            EnterVehicle(soloContractCar);
                     }
+                    soloContractCar = null;
                     harborJob = soloHarborJob;
                     enteredRun = soloResumable;
                     state = soloState;
@@ -434,7 +448,17 @@ namespace CostaLivre
                 soloYaw = yaw;
                 soloPitch = pitch;
                 soloEscapeElapsed = state == RunState.Escape ? Time.time - escapeStartedAt : 0;
+                soloContractCar = encounter.Active && (jobs.Current.Mode is CostaJobs.Action.Seize or CostaJobs.Action.DeliverVehicle)
+                    ? cars[jobs.Current.Vehicle] : null;
+                soloDrivingContractCar = soloContractCar != null && car == soloContractCar;
+                if (soloContractCar != null)
+                {
+                    soloContractCarPosition = soloContractCar.Root.position;
+                    soloContractCarYaw = soloContractCar.Root.eulerAngles.y;
+                }
                 jobs.PauseForSession();
+                encounter.SetOnline(true);
+                arsenal.SetLoanerPistol(false);
 
                 wasOnline = true;
                 jobs.SetOnlineDoors(true);
@@ -603,10 +627,11 @@ namespace CostaLivre
                     if (vehicle != car && vehicle.Speed > 0.05f)
                         vehicle.Drive(Vector2.zero, false);
             }
-            cargoPack.SetActive(CurrentBag.Count > 0 || state == RunState.Escape);
+            cargoPack.SetActive(CurrentBag.Count > 0 || state == RunState.Escape
+                || !session.Online && encounter.CarryingLoot);
             cityMap.CheckWaypoint(player.transform.position);
             bool interaction = Pressed(interact, TouchControl.Use);
-            if (interaction && car == null)
+            if (interaction && car == null && !UsingContractObjective())
             {
                 if (IsPolice)
                 {
@@ -666,12 +691,13 @@ namespace CostaLivre
 
             bool fireEnabled = rollClock <= 0 && !recapturing
                 && (touch.Down(TouchControl.Fire) || Cursor.lockState == CursorLockMode.Locked || shoot.activeControl?.device is Gamepad);
+            bool contractCombat = !session.Online && encounter.Combat;
             if (arsenal.Update(followCamera, playerBody.WeaponHand, pitch, fireEnabled && Pressed(shoot, TouchControl.Fire),
                 fireEnabled && Held(shoot, TouchControl.Fire), aiming, HitGuard))
             {
                 if (session.Online)
                     session.Fire(arsenal.Slot, arsenal.ShotDirection);
-                else
+                else if (!contractCombat)
                     StartPursuit(0.25f);
             }
             if (session.Online && !wasReloading && arsenal.Reloading)
@@ -735,6 +761,8 @@ namespace CostaLivre
 
             enteredRun = true;
             jobs.Select(index >= 0 ? index : -1);
+            encounter.Reset();
+            UpdateContractWeapon();
             state = RunState.FindCargo;
             cargo.SetActive(harborJob);
             cargoPack.SetActive(CurrentBag.Count > 0);
@@ -766,13 +794,32 @@ namespace CostaLivre
             }
 
             jobs.CheckClock();
-            bool finishingEscape = jobs.Active == 4 && jobs.StepNumber == 2;
-            bool missionInteraction = jobs.InProgress && takeAction
-                && CostaJobs.Near(player.transform.position, jobs.Current.Point, jobs.Current.Radius);
-            if (jobs.Advance(player.transform.position, car != null, takeAction))
-                StartPursuit(0.50f);
-            if (finishingEscape && !jobs.InProgress)
-                StopPursuit();
+            bool missionInteraction;
+            if (encounter.Active)
+            {
+                bool canUse = car == null && grounded && !crouching && rollClock <= 0;
+                missionInteraction = takeAction && UsingContractObjective();
+                CostaVehicle seized = encounter.Advance(player.transform.position, car, takeAction && canUse,
+                    canUse && Held(interact, TouchControl.Use), rollClock > 0, Time.deltaTime);
+                if (seized != null)
+                    EnterVehicle(seized);
+                if (encounter.Health <= 0)
+                {
+                    EndRun(RunState.Caught);
+                    return;
+                }
+            }
+            else
+            {
+                bool finishingEscape = jobs.Active == 4 && jobs.StepNumber == 2;
+                missionInteraction = jobs.InProgress && takeAction
+                    && CostaJobs.Near(player.transform.position, jobs.Current.Point, jobs.Current.Radius);
+                if (jobs.Advance(player.transform.position, car != null, takeAction))
+                    StartPursuit(0.50f);
+                if (finishingEscape && !jobs.InProgress)
+                    StopPursuit();
+            }
+            UpdateContractWeapon();
 
             if (takeAction && !missionInteraction)
             {
@@ -783,6 +830,12 @@ namespace CostaLivre
                     jobs.Buy(property);
             }
         }
+
+        private bool UsingContractObjective() => !session.Online && encounter.Active
+            && encounter.ClaimsUse(player.transform.position);
+
+        private void UpdateContractWeapon() =>
+            arsenal.SetLoanerPistol(!session.Online && encounter.Combat && !jobs.OwnsWeapon(0));
 
         private bool TryLoot()
         {
@@ -878,7 +931,8 @@ namespace CostaLivre
                 || (!session.Online && jobs.NearbyProperty(player.transform.position) >= 0)
                 || (!IsPolice && state != RunState.Escape && robberies.Nearby(player.transform.position) >= 0)
                 || (harborJob && state == RunState.FindCargo && IsNear(HarborBlockout.Cargo, InteractionRadius))
-                || (!session.Online && jobs.InProgress && jobs.Current.Mode != CostaJobs.Action.Drive
+                || UsingContractObjective()
+                || (!session.Online && jobs.InProgress && !encounter.Active && jobs.Current.Mode != CostaJobs.Action.Drive
                     && CostaJobs.Near(player.transform.position, jobs.Current.Point, jobs.Current.Radius)))
             {
                 return false;
@@ -894,11 +948,16 @@ namespace CostaLivre
                 return true;
             }
 
-            car = nearby;
+            EnterVehicle(nearby);
+            return true;
+        }
+
+        private void EnterVehicle(CostaVehicle vehicle)
+        {
+            car = vehicle;
             player.enabled = false;
             playerModel.gameObject.SetActive(car.IsBike);
             arsenal.SetVisible(false);
-            return true;
         }
 
         private CostaVehicle NearbyVehicle()
@@ -908,6 +967,8 @@ namespace CostaLivre
             for (int i = 0; i < cars.Length; i++)
             {
                 if (session.Online && session.Cars[i].driver != 0)
+                    continue;
+                if (!session.Online && encounter.Active && encounter.ReservesVehicle(i))
                     continue;
                 CostaVehicle candidate = cars[i];
                 float separation = (candidate.Root.position - player.transform.position).sqrMagnitude;
@@ -1121,6 +1182,11 @@ namespace CostaLivre
 
         private void HitGuard(Collider hit, int damage)
         {
+            if (!session.Online && encounter.Hit(hit, damage))
+            {
+                arsenal.ShowHit();
+                return;
+            }
             foreach (Guard guard in guards)
             {
                 if (guard.Hitbox != hit)
@@ -1189,6 +1255,8 @@ namespace CostaLivre
             car = null;
             foreach (CostaVehicle vehicle in cars)
                 vehicle.Reset();
+            if (resetJob)
+                encounter.Reset();
             playerModel.gameObject.SetActive(true);
             playerModel.localPosition = Vector3.zero;
             arsenal.SetVisible(true);
@@ -1214,6 +1282,7 @@ namespace CostaLivre
             arsenal.Reset();
             if (menu != null)
                 arsenal.Select(menu.SelectedWeapon);
+            UpdateContractWeapon();
             playerBody.Animate(HarborCharacter.Motion.Idle, progress: 0);
             PositionCamera(false, true);
             if (Application.isFocused)
@@ -1323,7 +1392,7 @@ namespace CostaLivre
             else if (harborJob)
                 objective = escaping ? L("Reach the safehouse", "Vá ao esconderijo") : L("Retrieve the case", "Recolha a maleta");
             else if (!session.Online && jobs.InProgress)
-                objective = jobs.Current.Title;
+                objective = encounter.Active ? encounter.Status : jobs.Current.Title;
             else if (CurrentBag.Count > 0)
                 objective = L("Sell loot at a fence", "Venda o saque num receptador");
 
@@ -1336,7 +1405,8 @@ namespace CostaLivre
                 : robberies.Notice.Length > 0 ? robberies.Notice : jobs.Notice;
             hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? -1 : jobs.Remaining,
                 session.Online ? session.Local.wanted : pursuit, notice, prompt, stamina / FullStamina,
-                car != null ? car.Speed : -1, session.Online ? session.Local.health : -1, arsenal, CostaTouch.Available, gamepad);
+                car != null ? car.Speed : -1, session.Online ? session.Local.health : encounter.Active ? encounter.Health : -1,
+                arsenal, CostaTouch.Available, gamepad);
         }
 
         private Vector3? MissionLocation()
@@ -1344,7 +1414,7 @@ namespace CostaLivre
             if (harborJob)
                 return state == RunState.Escape ? HarborBlockout.Safehouse : HarborBlockout.Cargo;
             if (!session.Online && jobs.InProgress)
-                return jobs.Current.Point;
+                return encounter.Active ? encounter.Location(player.transform.position) : jobs.Current.Point;
             if (CurrentBag.Count == 0 || cityMap.Waypoint.HasValue)
                 return null;
             Vector3 point = player.transform.position;
@@ -1360,8 +1430,17 @@ namespace CostaLivre
                 return L($"Detained · {session.Local.held}s", $"Detido · {session.Local.held}s");
             if (car != null && Time.unscaledTime < blockedExitUntil)
                 return L("Both sides are blocked", "Saída bloqueada dos dois lados");
+            if (car != null && !session.Online && encounter.Active && jobs.Current.Mode == CostaJobs.Action.DeliverVehicle
+                && car == cars[jobs.Current.Vehicle] && IsNear(target, jobs.Current.Radius))
+                return L("Slow down to deliver the vehicle", "Reduza a velocidade para entregar o veículo");
             if (car != null)
                 return L($"{use} Exit", $"{use} Sair");
+            if (!session.Online && encounter.Active)
+            {
+                string contractPrompt = encounter.Prompt(player.transform.position, use);
+                if (contractPrompt.Length > 0)
+                    return contractPrompt;
+            }
             if (IsPolice && remotes.ArrestCandidate(player.transform.position) != null)
                 return L($"{use} Arrest", $"{use} Prender");
             if (!IsPolice && CostaSession.AtVendor(player.transform.position))
@@ -1370,7 +1449,7 @@ namespace CostaLivre
                 return L($"{use} Open gun shop", $"{use} Abrir armaria");
             if (harborJob && state == RunState.FindCargo && IsNear(target, InteractionRadius))
                 return L($"{use} Take the case", $"{use} Pegar a maleta");
-            if (!session.Online && jobs.InProgress && IsNear(target, jobs.Current.Radius))
+            if (!session.Online && jobs.InProgress && !encounter.Active && IsNear(target, jobs.Current.Radius))
             {
                 if (jobs.Current.Mode == CostaJobs.Action.Drive)
                     return L("Cross this checkpoint in a car", "Passe por este ponto em um carro");

@@ -73,6 +73,7 @@ namespace CostaLivre
         private int slot = -1;
         private int heavy = -1;
         private int? onlineWeapons;
+        private bool loanerPistol;
         private float nextShot;
         private float reloadedAt;
         private float flashUntil;
@@ -85,10 +86,28 @@ namespace CostaLivre
         internal bool Owned(int index)
         {
             return index >= 0 && index < weapons.Length
-                && (onlineWeapons.HasValue ? (onlineWeapons.Value & (1 << index)) != 0 : economy.OwnsWeapon(index));
+                && (onlineWeapons.HasValue ? (onlineWeapons.Value & (1 << index)) != 0
+                    : economy.OwnsWeapon(index) || index == 0 && loanerPistol);
         }
 
         internal int Heavy => Owned(heavy) ? heavy : -1;
+
+        internal void SetLoanerPistol(bool enabled)
+        {
+            if (loanerPistol == enabled)
+                return;
+            loanerPistol = enabled;
+            if (enabled && !Armed)
+            {
+                weapons[0].Loaded = weapons[0].Capacity;
+                Select(0);
+            }
+            else if (Armed && !Owned(slot))
+            {
+                Select(-1);
+                SelectHeavy();
+            }
+        }
 
         internal void SetOnlineWeapons(int? mask)
         {

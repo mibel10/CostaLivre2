@@ -31,6 +31,8 @@ namespace CostaLivre
         private readonly CostaPadBindings padBindings;
         private bool showPadBindings;
         private int padPage;
+        private int jobPage;
+        private const int JobsPerPage = 6;
 
         internal bool CapturingKey => bindings.Waiting || padBindings.Waiting;
         internal void ReadBinding()
@@ -153,17 +155,28 @@ namespace CostaLivre
             float y = top + 85;
             if (MenuButton(new Rect(x, y, 349, 30), L("Harbor cargo", "Carga do porto"), false))
                 select(-2);
-            for (int i = 0; i < CostaJobs.List.Length; i++)
+            int first = jobPage * JobsPerPage;
+            int last = Mathf.Min(first + JobsPerPage, CostaJobs.List.Length);
+            for (int i = first; i < last; i++)
             {
                 var job = CostaJobs.List[i];
+                float row = y + (i - first + 1) * 36;
                 string status = jobs.Completed(i) ? L("Done", "Concluída") : Money(job.Reward);
-                if (MenuButton(new Rect(x, y + (i + 1) * 36, 274, 30), job.Title, jobs.Active == i))
+                if (MenuButton(new Rect(x, row, 274, 30), job.Title, jobs.Active == i))
                     select(i);
-                Text(new Rect(x + 282, y + (i + 1) * 36, 109, 30), status, label, Grey);
+                Text(new Rect(x + 282, row, 109, 30), status, label, Grey);
             }
 
             if (MenuButton(new Rect(x, y + 7 * 36, 274, 29), L("Explore freely", "Explorar livremente"), false))
                 select(-1);
+
+            float nav = y + 8 * 36;
+            int pages = (CostaJobs.List.Length + JobsPerPage - 1) / JobsPerPage;
+            if (jobPage > 0 && MenuButton(new Rect(x, nav, 105, 29), L("Previous", "Anterior"), false))
+                jobPage--;
+            Text(new Rect(x + 122, nav, 42, 29), $"{jobPage + 1} / {pages}", label, Grey);
+            if (jobPage < pages - 1 && MenuButton(new Rect(x + 169, nav, 105, 29), L("Next", "Próxima"), false))
+                jobPage++;
         }
 
         private void DrawOptions(float x, float top)

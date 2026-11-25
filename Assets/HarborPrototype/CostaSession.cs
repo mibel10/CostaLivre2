@@ -32,6 +32,8 @@ namespace CostaLivre
             public bool playing;
             public bool moving;
             public bool running;
+            public float jumpPose = -1;
+            public float rollPose = -1;
             public bool wanted;
             public int outfit;
             public int vehicle = -1;
@@ -519,6 +521,8 @@ namespace CostaLivre
             avatar.standing = pose.standing && !avatar.crouched && avatar.vehicle < 0;
             avatar.moving = pose.moving;
             avatar.running = pose.running;
+            avatar.jumpPose = Finite(pose.jumpPose) ? Mathf.Clamp(pose.jumpPose, -1, 1) : -1;
+            avatar.rollPose = Finite(pose.rollPose) ? Mathf.Clamp(pose.rollPose, -1, 1) : -1;
             if (avatar.vehicle >= 0)
             {
                 Vehicle car = hostCars[avatar.vehicle];
@@ -548,6 +552,7 @@ namespace CostaLivre
                 target.Pose.pos = Holding;
                 target.Pose.yaw = 180;
                 target.Pose.standing = true;
+                target.Pose.jumpPose = target.Pose.rollPose = -1;
                 target.Pose.crouched = target.Pose.moving = target.Pose.running = false;
                 target.Pose.revision++;
                 target.HeldUntil = now + 7;
@@ -563,6 +568,7 @@ namespace CostaLivre
             ReleaseVehicle(peer);
             peer.Pose.police = police;
             peer.Pose.standing = true;
+            peer.Pose.jumpPose = peer.Pose.rollPose = -1;
             peer.Pose.crouched = peer.Pose.moving = peer.Pose.running = false;
             peer.Pose.wanted = !police && peer.Bag.Count > 0;
             peer.Pose.pos = police ? PoliceSpawn + Vector3.right * (peer.Pose.id % 4) : FindCriminalSpawn();

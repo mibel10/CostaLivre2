@@ -367,6 +367,10 @@ namespace CostaLivre
                 playing = enteredOnlineWorld,
                 standing = grounded && !crouching && rollClock <= 0 && car == null,
                 crouched = crouching,
+                jumpPose = car == null && (!grounded || landing > 0)
+                    ? grounded ? Mathf.Lerp(0.78f, 1f, 1 - landing / 0.14f) : Mathf.Min(jumpClock / 0.8f, 0.77f)
+                    : -1,
+                rollPose = rollClock > 0 ? 1 - rollClock / RollDuration : -1,
                 moving = !inMenu && overlay == FieldOverlay.None && walking,
                 running = !inMenu && overlay == FieldOverlay.None && runningPose,
                 held = car != null ? Mathf.RoundToInt(car.SignedSpeed * 10f) : 0

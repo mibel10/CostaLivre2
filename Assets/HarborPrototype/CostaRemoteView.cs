@@ -65,8 +65,13 @@ namespace CostaLivre
                         ? avatar.pos : Vector3.Lerp(body.position, avatar.pos, amount);
                     body.SetPositionAndRotation(position,
                         Quaternion.Slerp(body.rotation, Quaternion.Euler(0, avatar.yaw, 0), amount));
-                    model.Body.Animate(avatar.moving ? (avatar.running ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Walk)
-                        : HarborCharacter.Motion.Idle, avatar.crouched ? 0.55f : 1f);
+                    if (avatar.rollPose >= 0)
+                        model.Body.Animate(HarborCharacter.Motion.Roll, progress: avatar.rollPose);
+                    else if (avatar.jumpPose >= 0)
+                        model.Body.Animate(HarborCharacter.Motion.Jump, progress: avatar.jumpPose);
+                    else
+                        model.Body.Animate(avatar.moving ? (avatar.running ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Walk)
+                            : HarborCharacter.Motion.Idle, avatar.crouched ? 0.55f : 1f);
                     if (avatar.crouched)
                         model.Body.CrouchPose();
                 }

@@ -357,21 +357,19 @@ namespace CostaLivre
             if (left)
                 Rebalance();
 
-            foreach (Vehicle vehicle in hostCars)
+            Physics.SyncTransforms();
+            for (int i = 0; i < hostCars.Length; i++)
             {
+                Vehicle vehicle = hostCars[i];
                 if (vehicle.driver != 0 || Mathf.Abs(vehicle.speed) < 0.05f)
                     continue;
 
-                Vector3 direction = Quaternion.Euler(0, vehicle.yaw, 0) * Vector3.forward * Mathf.Sign(vehicle.speed);
+                Quaternion rotation = Quaternion.Euler(0, vehicle.yaw, 0);
+                Vector3 direction = rotation * Vector3.forward * Mathf.Sign(vehicle.speed);
                 float travel = Mathf.Abs(vehicle.speed) * delta;
-                if (Physics.Raycast(vehicle.pos + Vector3.up * 0.55f, direction, travel + 2.13f,
-                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                {
-                    vehicle.speed = 0;
-                    continue;
-                }
-                vehicle.pos += direction * travel;
-                vehicle.speed = Mathf.MoveTowards(vehicle.speed, 0, 4.5f * delta);
+                float safeTravel = sceneVehicles[i].SimulatedTravel(vehicle.pos, rotation, direction, travel);
+                vehicle.pos += direction * safeTravel;
+                vehicle.speed = safeTravel < travel ? 0 : Mathf.MoveTowards(vehicle.speed, 0, 4.5f * delta);
             }
 
             if (now < nextSnapshot)

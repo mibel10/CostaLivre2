@@ -16,6 +16,7 @@ namespace CostaLivre
         internal readonly Vector3 Home;
         private readonly float homeYaw;
         private readonly BoxCollider body;
+        private readonly Collider[] nearbyColliders = new Collider[16];
         private readonly Transform[] wheels;
         private float speed;
         internal float Speed => Mathf.Abs(speed);
@@ -191,6 +192,36 @@ namespace CostaLivre
             speed = 0;
             Root.SetPositionAndRotation(Home, Quaternion.Euler(0, homeYaw, 0));
             shell.localRotation = Quaternion.identity;
+        }
+
+        internal float SimulatedTravel(Vector3 position, Quaternion rotation, Vector3 direction, float distance)
+        {
+            bool enabled = body.enabled;
+            body.enabled = false;
+            try
+            {
+                Vector3 center = position + rotation * body.center;
+                Vector3 halves = body.size * 0.5f - Vector3.one * 0.075f;
+                int overlaps = Physics.OverlapBoxNonAlloc(center, halves, nearbyColliders, rotation,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                for (int i = 0; i < overlaps; i++)
+                {
+                    Collider obstacle = nearbyColliders[i];
+                    if (Vector3.Dot(direction, obstacle.ClosestPoint(center) - center) > 0.01f
+                        || (Physics.ComputePenetration(body, position, rotation, obstacle, obstacle.transform.position,
+                            obstacle.transform.rotation, out Vector3 separation, out _)
+                            && Vector3.Dot(direction, separation) < -0.001f))
+                        return 0;
+                }
+                if (Physics.BoxCast(center, halves, direction, out RaycastHit hit, rotation, distance + 0.07f,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    return Mathf.Max(0, hit.distance - 0.07f);
+                return distance;
+            }
+            finally
+            {
+                body.enabled = enabled;
+            }
         }
 
         internal void ApplyNetwork(Vector3 position, float yaw, float velocity, bool snap)

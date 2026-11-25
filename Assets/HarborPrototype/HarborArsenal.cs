@@ -99,7 +99,7 @@ namespace CostaLivre
         internal static bool IsHeavy(int index) => index > 0 && index < Knife;
         internal static float SprintSpeed(int index) => index == Knife ? 9.2f : NormalSprintSpeed;
         internal static float WalkSpeed(int index, bool aiming) =>
-            aiming ? AimWalkSpeed : NormalWalkSpeed;
+            aiming ? (IsHeavy(index) ? 2.35f : AimWalkSpeed) : IsHeavy(index) ? 3.65f : NormalWalkSpeed;
         internal static float GaitSpeed(int index, bool running, bool aiming, bool crouched) =>
             running ? SprintSpeed(index) / NormalSprintSpeed : crouched ? 0.55f
                 : aiming ? 0.79f * WalkSpeed(index, true) / AimWalkSpeed : WalkSpeed(index, false) / NormalWalkSpeed;

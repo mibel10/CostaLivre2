@@ -1020,7 +1020,8 @@ namespace CostaLivre
             }
             else
             {
-                playerModel.rotation = heading;
+                playerModel.rotation = !aiming && direction.sqrMagnitude > 0.015f
+                    ? Quaternion.LookRotation(direction) : heading;
             }
 
             bool wasGrounded = grounded;

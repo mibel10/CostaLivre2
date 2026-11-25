@@ -285,7 +285,7 @@ namespace CostaLivre
             jobsBoard = AddButton(map, "Jobs board", "<Keyboard>/tab", "<Gamepad>/rightStickPress");
             mapKey = AddButton(map, "City map", "<Keyboard>/m");
             bagKey = AddButton(map, "Backpack", "<Keyboard>/i", "<Gamepad>/dpad/up");
-            crouchKey = AddButton(map, "Crouch stance", "<Keyboard>/leftCtrl", "<Gamepad>/leftStickPress");
+            crouchKey = AddButton(map, "Crouch stance", "<Keyboard>/leftCtrl", "<Gamepad>/dpad/down");
             for (int i = 0; i < weaponSlots.Length; i++)
                 weaponSlots[i] = AddButton(map, $"Weapon slot {i + 1}", $"<Keyboard>/{i + 1}");
             bindings = new CostaBindings(controls, sprint, jump, roll, interact, reload);
@@ -1301,7 +1301,7 @@ namespace CostaLivre
             if (!gamepad && Cursor.lockState != CursorLockMode.Locked)
                 return L("Click to capture the mouse", "Clique para capturar o mouse");
 
-            return gamepad ? L("↑ Backpack   L3 Crouch   A Jump   B Roll", "↑ Mochila   L3 Agachar   A Pular   B Rolar")
+            return gamepad ? L("↑ Backpack   ↓ Crouch   A Jump   B Roll", "↑ Mochila   ↓ Agachar   A Pular   B Rolar")
                 : L($"M Map   I Backpack   CTRL Crouch   {bindings.Name(1)} Jump   {bindings.Name(2)} Roll   ESC Menu",
                     $"M Mapa   I Mochila   CTRL Agachar   {bindings.Name(1)} Pular   {bindings.Name(2)} Rolar   ESC Menu");
         }

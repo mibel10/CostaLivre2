@@ -120,6 +120,7 @@ namespace CostaLivre
         private bool needsSprintRelease;
         private bool gamepad;
         private bool pursuit;
+        private float blockedExitUntil;
         private bool independentAlert;
 
         private void Awake()
@@ -801,6 +802,7 @@ namespace CostaLivre
                     verticalSpeed = -2.3f;
                     return true;
                 }
+                blockedExitUntil = Time.unscaledTime + 2;
                 return true;
             }
 
@@ -1293,6 +1295,8 @@ namespace CostaLivre
             string use = gamepad ? "Y" : bindings.Name(3);
             if (session.Online && session.Local.held > 0)
                 return L($"Detained · {session.Local.held}s", $"Detido · {session.Local.held}s");
+            if (car != null && Time.unscaledTime < blockedExitUntil)
+                return L("Both sides are blocked", "Saída bloqueada dos dois lados");
             if (car != null)
                 return L($"{use} Exit   {(gamepad ? "A" : bindings.Name(1))} Brake",
                     $"{use} Sair   {(gamepad ? "A" : bindings.Name(1))} Frear");

@@ -187,7 +187,10 @@ namespace CostaLivre
                 new(harbor, transform, new Vector3(-88, 0, 85), 90, new Color(0.18f, 0.23f, 0.25f), style: CostaVehicle.Style.Executive),
                 new(harbor, transform, new Vector3(-9, 0, 71), 90, new Color(0.31f, 0.45f, 0.39f)),
                 new(harbor, transform, new Vector3(-35, 0, 25.5f), 0, new Color(0.61f, 0.32f, 0.11f), style: CostaVehicle.Style.StreetBike),
-                new(harbor, transform, new Vector3(-78, 0, 115), 180, new Color(0.25f, 0.27f, 0.28f), style: CostaVehicle.Style.Cruiser)
+                new(harbor, transform, new Vector3(-78, 0, 115), 180, new Color(0.25f, 0.27f, 0.28f), style: CostaVehicle.Style.Cruiser),
+                new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[0].Center - 3), 90, new Color(0.36f, 0.52f, 0.57f)),
+                new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[1].Center - 3), 90, new Color(0.34f, 0.39f, 0.53f), style: CostaVehicle.Style.Executive),
+                new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[2].Center - 3), 90, new Color(0.65f, 0.22f, 0.35f), style: CostaVehicle.Style.Super)
             };
 
             session = new CostaSession(cars);
@@ -1315,7 +1318,7 @@ namespace CostaLivre
             Vector3? missionLocation = MissionLocation();
             Vector3 target = cityMap.Waypoint ?? missionLocation ?? player.transform.position;
             bool marked = missionLocation.HasValue || cityMap.Waypoint.HasValue;
-            string objective = L("Explore Santa Luz", "Explore Santa Luz");
+            string objective = $"{L("Explore", "Explore")} {CostaCity.RegionName(player.transform.position)}";
             string marker = "";
             if (cityMap.Waypoint.HasValue)
             {

@@ -35,7 +35,7 @@ namespace CostaLivre
             Rect task = new(width - 295, 36, 271, 72);
             Box(task, Panel);
             Box(new Rect(task.x, task.y, 2, task.height), pursuit ? Danger : accent);
-            string sub = pursuit ? L("POLICE ALERTED", "POLÍCIA ALERTADA") : L("SANTA LUZ DISTRICT", "DISTRITO DE SANTA LUZ");
+            string sub = pursuit ? L("POLICE ALERTED", "POLÍCIA ALERTADA") : CostaCity.RegionName(player).ToUpperInvariant();
             Label(new Rect(task.x + 10, task.y + 3, 204, 20), sub, small, pursuit ? Danger : Muted);
             if (timer >= 0)
                 Label(new Rect(task.x + 212, task.y + 3, 53, 20), $"{Mathf.CeilToInt(timer):00}s", small, accent);

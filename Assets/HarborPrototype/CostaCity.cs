@@ -22,6 +22,56 @@ namespace CostaLivre
         internal static readonly Vector3[] Estate = { new(-102, 0, 53), new(-102, 0, 141), new(-54, 0, 141) };
         internal static readonly Vector3 CitySpawn = new(-29, 0, 28);
 
+        internal const float HighwayX = -30;
+        internal const float HighwayStart = 168;
+        internal const float HighwayEnd = 786;
+        internal const float HighwayWidth = 26;
+        internal static readonly Rect HighwayArea = new(HighwayX - HighwayWidth / 2, HighwayStart,
+            HighwayWidth, HighwayEnd - HighwayStart);
+
+        internal sealed class District
+        {
+            internal readonly string Name;
+            internal readonly float Center;
+            internal readonly Rect Area;
+            internal readonly Color Accent;
+
+            internal District(string name, float center, Color accent)
+            {
+                Name = name;
+                Center = center;
+                Area = new Rect(-104, center - 65, 154, 130);
+                Accent = accent;
+            }
+        }
+
+        internal static readonly District[] Districts =
+        {
+            new("Calado City", 265, new Color(0.30f, 0.54f, 0.57f)),
+            new("Antutu City", 495, new Color(0.35f, 0.45f, 0.64f)),
+            new("Vice City", 721, new Color(0.83f, 0.36f, 0.52f))
+        };
+
+        internal static bool OnRegionalLand(Vector3 position)
+        {
+            Vector2 point = new(position.x, position.z);
+            if (HighwayArea.Contains(point))
+                return true;
+            foreach (District district in Districts)
+                if (district.Area.Contains(point))
+                    return true;
+            return false;
+        }
+
+        internal static string RegionName(Vector3 position)
+        {
+            Vector2 point = new(position.x, position.z);
+            foreach (District district in Districts)
+                if (district.Area.Contains(point))
+                    return district.Name;
+            return position.z >= HighwayStart ? CostaText.L("COASTAL HIGHWAY", "RODOVIA COSTEIRA") : "SANTA LUZ";
+        }
+
         private static readonly Color Pavement = new(0.76f, 0.73f, 0.68f);
         private static readonly Color Stone = new(0.85f, 0.80f, 0.73f);
         private static readonly Color Glass = new(0.15f, 0.23f, 0.26f);
@@ -46,7 +96,8 @@ namespace CostaLivre
             Ground(0, -43, 50, 42);
             Ground(-37, 95, 230, 146);
             Barrier(new(-152, 1.15f, 52), new(0.5f, 2.3f, 232));
-            Barrier(new(-37, 1.15f, 168), new(230, 2.3f, 0.5f));
+            Edge(-152, HighwayX - HighwayWidth / 2, HighwayStart);
+            Edge(HighwayX + HighwayWidth / 2, 78, HighwayStart);
             Barrier(new(78, 1.15f, 95), new(0.5f, 2.3f, 146));
             Barrier(new(-63.5f, 1.15f, -64), new(177, 2.3f, 0.5f));
             Barrier(new(25, 1.15f, -43), new(0.5f, 2.3f, 42));
@@ -142,6 +193,108 @@ namespace CostaLivre
             for (int i = 0; i < 9; i++)
                 Tree(new Vector3(-142 + 7.5f * i, 0, 32));
             Fountain(new Vector3(-56, 0, 39));
+            BuildHighway();
+            for (int i = 0; i < Districts.Length; i++)
+                BuildDistrict(Districts[i], i);
+        }
+
+        private void Edge(float xMin, float xMax, float z)
+        {
+            Barrier(new Vector3((xMin + xMax) / 2, 1.15f, z), new Vector3(xMax - xMin, 2.3f, 0.5f));
+        }
+
+        private void BuildHighway()
+        {
+            // District ground spans the full width where the highway crosses town.
+            float start = HighwayStart;
+            foreach (District district in Districts)
+            {
+                float end = district.Area.yMin;
+                float middle = (start + end) / 2;
+                Ground(HighwayX, middle, HighwayWidth, end - start);
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    float x = HighwayX + side * (HighwayWidth / 2 - 0.17f);
+                    Barrier(new Vector3(x, 1.10f, middle), new Vector3(0.35f, 2.2f, end - start));
+                }
+                start = district.Area.yMax;
+            }
+
+            for (float z = HighwayStart + 3; z < HighwayEnd - 3; z += 8)
+                Mark(new Vector3(HighwayX, 0.02f, z), new Vector3(0.16f, 0.03f, 4f));
+            foreach (int side in new[] { -1, 1 })
+                for (float z = HighwayStart + 8; z < HighwayEnd; z += 28)
+                    Lamp(new Vector3(HighwayX + side * 10.5f, 0, z));
+            art.Sign("RODOVIA COSTEIRA", new Vector3(HighwayX, 4.1f, HighwayStart + 5), 0.28f, Stone);
+        }
+
+        private void BuildDistrict(District district, int index)
+        {
+            Rect area = district.Area;
+            float z = district.Center;
+            Ground(area.center.x, z, area.width, area.height);
+            for (int side = -1; side <= 1; side += 2)
+            {
+                float x = side < 0 ? area.xMin : area.xMax;
+                Barrier(new Vector3(x, 1.15f, z), new Vector3(0.45f, 2.3f, area.height));
+            }
+            Edge(area.xMin, HighwayArea.xMin, area.yMin);
+            Edge(HighwayArea.xMax, area.xMax, area.yMin);
+            if (index == Districts.Length - 1)
+                Edge(area.xMin, area.xMax, area.yMax);
+            else
+            {
+                Edge(area.xMin, HighwayArea.xMin, area.yMax);
+                Edge(HighwayArea.xMax, area.xMax, area.yMax);
+            }
+            art.Sign(district.Name.ToUpperInvariant(),
+                new Vector3(HighwayX, 4.2f, area.yMin + 6), 0.31f, district.Accent);
+            art.Sign(district.Name.ToUpperInvariant(),
+                new Vector3(HighwayX, 4.2f, area.yMax - 6), 0.31f, district.Accent, 180);
+
+            for (float x = area.xMin + 4; x < area.xMax - 3; x += 7)
+            {
+                if (Mathf.Abs(x - HighwayX) < 10)
+                    continue;
+                Mark(new Vector3(x, 0.02f, z), new Vector3(3.5f, 0.03f, 0.13f));
+            }
+
+            for (int row = -1; row <= 1; row += 2)
+                for (int block = 0; block < 6; block++)
+                {
+                    float x = block < 3 ? -91 + block * 16 : -4 + (block - 3) * 16;
+                    float depth = 15 + (block % 3) * 2;
+                    float height = index == 1 ? 11 + (block % 4) * 6 : 6 + (block % 3) * 3 + index;
+                    Block(new Vector3(x, 0, z + row * 37), 11, depth, height);
+                    Tree(new Vector3(x + 5, 0, z + row * 13));
+                }
+
+            switch (index)
+            {
+                case 0:
+                    Venue("MERCADO DO CAIS", new Vector3(-69, 0, z + 9), 23, 16, 8, Stone, district.Accent);
+                    for (int i = 0; i < 3; i++)
+                        art.Box("Market stall", new Vector3(9 + i * 9, 0.55f, z - 13), new Vector3(3.8f, 1.1f, 2),
+                            district.Accent, true);
+                    break;
+                case 1:
+                    Venue("CENTRO TECNOLÓGICO", new Vector3(-73, 0, z + 9), 28, 17, 32, Stone, district.Accent);
+                    Plaza(new Vector3(12, 0, z - 15), district.Accent);
+                    break;
+                default:
+                    Venue("CLUBE DO MIRANTE", new Vector3(-72, 0, z + 9), 24, 17, 10, Stone, district.Accent);
+                    Plaza(new Vector3(12, 0, z - 15), district.Accent);
+                    break;
+            }
+        }
+
+        private void Plaza(Vector3 point, Color accent)
+        {
+            art.Box("Plaza paving", point + Vector3.up * 0.03f, new Vector3(26, 0.06f, 15), Pavement);
+            Fountain(point);
+            for (int side = -1; side <= 1; side += 2)
+                art.Box("Plaza bench", point + new Vector3(side * 7, 0.36f, 0), new Vector3(3, 0.72f, 1),
+                    accent, true);
         }
 
         internal void Animate()

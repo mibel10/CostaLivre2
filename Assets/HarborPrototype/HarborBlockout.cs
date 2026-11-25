@@ -83,7 +83,7 @@ namespace CostaLivre
             settings.overrideVoxelSize = true;
             settings.voxelSize = 0.24f;
             return NavMeshBuilder.BuildNavMeshData(settings, walkableGeometry,
-                new Bounds(new Vector3(-40, 3, 51), new Vector3(236, 30, 246)), Vector3.zero, Quaternion.identity);
+                new Bounds(new Vector3(-37, 3, 361), new Vector3(238, 46, 864)), Vector3.zero, Quaternion.identity);
         }
 
         internal HarborCharacter Person(string name, Transform parent, Vector3 position, Color tint)

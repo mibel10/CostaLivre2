@@ -12,7 +12,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 2;
+        private const int Protocol = 3;
         private const float Interval = 0.083f;
         private const int PoliceKit = (1 << 0) | (1 << 3);
         internal static readonly Vector3 CriminalSpawn = CostaCity.CitySpawn + Vector3.left * 2.8f;
@@ -776,7 +776,8 @@ namespace CostaLivre
         }
 
         private static bool ValidPoint(Vector3 point) => Finite(point.x) && Finite(point.y) && Finite(point.z)
-            && point.x >= -153 && point.x <= 79 && point.y >= -0.9f && point.y <= 24 && point.z >= -65 && point.z <= 169;
+            && point.y >= -0.9f && point.y <= 38
+            && (point.x >= -153 && point.x <= 79 && point.z >= -65 && point.z <= 169 || CostaCity.OnRegionalLand(point));
 
         private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 

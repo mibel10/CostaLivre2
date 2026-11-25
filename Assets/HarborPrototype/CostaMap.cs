@@ -64,7 +64,7 @@ namespace CostaLivre
         private static readonly Color Frame = new(0.055f, 0.077f, 0.088f, 0.95f);
         private static readonly Color Accent = new(0.92f, 0.66f, 0.39f);
         private static readonly Color Route = new(0.40f, 0.86f, 0.86f);
-        private static readonly Vector2 Overview = new(-37f, 47f);
+        private static readonly Vector2 Overview = new(-37f, 361f);
         private static readonly Pin[] Points =
         {
             new(CostaCity.Hotel, Kind.Robbery, "Grand Hotel", "Grand Hotel"),
@@ -79,7 +79,10 @@ namespace CostaLivre
             new(CostaCity.Estate[1], Kind.Home, "Vila 02", "Vila 02"),
             new(CostaCity.Estate[2], Kind.Home, "Vila 03", "Vila 03"),
             new(CostaCity.Vendors[0], Kind.Vendor, "Loot exchange 01", "Posto de venda 01"),
-            new(CostaCity.Vendors[1], Kind.Vendor, "Loot exchange 02", "Posto de venda 02")
+            new(CostaCity.Vendors[1], Kind.Vendor, "Loot exchange 02", "Posto de venda 02"),
+            new(new Vector3(CostaCity.HighwayX, 0, CostaCity.Districts[0].Center), Kind.Landmark, "Calado City", "Calado City"),
+            new(new Vector3(CostaCity.HighwayX, 0, CostaCity.Districts[1].Center), Kind.Landmark, "Antutu City", "Antutu City"),
+            new(new Vector3(CostaCity.HighwayX, 0, CostaCity.Districts[2].Center), Kind.Landmark, "Vice City", "Vice City")
         };
 
         private readonly IReadOnlyList<Rect> buildings;
@@ -110,7 +113,7 @@ namespace CostaLivre
         {
             EnsureStyles();
             Fill(new Rect(rect.x - 2, rect.y - 24, rect.width + 4, rect.height + 26), Frame);
-            Label(new Rect(rect.x + 5, rect.y - 23, rect.width - 11, 20), L("SANTA LUZ", "SANTA LUZ"), small, Text);
+            Label(new Rect(rect.x + 5, rect.y - 23, rect.width - 11, 20), CostaCity.RegionName(player), small, Text);
             Label(new Rect(rect.xMax - 16, rect.y - 23, 13, 20), "N", small, Route);
             GUI.BeginGroup(rect);
             var size = rect.size;
@@ -145,7 +148,7 @@ namespace CostaLivre
             GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
             Fill(new Rect(0, 0, width, height), new Color(0.035f, 0.054f, 0.061f, 0.98f));
             Fill(new Rect(0, 0, width, 3), Accent);
-            Label(new Rect(28, 13, 490, 36), L("Santa Luz  /  City map", "Santa Luz  /  Mapa da cidade"), title, Text);
+            Label(new Rect(28, 13, 490, 36), L("Coastal Region  /  Map", "Região Costeira  /  Mapa"), title, Text);
             if (Button(new Rect(width - 132, 18, 105, 29), L("Close", "Fechar"), false))
                 close();
 
@@ -154,15 +157,15 @@ namespace CostaLivre
             Fill(legend, Frame);
             GUI.BeginGroup(board);
             Vector2 size = board.size;
-            float pixelsPerMeter = Mathf.Min(size.x, size.y) / 257f * zoom;
+            float pixelsPerMeter = Mathf.Min(size.x / 245f, size.y / 900f) * zoom;
             var projection = new Projection(mapCenter, size, pixelsPerMeter);
             Event input = Event.current;
             bool onMap = new Rect(Vector2.zero, size).Contains(input.mousePosition);
             if (onMap && input.type == EventType.ScrollWheel)
             {
                 Vector3 before = projection.World(input.mousePosition);
-                zoom = Mathf.Clamp(zoom * Mathf.Exp(-input.delta.y * 0.08f), 0.90f, 3.8f);
-                pixelsPerMeter = Mathf.Min(size.x, size.y) / 257f * zoom;
+                zoom = Mathf.Clamp(zoom * Mathf.Exp(-input.delta.y * 0.08f), 0.90f, 12f);
+                pixelsPerMeter = Mathf.Min(size.x / 245f, size.y / 900f) * zoom;
                 var updated = new Projection(mapCenter, size, pixelsPerMeter);
                 Vector3 after = updated.World(input.mousePosition);
                 mapCenter += new Vector2(before.x - after.x, before.z - after.z);
@@ -199,7 +202,7 @@ namespace CostaLivre
                     continue;
                 Rect hit = new(center.x - 10, center.y - 10, 20, 20);
                 PinDot(center, ColorFor(pin.Type), selected == i || hit.Contains(input.mousePosition) ? 11 : 8);
-                if (zoom > 1.55f || hit.Contains(input.mousePosition) || selected == i)
+                if (i >= Points.Length - CostaCity.Districts.Length || zoom > 4.7f || hit.Contains(input.mousePosition) || selected == i)
                     Label(new Rect(center.x + 8, center.y - 8, 168, 16), pin.Title, markerText, Text);
             }
             PlayerArrow(projection.Point(player), heading);
@@ -223,7 +226,7 @@ namespace CostaLivre
             if (Button(new Rect(lx, legend.yMax - 94, 41, 31), "−", false))
                 zoom = Mathf.Max(0.90f, zoom / 1.25f);
             if (Button(new Rect(lx + 48, legend.yMax - 94, 41, 31), "+", false))
-                zoom = Mathf.Min(3.8f, zoom * 1.25f);
+                zoom = Mathf.Min(12f, zoom * 1.25f);
             if (Button(new Rect(lx + 96, legend.yMax - 94, 123, 31), L("Center player", "Centralizar"), false))
             {
                 mapCenter = new Vector2(player.x, player.z);
@@ -240,8 +243,8 @@ namespace CostaLivre
 
         private static bool OnLand(Vector3 position)
         {
-            return position.x >= -152 && position.z >= -64 && position.z <= 168
-                && position.x <= (position.z >= 22 ? 78 : 25);
+            return CostaCity.OnRegionalLand(position) || (position.x >= -152 && position.z >= -64 && position.z <= 168
+                && position.x <= (position.z >= 22 ? 78 : 25));
         }
 
         private void DrawBase(Vector2 size, Projection p)
@@ -261,6 +264,13 @@ namespace CostaLivre
                 Fill(p.Area(new Rect(-151, z - 2.35f, 228, 4.7f)), Street);
             Fill(p.Area(new Rect(-1.55f, -21, 3.1f, 45)), Street);
             Fill(p.Area(new Rect(-28, -1.55f, 51, 3.1f)), Street);
+
+            foreach (CostaCity.District district in CostaCity.Districts)
+            {
+                Fill(p.Area(district.Area), Land);
+                Fill(p.Area(new Rect(district.Area.xMin, district.Center - 4, district.Area.width, 8)), Street);
+            }
+            Fill(p.Area(CostaCity.HighwayArea), Street);
 
             foreach (Rect building in buildings)
                 Fill(p.Area(building), Buildings);
@@ -376,7 +386,7 @@ namespace CostaLivre
         private void ClampCenter()
         {
             mapCenter.x = Mathf.Clamp(mapCenter.x, -151, 77);
-            mapCenter.y = Mathf.Clamp(mapCenter.y, -64, 168);
+            mapCenter.y = Mathf.Clamp(mapCenter.y, -64, CostaCity.HighwayEnd);
         }
 
         private void ClearWaypoint()

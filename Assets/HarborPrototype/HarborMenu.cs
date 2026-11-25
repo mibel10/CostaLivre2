@@ -91,54 +91,45 @@ namespace CostaLivre
             float height = Screen.height / scale;
             GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
             GUI.DrawTexture(new Rect(0, 0, width * 0.79f, height), gradient);
-            Fill(new Rect(0, 0, width, 4), Copper);
-            Fill(new Rect(0, height - 40, width, 40), Carbon);
-            Text(new Rect(28, height - 40, 390, 40), "COSTA LIVRE 2   /   PORTO DE SANTA LUZ", label, Grey);
-            Text(new Rect(width - 218, height - 40, 195, 40), page == ScreenPage.Online && !sessionActive ? "" : L("ENTER / START   PLAY", "ENTER / START   JOGAR"), label, Grey);
             Text(new Rect(29, 21, 260, 26), "COSTA LIVRE 2", subhead, Paper);
 
             float x = 173;
             float top = Mathf.Max(99, height * 0.18f);
             float rail = top + 33;
-            Tab(new Rect(28, rail, 124, 37), ScreenPage.Deploy, L("Explore", "Explorar"));
+            Tab(new Rect(28, rail, 124, 37), ScreenPage.Deploy, L("Play", "Jogar"));
             Tab(new Rect(28, rail + 43, 124, 37), ScreenPage.Loadout, L("Loadout", "Equipamento"));
             Tab(new Rect(28, rail + 86, 124, 37), ScreenPage.Options, L("Options", "Opções"));
             if (!sessionActive)
                 Tab(new Rect(28, rail + 129, 124, 37), ScreenPage.Jobs, L("Jobs", "Missões"));
-            Tab(new Rect(28, rail + 172, 124, 37), ScreenPage.Online, "Multiplayer");
+            Tab(new Rect(28, rail + (sessionActive ? 129 : 172), 124, 37), ScreenPage.Online, "Multiplayer");
             if (MenuButton(new Rect(28, height - 91, 124, 34), L("Quit", "Sair"), false))
                 quit();
 
             switch (page)
             {
                 case ScreenPage.Deploy:
-                    Text(new Rect(x, top, 394, 21), sessionActive ? "PORTO DE SANTA LUZ  /  MULTIPLAYER" : L("PORTO DE SANTA LUZ  /  SINGLE PLAYER", "PORTO DE SANTA LUZ  /  UM JOGADOR"), label, Copper);
-                    Text(new Rect(x, top + 19, 417, 75), L("Santa Luz", "Santa Luz"), headline, Paper);
-                    Text(new Rect(x, top + 94, 365, 57), sessionActive ? L("Explore Santa Luz with your session.", "Explore Santa Luz com sua sessão.") : L("Explore the waterfront and the city. Pick a contract from the jobs board when you want one.", "Explore a orla e a cidade. Escolha um contrato no quadro de missões quando quiser."), subhead, Paper);
-                    if (MenuButton(new Rect(x, top + 176, 202, 49), resume ? L("Resume", "Continuar") : L("Enter the city", "Entrar na cidade"), true))
+                    Text(new Rect(x, top + 12, 417, 74), sessionActive ? "Multiplayer" : "Santa Luz", headline, Paper);
+                    if (MenuButton(new Rect(x, top + 101, 202, 48), resume ? L("Resume", "Continuar") : L("Enter the city", "Entrar na cidade"), true))
                         (resume ? continueRun : deploy)();
-                    if (resume && !sessionActive && MenuButton(new Rect(x, top + 236, 202, 36), L("Restart", "Recomeçar"), false))
+                    if (resume && !sessionActive && MenuButton(new Rect(x, top + 161, 202, 34), L("Restart", "Recomeçar"), false))
                         deploy();
                     break;
                 case ScreenPage.Loadout:
                     Text(new Rect(x, top, 300, 63), L("Loadout", "Equipamento"), headline, Paper);
-                    Text(new Rect(x, top + 62, 370, 29), L("Buy weapons at the Santa Luz Gun Shop.", "Compre suas armas na Armaria Santa Luz."), label, Grey);
+                    int owned = 0;
                     for (int i = 0; i < HarborArsenal.WeaponNames.Length; i++)
                     {
-                        if (arsenal.Owned(i))
+                        if (!arsenal.Owned(i))
+                            continue;
+                        if (MenuButton(new Rect(x, top + 77 + owned * 38, 222, 33), Weapon(i), i == SelectedWeapon))
                         {
-                            if (MenuButton(new Rect(x, top + 102 + i * 34, 222, 30), Weapon(i), i == SelectedWeapon))
-                            {
-                                SelectedWeapon = i;
-                                SelectionVersion++;
-                            }
+                            SelectedWeapon = i;
+                            SelectionVersion++;
                         }
-                        else
-                        {
-                            Text(new Rect(x + 12, top + 102 + i * 34, 258, 30),
-                                Weapon(i) + L("  ·  Locked", "  ·  Bloqueada"), label, Grey);
-                        }
+                        owned++;
                     }
+                    if (owned == 0)
+                        Text(new Rect(x, top + 75, 372, 32), L("Buy equipment at the gun shop.", "Compre equipamento na armaria."), label, Grey);
                     break;
                 case ScreenPage.Options:
                     DrawOptions(x, top);
@@ -241,6 +232,8 @@ namespace CostaLivre
             }
             else if (MenuButton(new Rect(x + 213, y + 204, 127, 26), L("Reset keys", "Restaurar"), false))
                 bindings.Reset();
+            Text(new Rect(x, y + 248, 380, 22), L("M Map   ·   I Backpack   ·   1 / 2 Weapons",
+                "M Mapa   ·   I Mochila   ·   1 / 2 Armas"), label, Grey);
             float sensitivity = CostaUi.Slider(new Rect(x, y + 217, 188, 18), Sensitivity, 0.35f, 2.1f);
             Text(new Rect(x, y + 194, 206, 22), L($"Mouse   {sensitivity:0.00}", $"Sensibilidade   {sensitivity:0.00}"), label, Paper);
             if (!Mathf.Approximately(Sensitivity, sensitivity))

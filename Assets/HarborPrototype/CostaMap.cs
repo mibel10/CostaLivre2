@@ -112,9 +112,8 @@ namespace CostaLivre
         internal void DrawMini(Rect rect, Vector3 player, float heading, Vector3? objective)
         {
             EnsureStyles();
-            Fill(new Rect(rect.x - 2, rect.y - 24, rect.width + 4, rect.height + 26), Frame);
-            Label(new Rect(rect.x + 5, rect.y - 23, rect.width - 11, 20), CostaCity.RegionName(player), small, Text);
-            Label(new Rect(rect.xMax - 16, rect.y - 23, 13, 20), "N", small, Route);
+            Fill(new Rect(rect.x - 1, rect.y - 19, rect.width + 2, rect.height + 20), Frame);
+            Label(new Rect(rect.x + 5, rect.y - 18, rect.width - 10, 17), CostaCity.RegionName(player), markerText, Text);
             GUI.BeginGroup(rect);
             var size = rect.size;
             var projection = new Projection(new Vector2(player.x, player.z), size, Mathf.Min(size.x, size.y) / 74f);
@@ -232,12 +231,12 @@ namespace CostaLivre
                 mapCenter = new Vector2(player.x, player.z);
                 ClampCenter();
             }
-            if (Button(new Rect(lx, legend.yMax - 48, 219, 31), L("Clear waypoint", "Limpar marcador"), false))
+            if (Waypoint.HasValue && Button(new Rect(lx, legend.yMax - 48, 219, 31), L("Clear waypoint", "Limpar marcador"), false))
                 ClearWaypoint();
 
-            Label(new Rect(27, height - 36, width - 54, 24),
-                L("Scroll: zoom    Right drag: pan    Click: waypoint    M / ESC: close",
-                    "Roda do mouse: zoom    Arrastar com o botão direito: mover    Clique: marcar    M / ESC: fechar"), small, Muted);
+            if (!CostaTouch.Available)
+                Label(new Rect(27, height - 36, width - 54, 24),
+                    L("Right-drag to pan · Scroll to zoom", "Arraste com o botão direito para mover · Role para aproximar"), small, Muted);
             GUI.matrix = previous;
         }
 

@@ -1316,45 +1316,27 @@ namespace CostaLivre
             }
 
             Vector3? missionLocation = MissionLocation();
-            Vector3 target = cityMap.Waypoint ?? missionLocation ?? player.transform.position;
-            bool marked = missionLocation.HasValue || cityMap.Waypoint.HasValue;
-            string objective = $"{L("Explore", "Explore")} {CostaCity.RegionName(player.transform.position)}";
-            string marker = "";
+            Vector3? destination = cityMap.Waypoint ?? missionLocation;
+            string objective = "";
             if (cityMap.Waypoint.HasValue)
-            {
                 objective = cityMap.WaypointTitle;
-                marker = L("WAYPOINT", "MARCADOR");
-            }
             else if (harborJob)
-            {
                 objective = escaping ? L("Reach the safehouse", "Vá ao esconderijo") : L("Retrieve the case", "Recolha a maleta");
-                marker = escaping ? L("SAFEHOUSE", "ESCONDERIJO") : L("CARGO CASE", "MALETA");
-            }
             else if (!session.Online && jobs.InProgress)
-            {
                 objective = jobs.Current.Title;
-                marker = $"{jobs.StepNumber:00} / {CostaJobs.List[jobs.Active].Steps.Length:00}";
-            }
             else if (CurrentBag.Count > 0)
-            {
                 objective = L("Sell loot at a fence", "Venda o saque num receptador");
-                marker = L("FENCE", "RECEPTADOR");
-            }
-            else if (IsPolice)
-            {
-                objective = L("Patrol Santa Luz", "Patrulhe Santa Luz");
-                marker = L("POLICE", "POLÍCIA");
-            }
 
-            string prompt = InteractionPrompt(missionLocation ?? target);
+            Vector3 position = player.transform.position;
+            Vector3 target = destination ?? position;
+            string prompt = InteractionPrompt(missionLocation ?? position);
             Vector3 viewport = followCamera.WorldToViewportPoint(target + Vector3.up * 1.35f);
-            float side = Vector3.Dot(target - player.transform.position, followCamera.transform.right);
+            float side = Vector3.Dot(target - position, followCamera.transform.right);
             string notice = session.Online ? session.CurrentNotice
                 : robberies.Notice.Length > 0 ? robberies.Notice : jobs.Notice;
-            hud.DrawRun(marked, session.Online ? session.Local.wanted : pursuit, stamina / FullStamina,
-                viewport, side, prompt, arsenal, gamepad, player.transform.position, target, yaw, objective, marker,
-                CurrentCash, session.Online ? -1 : jobs.Remaining, notice, car != null ? car.Speed : -1,
-                session.Online ? session.Local.health : -1);
+            hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? -1 : jobs.Remaining,
+                session.Online ? session.Local.wanted : pursuit, notice, prompt, stamina / FullStamina,
+                car != null ? car.Speed : -1, session.Online ? session.Local.health : -1, arsenal, CostaTouch.Available);
         }
 
         private Vector3? MissionLocation()
@@ -1379,10 +1361,7 @@ namespace CostaLivre
             if (car != null && Time.unscaledTime < blockedExitUntil)
                 return L("Both sides are blocked", "Saída bloqueada dos dois lados");
             if (car != null)
-            {
-                string brake = CostaTouch.Available ? L("Brake", "Freio") : gamepad ? padBindings.Name(1) : bindings.Name(1);
-                return L($"{use} Exit   {brake} Brake", $"{use} Sair   {brake} Frear");
-            }
+                return L($"{use} Exit", $"{use} Sair");
             if (IsPolice && remotes.ArrestCandidate(player.transform.position) != null)
                 return L($"{use} Arrest", $"{use} Prender");
             if (!IsPolice && CostaSession.AtVendor(player.transform.position))
@@ -1416,15 +1395,9 @@ namespace CostaLivre
                     $"{use} Comprar Vila {property + 1:00}  ·  {Money(CostaJobs.Prices[property])}");
             if (NearbyVehicle() != null)
                 return L($"{use} Drive vehicle", $"{use} Usar veículo");
-            if (CostaTouch.Available)
-                return L("Drag to look", "Arraste para olhar");
-            if (!gamepad && Cursor.lockState != CursorLockMode.Locked)
+            if (!CostaTouch.Available && !gamepad && Cursor.lockState != CursorLockMode.Locked)
                 return L("Click to capture the mouse", "Clique para capturar o mouse");
-
-            return gamepad ? L($"{padBindings.Name(10)} Map   {padBindings.Name(11)} Backpack   {padBindings.Name(9)} Crouch",
-                    $"{padBindings.Name(10)} Mapa   {padBindings.Name(11)} Mochila   {padBindings.Name(9)} Agachar")
-                : L($"M Map   I Backpack   CTRL Crouch   {bindings.Name(1)} Jump   {bindings.Name(2)} Roll   ESC Menu",
-                    $"M Mapa   I Mochila   CTRL Agachar   {bindings.Name(1)} Pular   {bindings.Name(2)} Rolar   ESC Menu");
+            return "";
         }
     }
 }

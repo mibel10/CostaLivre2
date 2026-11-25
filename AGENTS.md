@@ -1,0 +1,9 @@
+# Instruções do projeto Costa Livre 2
+
+## Compatibilidade com o multiplayer
+
+Planeje toda mudança considerando como ela afeta o multiplayer. Ao alterar ações de jogadores ou estado compartilhado, preserve a validação pelo anfitrião e a sincronização entre os clientes. Verifique o comportamento alterado em uma sessão com anfitrião e cliente quando a mudança afetar a partida em rede.
+
+## Commits
+
+Faça um commit para cada mudança concluída. Use uma mensagem curta e específica que diga o que mudou, como `Corrige sincronização da mochila`. Separe mudanças independentes em commits próprios.

@@ -43,6 +43,7 @@ namespace CostaLivre
             public int vehicle = -1;
             public int revision;
             public int held;
+            public float bikeLean;
             public bool arrestProtected;
         }
 
@@ -53,6 +54,7 @@ namespace CostaLivre
             public float yaw;
             public float speed;
             public int driver;
+            public float lean;
         }
 
         [Serializable]
@@ -369,6 +371,7 @@ namespace CostaLivre
                 float travel = Mathf.Abs(vehicle.speed) * delta;
                 float safeTravel = sceneVehicles[i].SimulatedTravel(vehicle.pos, rotation, direction, travel);
                 vehicle.pos += direction * safeTravel;
+                vehicle.lean = Mathf.MoveTowards(vehicle.lean, 0, 80 * delta);
                 vehicle.speed = safeTravel < travel ? 0 : Mathf.MoveTowards(vehicle.speed, 0, 4.5f * delta);
             }
 
@@ -556,6 +559,8 @@ namespace CostaLivre
                 car.pos = new Vector3(pose.pos.x, 0, pose.pos.z);
                 car.yaw = avatar.yaw;
                 car.speed = Mathf.Clamp(pose.held / 10f, -8, 42);
+                car.lean = sceneVehicles[avatar.vehicle].IsBike && Finite(pose.bikeLean)
+                    ? Mathf.Clamp(pose.bikeLean, -24, 24) : 0;
             }
         }
 

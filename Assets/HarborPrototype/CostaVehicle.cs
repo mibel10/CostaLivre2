@@ -224,11 +224,16 @@ namespace CostaLivre
             }
         }
 
-        internal void ApplyNetwork(Vector3 position, float yaw, float velocity, bool snap)
+        internal void ApplyNetwork(Vector3 position, float yaw, float velocity, bool snap, float lean = 0)
         {
             float blend = snap ? 1f : 1f - Mathf.Exp(-Time.unscaledDeltaTime * 15f);
-            Root.SetPositionAndRotation(Vector3.Lerp(Root.position, position, blend),
+            Vector3 previous = Root.position;
+            Root.SetPositionAndRotation(Vector3.Lerp(previous, position, blend),
                 Quaternion.Slerp(Root.rotation, Quaternion.Euler(0, yaw, 0), blend));
+            if (!snap)
+                SpinWheels(Vector3.Dot(Root.position - previous, Root.forward));
+            if (IsBike)
+                shell.localRotation = Quaternion.Slerp(shell.localRotation, Quaternion.Euler(0, 0, lean), blend);
             speed = velocity;
         }
 
@@ -266,13 +271,18 @@ namespace CostaLivre
                 }
 
                 Root.position += direction * distance;
-                foreach (Transform wheel in wheels)
-                    wheel.Rotate(Vector3.right, distance * 163.7f, Space.Self);
+                SpinWheels(Vector3.Dot(direction, Root.forward) * distance);
             }
             finally
             {
                 body.enabled = true;
             }
+        }
+
+        private void SpinWheels(float distance)
+        {
+            foreach (Transform wheel in wheels)
+                wheel.Rotate(Vector3.right, distance * 163.7f, Space.Self);
         }
 
         private static void Part(HarborBlockout art, Transform parent, PrimitiveType type, string name,

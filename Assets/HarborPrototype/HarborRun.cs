@@ -374,6 +374,7 @@ namespace CostaLivre
                 rollPose = rollClock > 0 ? 1 - rollClock / RollDuration : -1,
                 moving = !inMenu && overlay == FieldOverlay.None && walking,
                 running = !inMenu && overlay == FieldOverlay.None && runningPose,
+                bikeLean = car != null ? car.RiderLean : 0,
                 held = car != null ? Mathf.RoundToInt(car.SignedSpeed * 10f) : 0
             };
             session.Tick(pose);
@@ -444,7 +445,7 @@ namespace CostaLivre
             {
                 CostaSession.Vehicle vehicle = session.Cars[i];
                 if (i != avatar.vehicle || netRevision != avatar.revision)
-                    cars[i].ApplyNetwork(vehicle.pos, vehicle.yaw, vehicle.speed, joined || i == avatar.vehicle);
+                    cars[i].ApplyNetwork(vehicle.pos, vehicle.yaw, vehicle.speed, joined || i == avatar.vehicle, vehicle.lean);
             }
 
             if (netRevision != avatar.revision)

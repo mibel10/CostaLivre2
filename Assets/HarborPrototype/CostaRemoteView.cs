@@ -19,6 +19,7 @@ namespace CostaLivre
             internal int Weapon = -1;
             internal int LastShot;
             internal float FlashUntil;
+            internal float KnifeSwingUntil;
             internal CostaSession.Avatar State;
         }
 
@@ -85,7 +86,7 @@ namespace CostaLivre
                         model.Body.Animate(HarborCharacter.Motion.Jump, progress: avatar.jumpPose);
                     else
                         model.Body.Animate(avatar.moving ? (avatar.running ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Walk)
-                            : HarborCharacter.Motion.Idle, avatar.crouched ? 0.55f : 1f);
+                            : HarborCharacter.Motion.Idle, HarborArsenal.GaitSpeed(avatar.equipped, avatar.running, false, avatar.crouched));
                     if (avatar.crouched)
                         model.Body.CrouchPose();
                     DrawWeapon(model, avatar);
@@ -112,6 +113,7 @@ namespace CostaLivre
             if (model.Weapon != avatar.equipped)
             {
                 model.Weapon = avatar.equipped;
+                model.KnifeSwingUntil = 0;
                 for (int i = model.Mount.childCount - 1; i >= 0; i--)
                 {
                     Transform child = model.Mount.GetChild(i);
@@ -127,9 +129,6 @@ namespace CostaLivre
                 }
             }
 
-            if (model.Weapon >= 0 && avatar.rollPose < 0)
-                model.Body.HoldWeapon(false, 0, false);
-            model.Mount.SetPositionAndRotation(model.Body.WeaponHand, model.Body.Root.rotation);
             if (avatar.shotNumber != model.LastShot)
             {
                 model.LastShot = avatar.shotNumber;
@@ -137,10 +136,29 @@ namespace CostaLivre
                 {
                     EnsureWeaponTemplates();
                     model.Audio.PlayOneShot(shotClips[avatar.shotWeapon], 0.42f);
-                    model.Flash.localPosition = Vector3.forward * 0.50f;
-                    model.FlashUntil = Time.unscaledTime + 0.055f;
+                    if (avatar.shotWeapon == HarborArsenal.Knife)
+                        model.KnifeSwingUntil = Time.unscaledTime + HarborArsenal.KnifeSwingTime;
+                    else
+                    {
+                        model.Flash.localPosition = Vector3.forward * 0.50f;
+                        model.FlashUntil = Time.unscaledTime + 0.055f;
+                    }
                 }
             }
+            bool knife = model.Weapon == HarborArsenal.Knife;
+            if (model.Weapon >= 0 && avatar.rollPose < 0)
+            {
+                if (knife)
+                {
+                    float swing = Time.unscaledTime < model.KnifeSwingUntil
+                        ? 1 - (model.KnifeSwingUntil - Time.unscaledTime) / HarborArsenal.KnifeSwingTime : -1;
+                    model.Body.HoldKnife(avatar.running && avatar.jumpPose < 0, avatar.crouched, swing);
+                }
+                else
+                    model.Body.HoldWeapon(false, 0, false);
+            }
+            model.Mount.SetPositionAndRotation(model.Body.WeaponHand,
+                model.Body.Root.rotation * Quaternion.Euler(knife ? 20f : 0f, 0, 0));
             model.Flash.gameObject.SetActive(Time.unscaledTime < model.FlashUntil);
         }
 

@@ -61,7 +61,7 @@ namespace CostaLivre
             if (speed < 0)
             {
                 DrawLoadout(width, height, arsenal, touch, gamepad);
-                if (arsenal.Armed)
+                if (arsenal.HasFirearm)
                     DrawCrosshair(width / 2, height / 2, arsenal.HitVisible);
             }
 
@@ -108,14 +108,12 @@ namespace CostaLivre
 
         private void DrawLoadout(float width, float height, HarborArsenal arsenal, bool touch, bool gamepad)
         {
-            float slotWidth = 126;
-            float start = touch ? 18 : width - 24 - slotWidth * 2;
+            float slotWidth = touch ? 90 : 114;
+            float start = touch ? 18 : width - 24 - slotWidth * 3;
             float slotsY = touch ? 249 : height - 59;
-            if (touch)
-                slotWidth = 106;
-            for (int i = 0; i < 2; i++)
+            for (int i = 0; i < 3; i++)
             {
-                int weapon = i == 0 ? 0 : arsenal.Heavy;
+                int weapon = i == 0 ? 0 : i == 1 ? arsenal.Heavy : HarborArsenal.Knife;
                 bool selected = weapon >= 0 && weapon == arsenal.Slot;
                 Rect slot = new(start + i * slotWidth, slotsY, slotWidth - 3, 25);
                 Box(slot, selected ? new Color(0.28f, 0.32f, 0.27f, 0.96f) : Panel);
@@ -138,7 +136,8 @@ namespace CostaLivre
             }
 
             Label(new Rect(card.x + 8, card.y + 2, 130, 19), Weapon(arsenal.Slot).ToUpperInvariant(), small, Muted);
-            string loaded = arsenal.Reloading ? L("Reloading…", "Recarregando…") : $"{arsenal.Loaded:00} / {arsenal.Capacity:00}";
+            string loaded = arsenal.KnifeEquipped ? L("Melee", "Corpo a corpo")
+                : arsenal.Reloading ? L("Reloading…", "Recarregando…") : $"{arsenal.Loaded:00} / {arsenal.Capacity:00}";
             Label(new Rect(card.x + 8, card.y + 18, 130, 25), loaded, title,
                 arsenal.Loaded == 0 ? HarborBlockout.Amber : Paper);
         }

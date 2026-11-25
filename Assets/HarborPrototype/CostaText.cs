@@ -28,7 +28,9 @@ namespace CostaLivre
                 case 1: return L("Shotgun", "Escopeta");
                 case 2: return "SMG";
                 case 3: return "Rifle";
-                default: return L("Sniper", "Precisão");
+                case 4: return L("Sniper", "Precisão");
+                case HarborArsenal.Knife: return L("Knife", "Faca");
+                default: return "";
             }
         }
     }

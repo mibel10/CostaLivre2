@@ -161,6 +161,25 @@ namespace CostaLivre
             }
         }
 
+        internal void HoldKnife(bool sprinting, bool crouched, float swing)
+        {
+            float stride = sprinting ? Mathf.Sin(clock * 2 * Mathf.PI) : 0;
+            Vector3 right = new(0.31f, sprinting ? 1.03f : 1.17f, 0.19f + stride * 0.16f);
+            if (swing >= 0)
+            {
+                float extension = Mathf.Sin(Mathf.PI * swing);
+                right += new Vector3(Mathf.Lerp(0.15f, -0.45f, swing), 0.14f, 0.41f) * extension;
+            }
+            if (crouched)
+                right.y -= 0.44f;
+            AlignArm(rightShoulder, rightElbow, rightHand, Root.TransformPoint(right), Root.right);
+            if (sprinting)
+            {
+                Vector3 left = new(-0.28f, 1.18f + stride * 0.09f, 0.13f - stride * 0.27f);
+                AlignArm(leftShoulder, leftElbow, leftHand, Root.TransformPoint(left), -Root.right);
+            }
+        }
+
         internal void WearTexture(Texture2D texture)
         {
             if (skin == null || texture == null)

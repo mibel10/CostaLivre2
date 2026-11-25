@@ -34,7 +34,7 @@ namespace CostaLivre
         private static readonly Vector3 MenuActorPosition = new(18.9f, 0, -10.8f);
 
         private readonly Guard[] guards = new Guard[GuardPosts.Length];
-        private readonly InputAction[] weaponSlots = new InputAction[2];
+        private readonly InputAction[] weaponSlots = new InputAction[3];
         private HarborBlockout harbor;
         private CostaCity city;
         private CostaJobs jobs;
@@ -247,7 +247,10 @@ namespace CostaLivre
             bool equipped = previewSlot >= 0;
             if (equipped)
             {
-                menuBody.HoldWeapon(false, 12f, false);
+                if (previewSlot == HarborArsenal.Knife)
+                    menuBody.HoldKnife(false, false, -1);
+                else
+                    menuBody.HoldWeapon(false, 12f, false);
                 menuWeaponMount.SetPositionAndRotation(menuBody.WeaponHand,
                     menuBody.Root.rotation * Quaternion.Euler(15, -9, 0));
             }
@@ -683,13 +686,13 @@ namespace CostaLivre
             if (Pressed(reload, TouchControl.Reload))
                 arsenal.Reload();
 
-            bool aiming = arsenal.Armed && rollClock <= 0 && Held(aim, TouchControl.Aim)
+            bool aiming = arsenal.HasFirearm && rollClock <= 0 && Held(aim, TouchControl.Aim)
                 && (touch.Down(TouchControl.Aim) || Cursor.lockState == CursorLockMode.Locked || aim.activeControl?.device is Gamepad);
             MovePlayer(aiming);
             Physics.SyncTransforms();
             PositionCamera(aiming && rollClock <= 0);
 
-            bool fireEnabled = rollClock <= 0 && !recapturing
+            bool fireEnabled = rollClock <= 0 && (!arsenal.KnifeEquipped || !crouching) && !recapturing
                 && (touch.Down(TouchControl.Fire) || Cursor.lockState == CursorLockMode.Locked || shoot.activeControl?.device is Gamepad);
             bool contractCombat = !session.Online && encounter.Combat;
             if (arsenal.Update(followCamera, playerBody.WeaponHand, pitch, fireEnabled && Pressed(shoot, TouchControl.Fire),
@@ -987,6 +990,7 @@ namespace CostaLivre
 
         private void CycleWeapons()
         {
+            int previous = arsenal.Slot;
             if (weaponSlots[0].WasPressedThisFrame())
             {
                 gamepad = false;
@@ -998,11 +1002,23 @@ namespace CostaLivre
                 gamepad = false;
                 arsenal.SelectHeavy();
             }
-            else if (Pressed(nextWeapon, TouchControl.Swap) || previousWeapon.WasPressedThisFrame())
+            else if (weaponSlots[2].WasPressedThisFrame())
+            {
+                gamepad = false;
+                arsenal.Select(HarborArsenal.Knife);
+            }
+            else if (Pressed(nextWeapon, TouchControl.Swap))
+            {
+                gamepad = !touch.Pressed(TouchControl.Swap);
+                arsenal.Cycle(1);
+            }
+            else if (previousWeapon.WasPressedThisFrame())
             {
                 gamepad = true;
-                arsenal.Cycle();
+                arsenal.Cycle(-1);
             }
+            if (session.Online && previous != arsenal.Slot)
+                session.Request("equip", arsenal.Slot);
         }
 
         private void PositionCamera(bool aiming, bool snap = false)
@@ -1100,7 +1116,8 @@ namespace CostaLivre
 
             walking = direction.sqrMagnitude > 0.015f || rolling;
             runningPose = running;
-            float speed = crouching ? 2f : running ? 7.9f : aiming ? 2.65f : 4.15f;
+            float speed = crouching ? 2f : running ? HarborArsenal.SprintSpeed(arsenal.Slot)
+                : HarborArsenal.WalkSpeed(arsenal.Slot, aiming);
             Vector3 velocity = direction * speed;
             if (rolling)
             {
@@ -1142,13 +1159,15 @@ namespace CostaLivre
             {
                 HarborCharacter.Motion motion = direction.sqrMagnitude < 0.015f ? HarborCharacter.Motion.Idle
                     : running ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Walk;
-                playerBody.Animate(motion, aiming ? 0.79f : 1f);
+                playerBody.Animate(motion, HarborArsenal.GaitSpeed(arsenal.Slot, running, aiming, crouching));
             }
 
             if (crouching)
                 playerBody.CrouchPose();
-            if (arsenal.Armed)
-                playerBody.HoldWeapon(aiming, pitch, arsenal.Slot != 0);
+            if (arsenal.KnifeEquipped)
+                playerBody.HoldKnife(running && grounded, crouching, arsenal.KnifeSwing);
+            else if (arsenal.HasFirearm)
+                playerBody.HoldWeapon(aiming, pitch, HarborArsenal.IsHeavy(arsenal.Slot));
         }
 
         private void ResizeController(float height)

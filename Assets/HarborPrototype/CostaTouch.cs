@@ -146,8 +146,10 @@ namespace CostaLivre
             GUI.color = highlighted ? new Color(.9f, .55f, .25f, .83f) : new Color(.07f, .12f, .16f, .65f);
             GUI.DrawTexture(area, Texture2D.whiteTexture);
             GUI.color = Color.white;
-            caption.fontSize = Mathf.Max(10, Mathf.RoundToInt(area.width * .22f));
-            GUI.Label(area, driving && i == (int)Control.Jump ? L("Brake", "Freio") : Title(i), caption);
+            string label = driving && i == (int)Control.Jump ? L("Brake", "Freio") : Title(i);
+            float fontScale = Mathf.Min(.22f, 1.5f / label.Length);
+            caption.fontSize = Mathf.Max(8, Mathf.RoundToInt(area.width * fontScale));
+            GUI.Label(area, label, caption);
             GUI.color = previous;
         }
 

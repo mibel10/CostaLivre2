@@ -494,6 +494,8 @@ namespace CostaLivre
             robberies.Refresh(session.Sites);
         }
 
+        private bool Pressed(InputAction action, TouchControl control) => action.WasPressedThisFrame() || touch.Pressed(control);
+        private bool Held(InputAction action, TouchControl control) => action.IsPressed() || touch.Down(control);
         private Vector2 MovementInput() => touch.Down(TouchControl.Move) ? touch.Move : move.ReadValue<Vector2>();
 
         private void Update()
@@ -514,7 +516,7 @@ namespace CostaLivre
                     return;
                 }
                 if ((!menu.OnlinePage || session.Online)
-                    && ((restart.WasPressedThisFrame() || touch.Pressed(TouchControl.Retry)) || Keyboard.current?.enterKey.wasPressedThisFrame == true))
+                    && (Pressed(restart, TouchControl.Retry) || Keyboard.current?.enterKey.wasPressedThisFrame == true))
                 {
                     gamepad = restart.activeControl?.device is Gamepad;
                     if (CanResume())
@@ -522,7 +524,7 @@ namespace CostaLivre
                     else
                         StartRun();
                 }
-                else if (((openMenu.WasPressedThisFrame() || touch.Pressed(TouchControl.Menu)) || jobsBoard.WasPressedThisFrame()) && CanResume())
+                else if ((Pressed(openMenu, TouchControl.Menu) || jobsBoard.WasPressedThisFrame()) && CanResume())
                 {
                     ResumeRun();
                 }
@@ -535,13 +537,13 @@ namespace CostaLivre
 
             if (overlay != FieldOverlay.None)
             {
-                if ((openMenu.WasPressedThisFrame() || touch.Pressed(TouchControl.Menu)) || (overlay == FieldOverlay.Map && (mapKey.WasPressedThisFrame() || touch.Pressed(TouchControl.Map)))
-                    || (overlay == FieldOverlay.Bag && (bagKey.WasPressedThisFrame() || touch.Pressed(TouchControl.Bag))))
+                if (Pressed(openMenu, TouchControl.Menu) || (overlay == FieldOverlay.Map && Pressed(mapKey, TouchControl.Map))
+                    || (overlay == FieldOverlay.Bag && Pressed(bagKey, TouchControl.Bag)))
                     CloseOverlay();
                 return;
             }
 
-            if ((openMenu.WasPressedThisFrame() || touch.Pressed(TouchControl.Menu)) || (!session.Online && jobsBoard.WasPressedThisFrame()))
+            if (Pressed(openMenu, TouchControl.Menu) || (!session.Online && jobsBoard.WasPressedThisFrame()))
             {
                 if (jobsBoard.WasPressedThisFrame())
                     menu.ShowJobs();
@@ -549,7 +551,7 @@ namespace CostaLivre
                 return;
             }
 
-            if (!session.Online && (restart.WasPressedThisFrame() || touch.Pressed(TouchControl.Retry)))
+            if (!session.Online && Pressed(restart, TouchControl.Retry))
             {
                 gamepad = restart.activeControl?.device is Gamepad;
                 ResetRun();
@@ -559,13 +561,13 @@ namespace CostaLivre
             if (state == RunState.Delivered || state == RunState.Caught)
                 return;
 
-            if ((mapKey.WasPressedThisFrame() || touch.Pressed(TouchControl.Map)))
+            if (Pressed(mapKey, TouchControl.Map))
             {
                 OpenOverlay(FieldOverlay.Map);
                 return;
             }
 
-            if ((bagKey.WasPressedThisFrame() || touch.Pressed(TouchControl.Bag)))
+            if (Pressed(bagKey, TouchControl.Bag))
             {
                 OpenOverlay(FieldOverlay.Bag);
                 return;
@@ -585,7 +587,7 @@ namespace CostaLivre
             if (look.activeControl?.device is Gamepad)
                 cameraInput *= 150f * Time.deltaTime;
             else
-                cameraInput *= Cursor.lockState == CursorLockMode.Locked && !recapturing ? 0.14f * menu.Sensitivity : 0;
+                cameraInput *= look.activeControl?.device is not Touchscreen && Cursor.lockState == CursorLockMode.Locked && !recapturing ? 0.14f * menu.Sensitivity : 0;
 
             cameraInput += touch.Look * (100f / Mathf.Max(1, Screen.height)) * menu.Sensitivity;
             yaw = Mathf.Repeat(yaw + cameraInput.x, 360f);
@@ -601,7 +603,7 @@ namespace CostaLivre
             }
             cargoPack.SetActive(CurrentBag.Count > 0 || state == RunState.Escape);
             cityMap.CheckWaypoint(player.transform.position);
-            bool interaction = (interact.WasPressedThisFrame() || touch.Pressed(TouchControl.Use));
+            bool interaction = Pressed(interact, TouchControl.Use);
             if (interaction && car == null)
             {
                 if (IsPolice)
@@ -629,7 +631,7 @@ namespace CostaLivre
 
             if (car != null)
             {
-                car.Drive(MovementInput(), (jump.IsPressed() || touch.Down(TouchControl.Jump)));
+                car.Drive(MovementInput(), Held(jump, TouchControl.Jump));
                 player.transform.position = car.Root.position;
                 if (car.IsBike)
                 {
@@ -651,10 +653,10 @@ namespace CostaLivre
 
             CycleWeapons();
             bool wasReloading = arsenal.Reloading;
-            if ((reload.WasPressedThisFrame() || touch.Pressed(TouchControl.Reload)))
+            if (Pressed(reload, TouchControl.Reload))
                 arsenal.Reload();
 
-            bool aiming = arsenal.Armed && rollClock <= 0 && (aim.IsPressed() || touch.Down(TouchControl.Aim))
+            bool aiming = arsenal.Armed && rollClock <= 0 && Held(aim, TouchControl.Aim)
                 && (touch.Down(TouchControl.Aim) || Cursor.lockState == CursorLockMode.Locked || aim.activeControl?.device is Gamepad);
             MovePlayer(aiming);
             Physics.SyncTransforms();
@@ -662,8 +664,8 @@ namespace CostaLivre
 
             bool fireEnabled = rollClock <= 0 && !recapturing
                 && (touch.Down(TouchControl.Fire) || Cursor.lockState == CursorLockMode.Locked || shoot.activeControl?.device is Gamepad);
-            if (arsenal.Update(followCamera, playerBody.WeaponHand, pitch, fireEnabled && (shoot.WasPressedThisFrame() || touch.Pressed(TouchControl.Fire)),
-                fireEnabled && (shoot.IsPressed() || touch.Down(TouchControl.Fire)), aiming, HitGuard))
+            if (arsenal.Update(followCamera, playerBody.WeaponHand, pitch, fireEnabled && Pressed(shoot, TouchControl.Fire),
+                fireEnabled && Held(shoot, TouchControl.Fire), aiming, HitGuard))
             {
                 if (session.Online)
                     session.Fire(arsenal.Slot, arsenal.ShotDirection);
@@ -933,7 +935,7 @@ namespace CostaLivre
                 gamepad = false;
                 arsenal.SelectHeavy();
             }
-            else if ((nextWeapon.WasPressedThisFrame() || touch.Pressed(TouchControl.Swap)) || previousWeapon.WasPressedThisFrame())
+            else if (Pressed(nextWeapon, TouchControl.Swap) || previousWeapon.WasPressedThisFrame())
             {
                 gamepad = true;
                 arsenal.Cycle();
@@ -969,13 +971,13 @@ namespace CostaLivre
             Quaternion heading = Quaternion.Euler(0, yaw, 0);
             Vector3 direction = heading * new Vector3(input.x, 0, input.y);
 
-            bool holdingSprint = (sprint.IsPressed() || touch.Down(TouchControl.Sprint));
+            bool holdingSprint = Held(sprint, TouchControl.Sprint);
             if (!holdingSprint)
                 needsSprintRelease = false;
 
             if (rollClock <= 0)
             {
-                bool wantsCrouch = grounded && (crouchKey.IsPressed() || touch.Down(TouchControl.Crouch));
+                bool wantsCrouch = grounded && Held(crouchKey, TouchControl.Crouch);
                 if (wantsCrouch && !crouching)
                 {
                     crouching = true;
@@ -991,7 +993,7 @@ namespace CostaLivre
             }
 
             rollCooldown = Mathf.Max(0, rollCooldown - step);
-            if (grounded && !crouching && rollClock <= 0 && rollCooldown <= 0 && stamina >= 0.75f && (roll.WasPressedThisFrame() || touch.Pressed(TouchControl.Roll)))
+            if (grounded && !crouching && rollClock <= 0 && rollCooldown <= 0 && stamina >= 0.75f && Pressed(roll, TouchControl.Roll))
             {
                 rollDirection = direction.sqrMagnitude > 0.01f ? direction.normalized : heading * Vector3.forward;
                 rollClock = RollDuration;
@@ -1020,7 +1022,7 @@ namespace CostaLivre
             if (grounded)
             {
                 verticalSpeed = -2.3f;
-                if (!rolling && !crouching && (jump.WasPressedThisFrame() || touch.Pressed(TouchControl.Jump)))
+                if (!rolling && !crouching && Pressed(jump, TouchControl.Jump))
                 {
                     verticalSpeed = 5.8f;
                     grounded = false;
@@ -1304,7 +1306,8 @@ namespace CostaLivre
                     delivered
                         ? L($"Safehouse reached in {escapeSeconds:0.0} seconds.", $"Você chegou ao esconderijo em {escapeSeconds:0.0} s.")
                         : L("The police intercepted you.", "A polícia interceptou você."),
-                    gamepad ? L("START   Retry     SELECT   Menu", "START   Reiniciar     SELECT   Menu")
+                    CostaTouch.Available ? L("Tap Retry or Menu", "Toque em Repetir ou Menu")
+                        : gamepad ? L($"START   Retry     {padBindings.Name(12)}   Menu", $"START   Reiniciar     {padBindings.Name(12)}   Menu")
                         : L("F5   Retry     ESC   Menu", "F5   Reiniciar     ESC   Menu"),
                     delivered ? HarborBlockout.Mint : HarborBlockout.Amber);
                 return;
@@ -1374,8 +1377,10 @@ namespace CostaLivre
             if (car != null && Time.unscaledTime < blockedExitUntil)
                 return L("Both sides are blocked", "Saída bloqueada dos dois lados");
             if (car != null)
-                return L($"{use} Exit   {(gamepad ? padBindings.Name(1) : bindings.Name(1))} Brake",
-                    $"{use} Sair   {(gamepad ? padBindings.Name(1) : bindings.Name(1))} Frear");
+            {
+                string brake = CostaTouch.Available ? L("Brake", "Freio") : gamepad ? padBindings.Name(1) : bindings.Name(1);
+                return L($"{use} Exit   {brake} Brake", $"{use} Sair   {brake} Frear");
+            }
             if (IsPolice && remotes.ArrestCandidate(player.transform.position) != null)
                 return L($"{use} Arrest", $"{use} Prender");
             if (!IsPolice && CostaSession.AtVendor(player.transform.position))
@@ -1409,6 +1414,8 @@ namespace CostaLivre
                     $"{use} Comprar Vila {property + 1:00}  ·  {Money(CostaJobs.Prices[property])}");
             if (NearbyVehicle() != null)
                 return L($"{use} Drive vehicle", $"{use} Usar veículo");
+            if (CostaTouch.Available)
+                return L("Drag to look", "Arraste para olhar");
             if (!gamepad && Cursor.lockState != CursorLockMode.Locked)
                 return L("Click to capture the mouse", "Clique para capturar o mouse");
 

@@ -51,6 +51,7 @@ namespace CostaLivre
         private CostaLook localLook;
         private CostaLook menuLook;
         private bool wasOnline;
+        private bool pausedForFocus;
         private bool wasPolice;
         private bool crouching;
         private bool walking;
@@ -329,7 +330,18 @@ namespace CostaLivre
         private void OnApplicationFocus(bool focused)
         {
             if (!focused)
+            {
                 SetCursor(false);
+                pausedForFocus = !session.Online && !inMenu && overlay == FieldOverlay.None;
+                if (pausedForFocus)
+                    Time.timeScale = 0;
+            }
+            else if (pausedForFocus)
+            {
+                pausedForFocus = false;
+                if (!inMenu && overlay == FieldOverlay.None)
+                    Time.timeScale = 1;
+            }
         }
 
         private void TickNetwork()
@@ -432,6 +444,8 @@ namespace CostaLivre
         private void Update()
         {
             TickNetwork();
+            if (pausedForFocus)
+                return;
             if (inMenu)
             {
                 if (menu.CapturingKey)

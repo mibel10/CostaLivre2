@@ -841,7 +841,9 @@ namespace CostaLivre
                     continue;
                 CostaVehicle candidate = cars[i];
                 float separation = (candidate.Root.position - player.transform.position).sqrMagnitude;
-                if (separation <= distance)
+                if (separation <= distance && (!Physics.Linecast(player.transform.position + Vector3.up * 0.8f,
+                    candidate.Root.position + Vector3.up * 0.8f, out RaycastHit obstruction,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) || obstruction.transform == candidate.Root))
                 {
                     distance = separation;
                     result = candidate;

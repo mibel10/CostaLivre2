@@ -437,7 +437,10 @@ namespace CostaLivre
                     if (avatar.vehicle < 0 && msg.index >= 0 && msg.index < hostCars.Length)
                     {
                         Vehicle car = hostCars[msg.index];
-                        if (car.driver == 0 && Near(car.pos, avatar.pos, 4.0f))
+                        if (car.driver == 0 && Near(car.pos, avatar.pos, 4.0f)
+                            && (!Physics.Linecast(avatar.pos + Vector3.up * 0.8f, car.pos + Vector3.up * 0.8f,
+                                out RaycastHit obstruction, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
+                                || obstruction.transform == sceneVehicles[msg.index].Root))
                         {
                             car.driver = avatar.id;
                             avatar.vehicle = msg.index;

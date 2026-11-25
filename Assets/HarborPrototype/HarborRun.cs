@@ -51,6 +51,7 @@ namespace CostaLivre
         private CostaLook localLook;
         private CostaLook menuLook;
         private bool wasOnline;
+        private bool enteredOnlineWorld;
         private bool pausedForFocus;
         private bool wasPolice;
         private bool crouching;
@@ -255,7 +256,7 @@ namespace CostaLivre
         private void ResumeRun()
         {
             if (session.Online)
-                enteredRun = true;
+                enteredRun = enteredOnlineWorld = true;
             if (menu.SelectionVersion != appliedSelection)
             {
                 appliedSelection = menu.SelectionVersion;
@@ -356,6 +357,7 @@ namespace CostaLivre
                 pos = player.transform.position,
                 yaw = car != null ? car.Root.eulerAngles.y : playerModel.eulerAngles.y,
                 revision = netRevision,
+                playing = enteredOnlineWorld,
                 standing = grounded && !crouching && rollClock <= 0 && car == null,
                 crouched = crouching,
                 moving = !inMenu && overlay == FieldOverlay.None && walking,
@@ -369,6 +371,7 @@ namespace CostaLivre
                 if (wasOnline)
                 {
                     wasOnline = false;
+                    enteredOnlineWorld = false;
                     netRevision = -1;
                     pendingBuy = -1;
                     remotes.Clear();

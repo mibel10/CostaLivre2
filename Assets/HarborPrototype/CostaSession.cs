@@ -29,6 +29,7 @@ namespace CostaLivre
             public bool police;
             public bool crouched;
             public bool standing = true;
+            public bool playing;
             public bool moving;
             public bool running;
             public bool wanted;
@@ -312,6 +313,7 @@ namespace CostaLivre
                             disconnected.Remove(peer.ResumeKey);
                             peer.Pose = saved.Pose;
                             peer.Pose.name = SafeName(message.name);
+                            peer.Pose.playing = false;
                             peer.Credits = saved.Credits;
                             peer.Weapons = saved.Weapons;
                             peer.Bag.Replace(saved.Bag.Amounts);
@@ -393,11 +395,18 @@ namespace CostaLivre
             Avatar avatar = peer.Pose;
             if (msg.type == "pose")
             {
-                if (now >= peer.HeldUntil)
-                    UpdatePose(peer, msg.pose, now);
+                if (msg.pose != null && msg.pose.revision == avatar.revision)
+                {
+                    avatar.playing |= msg.pose.playing;
+                    if (avatar.playing && now >= peer.HeldUntil)
+                        UpdatePose(peer, msg.pose, now);
+                }
                 return;
             }
             if (now < peer.HeldUntil && msg.type != "outfit")
+                return;
+
+            if (!avatar.playing && msg.type != "police" && msg.type != "outfit")
                 return;
 
             switch (msg.type)
@@ -525,7 +534,7 @@ namespace CostaLivre
                 return;
             foreach (Peer target in peers)
             {
-                if (!target.Ready || target.Pose.id != id || target.Pose.police || target.Pose.vehicle >= 0
+                if (!target.Ready || target.Pose.id != id || !target.Pose.playing || target.Pose.police || target.Pose.vehicle >= 0
                     || now < target.HeldUntil || now < target.ArrestAfter)
                     continue;
 

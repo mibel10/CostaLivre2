@@ -30,7 +30,7 @@ namespace CostaLivre
         {
             foreach (CostaSession.Avatar avatar in session.Players)
             {
-                if (avatar.id == session.Local.id)
+                if (avatar.id == session.Local.id || !avatar.playing)
                     continue;
                 if (!models.TryGetValue(avatar.id, out Rendered model))
                 {
@@ -72,7 +72,7 @@ namespace CostaLivre
             {
                 bool found = false;
                 foreach (CostaSession.Avatar avatar in session.Players)
-                    if (avatar.id == pair.Key) { found = true; break; }
+                    if (avatar.id == pair.Key && avatar.playing) { found = true; break; }
                 if (!found) stale.Add(pair.Key);
             }
             foreach (int id in stale)

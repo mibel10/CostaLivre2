@@ -652,6 +652,12 @@ namespace CostaLivre
 
         private void SelectJob(int index)
         {
+            if (CanResume() && (index >= 0 && jobs.Active == index || index == -2 && harborJob))
+            {
+                ResumeRun();
+                return;
+            }
+
             bool start = !enteredRun || state == RunState.Caught || state == RunState.Delivered;
             harborJob = index == -2;
             if (start)

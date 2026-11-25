@@ -557,8 +557,7 @@ namespace CostaLivre
             peer.Pose.police = police;
             peer.Pose.standing = true;
             peer.Pose.crouched = peer.Pose.moving = peer.Pose.running = false;
-            peer.Pose.wanted = false;
-            peer.Bag.Clear();
+            peer.Pose.wanted = !police && peer.Bag.Count > 0;
             peer.Pose.pos = police ? PoliceSpawn + Vector3.right * (peer.Pose.id % 4) : CriminalSpawn;
             peer.Pose.yaw = police ? 180 : 350;
             peer.Pose.revision++;

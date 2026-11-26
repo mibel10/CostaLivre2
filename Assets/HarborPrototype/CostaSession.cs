@@ -699,7 +699,9 @@ namespace CostaLivre
                 Vehicle car = hostCars[avatar.vehicle];
                 CostaVehicle rules = sceneVehicles[avatar.vehicle];
                 float speed = pose.held / 10f;
-                float speedLimit = Mathf.Min(rules.TopSpeed, Mathf.Abs(car.speed) + rules.Acceleration * elapsed + 0.45f);
+                float acceleration = Mathf.Sign(speed) != Mathf.Sign(car.speed) ? CostaVehicle.BrakeAcceleration
+                    : rules.Acceleration;
+                float speedLimit = Mathf.Min(rules.TopSpeed, Mathf.Abs(car.speed) + acceleration * elapsed + 0.45f);
                 float turn = Mathf.Abs(Mathf.DeltaAngle(car.yaw, pose.yaw));
                 float travel = Mathf.Max(Mathf.Abs(car.speed), Mathf.Abs(speed)) * elapsed;
                 float slack = Mathf.Min(0.65f, peer.TravelSlack + travel - distance);

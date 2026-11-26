@@ -6,6 +6,7 @@ namespace CostaLivre
     {
         internal enum Style { Sedan, Compact, Executive, Super, Track, StreetBike, Cruiser }
 
+        internal const float BrakeAcceleration = 20f;
         internal readonly Transform Root;
         private readonly Transform shell;
         private readonly Style style;
@@ -314,7 +315,7 @@ namespace CostaLivre
         {
             float dt = Time.deltaTime;
             float target = braking ? 0 : input.y >= 0 ? topSpeed * input.y : ReverseSpeed * input.y;
-            float acceleration = braking || Mathf.Sign(target) != Mathf.Sign(speed) ? 20f
+            float acceleration = braking || Mathf.Sign(target) != Mathf.Sign(speed) ? BrakeAcceleration
                 : Mathf.Abs(input.y) > 0.03f ? engine : 4.4f;
             speed = Mathf.MoveTowards(speed, target, acceleration * dt);
             if (IsBike)

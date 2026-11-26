@@ -461,8 +461,8 @@ namespace CostaLivre
                 scaleNote = $"{Screen.width * percent / 100} × {Screen.height * percent / 100}";
             Text(new Rect(inset, y + 136, 262, 22), scaleNote, label, Grey);
             Fill(new Rect(inset, y + 164, 262, 1), Line);
-            Text(new Rect(inset, y + 174, 262, 23), L($"Render distance   {graphics.Distance} m",
-                $"Distância de renderização   {graphics.Distance} m"), label, Paper);
+            Text(new Rect(inset, y + 174, 262, 23), L($"View distance   {graphics.Distance} m",
+                $"Distância de visão   {graphics.Distance} m"), label, Paper);
             graphics.SetDistance(GraphicsSlider(new Rect(inset, y + 202, 262, 32), graphics.Distance,
                 HarborGraphics.MinDistance, HarborGraphics.MaxDistance));
 

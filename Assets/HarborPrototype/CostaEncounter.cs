@@ -14,6 +14,7 @@ namespace CostaLivre
             internal GameObject Flash;
             internal AudioSource Audio;
             internal int Health = 65;
+            internal int Fired;
             internal float AimInterval;
             internal float AimTime;
             internal float FlashTime;
@@ -160,8 +161,14 @@ namespace CostaLivre
             return false;
         }
 
+        internal Vector3? CombatSource { get; private set; }
+        internal int DamageTaken { get; private set; }
+        internal Vector3? BreachFlash { get; private set; }
+
         internal CostaVehicle Advance(Vector3 player, CostaVehicle driven, bool use, bool hold, bool invulnerable, float delta)
         {
+            CombatSource = BreachFlash = null;
+            DamageTaken = 0;
             TickFlee(delta);
             if (!Active)
                 return null;
@@ -186,7 +193,10 @@ namespace CostaLivre
             {
                 breach = near && hold ? breach + delta : 0;
                 if (breach >= BreachSeconds)
+                {
+                    BreachFlash = step.Point;
                     Complete();
+                }
                 return null;
             }
             if (!use || !near)
@@ -397,8 +407,19 @@ namespace CostaLivre
                 opponent.AimTime = 0;
                 opponent.FlashTime = 0.07f;
                 opponent.Audio.PlayOneShot(enemyShot, 0.26f);
-                if (!invulnerable)
-                    Health = Mathf.Max(0, Health - 6);
+                opponent.Fired++;
+                if (invulnerable || (toward.sqrMagnitude > 110f && opponent.Fired % 3 == 0))
+                {
+                    if (DamageTaken == 0)
+                        CombatSource = player + Vector3.Cross(Vector3.up, toward.normalized) * .95f + Vector3.up;
+                }
+                else
+                {
+                    int amount = Mathf.Min(Health, 6);
+                    Health -= amount;
+                    DamageTaken += amount;
+                    CombatSource = enemy.position + Vector3.up;
+                }
             }
         }
 

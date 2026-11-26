@@ -15,7 +15,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 8;
+        private const int Protocol = 9;
         private const float Interval = 0.083f;
         internal const int PoliceArmor = 50;
         internal const int MaxWanted = 6;
@@ -46,6 +46,8 @@ namespace CostaLivre
             public float landingCompression;
             public int gesture;
             public float gestureProgress;
+            public float impactStrength;
+            public float reloadProgress = -1;
             public Vector3 gestureTarget;
             public int equipped = HarborArsenal.Knife;
             public int shotNumber;
@@ -82,6 +84,17 @@ namespace CostaLivre
         }
 
         [Serializable]
+        internal sealed class ImpactEvent
+        {
+            public string type = "surface";
+            public int protocol = Protocol;
+            public int material;
+            public Vector3 point;
+            public Vector3 normal;
+            public bool broken;
+        }
+
+        [Serializable]
         private sealed class Frame
         {
             public string type;
@@ -106,6 +119,12 @@ namespace CostaLivre
             public bool[] reloading;
             public bool[] sites;
             public Vector3 direction;
+            public int[] scenery;
+            public int harmSequence;
+            public int harmAmount;
+            public Vector3 harmSource;
+            public int pressureSequence;
+            public Vector3 pressureSource;
         }
 
         [Serializable]
@@ -118,6 +137,7 @@ namespace CostaLivre
             public Avatar[] players;
             public Vehicle[] vehicles;
             public bool[] sites;
+            public int[] scenery;
         }
 
         [Serializable]
@@ -128,6 +148,11 @@ namespace CostaLivre
             public int weapons;
             public int[] bag;
             public int equipSequence;
+            public int harmSequence;
+            public int harmAmount;
+            public Vector3 harmSource;
+            public int pressureSequence;
+            public Vector3 pressureSource;
             public int[] loaded = new int[HarborArsenal.WeaponNames.Length];
             public bool[] reloading = new bool[HarborArsenal.WeaponNames.Length];
         }
@@ -165,6 +190,8 @@ namespace CostaLivre
             internal float ArrestStarted;
             internal float ArrestAfter;
             internal float NextShot;
+            internal float NextPressure;
+            internal float LastHarm;
             internal float RespawnProtection;
             internal readonly int[] UsedRounds = new int[HarborArsenal.WeaponNames.Length];
             internal readonly float[] ReloadEnds = new float[HarborArsenal.WeaponNames.Length];
@@ -182,6 +209,11 @@ namespace CostaLivre
         private RSA clientIdentity;
         private bool identitySent;
         private readonly CostaVehicle[] sceneVehicles;
+        private readonly CostaWorldDamage scenery;
+        private readonly Queue<ImpactEvent> surfaceEvents = new();
+        private readonly ImpactEvent impactFrame = new();
+        private int lastHarm;
+        private int lastPressure;
         private readonly float[] restock = new float[CostaRobberies.Sites.Length];
         private readonly int[] initialHomes;
         private TcpListener listener;
@@ -236,6 +268,10 @@ namespace CostaLivre
         internal bool WorldIsNight => HarborDaylight.IsNight(!Hosting && hasWorldHour ? receivedWorldHour : WorldHour);
         internal string Status => status;
         internal string Notice { get; private set; } = "";
+        internal bool ReadImpact(out ImpactEvent impact) => surfaceEvents.TryDequeue(out impact);
+        internal (int Amount, Vector3 Source) Harm { get; private set; }
+        internal Vector3? Pressure { get; private set; }
+
         internal int NoticeEvent => noticeEvents.TryDequeue(out int code) ? code : 0;
         internal string CurrentNotice => Time.realtimeSinceStartup < noticeUntil ? Notice : "";
         internal int PoliceCount
@@ -251,8 +287,9 @@ namespace CostaLivre
         internal int PoliceLimit => AllowedPolice(Players.Length);
         internal static int AllowedPolice(int players) => Mathf.Min(4, Mathf.Max(0, players) * 3 / 10);
 
-        internal CostaSession(CostaVehicle[] vehicles)
+        internal CostaSession(CostaVehicle[] vehicles, CostaWorldDamage scenery = null)
         {
+            this.scenery = scenery;
             sceneVehicles = vehicles;
             initialHomes = new int[vehicles.Length];
             for (int i = 0; i < vehicles.Length; i++)
@@ -341,6 +378,8 @@ namespace CostaLivre
 
         internal void Tick(Avatar localPose)
         {
+            Harm = default;
+            Pressure = null;
             float now = Time.realtimeSinceStartup;
             float delta = Mathf.Clamp(now - lastClock, 0, 0.10f);
             lastClock = now;
@@ -408,6 +447,15 @@ namespace CostaLivre
                     noticeUntil = now + 4.2f;
                     continue;
                 }
+                if (frame != null && frame.protocol == Protocol && frame.type == "surface")
+                {
+                    ImpactEvent surface = JsonUtility.FromJson<ImpactEvent>(text);
+                    if (surfaceEvents.Count < 24 && surface.material >= 0 && surface.material <= (int)CostaWorldDamage.Surface.Earth
+                        && Finite(surface.point.x) && Finite(surface.point.y) && Finite(surface.point.z)
+                        && Finite(surface.normal.x) && Finite(surface.normal.y) && Finite(surface.normal.z))
+                        surfaceEvents.Enqueue(surface);
+                    continue;
+                }
                 if (frame == null || frame.type != "state" || frame.protocol != Protocol || frame.players == null
                     || frame.players.Length > MaxPlayers || frame.vehicles == null || frame.vehicles.Length != sceneVehicles.Length
                     || Array.Exists(frame.players, avatar => avatar == null || avatar.vehicle < -1 || avatar.vehicle >= sceneVehicles.Length
@@ -432,6 +480,19 @@ namespace CostaLivre
                         Local = avatar;
                 if (Local == null)
                     continue;
+
+                if (!Hosting)
+                    scenery?.Apply(frame.scenery);
+                if (frame.harmSequence != lastHarm)
+                {
+                    lastHarm = frame.harmSequence;
+                    Harm = (Mathf.Clamp(frame.harmAmount, 1, 120), frame.harmSource);
+                }
+                if (frame.pressureSequence != lastPressure)
+                {
+                    lastPressure = frame.pressureSequence;
+                    Pressure = frame.pressureSource;
+                }
 
                 if (frame.hasWorldHour && frame.worldHour >= 0f && frame.worldHour < 24f)
                 {
@@ -639,6 +700,11 @@ namespace CostaLivre
                         peer.UsedRounds[i] = 0;
                     }
                 }
+                int heldWeapon = peer.Pose.equipped;
+                float reloadEnds = heldWeapon >= 0 && heldWeapon < HarborArsenal.Knife
+                    ? peer.ReloadEnds[heldWeapon] : 0;
+                peer.Pose.reloadProgress = reloadEnds > now ? Mathf.Clamp01(1 -
+                    (reloadEnds - now) / HarborArsenal.ShotRules(heldWeapon).reload) : -1;
                 float landProgress = peer.LandedAt >= 0
                     ? (now - peer.LandedAt) / Mathf.Lerp(0.14f, 0.43f, peer.LandingSeverity) : 1;
                 peer.Pose.landingCompression = landProgress < 1
@@ -656,6 +722,7 @@ namespace CostaLivre
             active.CopyTo(world.players);
             world.vehicles = hostCars;
             world.worldHour = WorldHour;
+            world.scenery = scenery?.Capture();
             for (int i = 0; i < world.sites.Length; i++)
                 world.sites[i] = now >= restock[i];
             byte[] shared = Encoding.UTF8.GetBytes(JsonUtility.ToJson(world));
@@ -1070,15 +1137,17 @@ namespace CostaLivre
             if (right == Vector3.zero)
                 right = Vector3.right;
             Vector3 up = Vector3.Cross(direction, right);
+            bool sentSurface = false;
             for (int i = 0; i < rules.pellets; i++)
             {
                 Vector2 scatter = HarborArsenal.Scatter(i, rules.pellets, rules.spread, shooter.Pose.aiming);
                 Vector3 ray = (direction + right * scatter.x + up * scatter.y).normalized;
-                DamageAlongRay(shooter, origin, ray, rules.range, rules.damage, now);
+                DamageAlongRay(shooter, origin, ray, rules.range, rules.damage, now, melee, ref sentSurface);
             }
         }
 
-        private void DamageAlongRay(Peer shooter, Vector3 origin, Vector3 direction, float range, int damage, float now)
+        private void DamageAlongRay(Peer shooter, Vector3 origin, Vector3 direction, float range, int damage, float now,
+            bool melee, ref bool sentSurface)
         {
             float closest = Physics.Raycast(origin, direction, out RaycastHit cover, range,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) ? cover.distance : range;
@@ -1099,15 +1168,35 @@ namespace CostaLivre
                 }
             }
 
+            if (!melee)
+                NearMiss(shooter, victim, origin, direction, closest, now);
+
             if (victim == null)
+            {
+                if (scenery != null && cover.collider != null)
+                {
+                    bool broken = scenery.Hit(cover.collider, damage);
+                    if (!sentSurface || broken)
+                    {
+                        BroadcastImpact(cover, broken);
+                        sentSurface = true;
+                    }
+                }
                 return;
+            }
             int absorbed = Mathf.Min(victim.Pose.armor, (damage + 1) / 2);
             victim.Pose.armor -= absorbed;
             victim.Pose.health -= damage - absorbed;
             if (!shooter.Pose.police)
                 RaiseHeat(shooter, now, true);
-            SetNotice(victim, 10);
-            BeginGesture(victim, HarborCharacter.Gesture.Impact, now);
+            var feedback = victim.Snapshot;
+            feedback.harmAmount = Mathf.Min(120, damage - absorbed / 2 +
+                (now - victim.LastHarm < .08f ? feedback.harmAmount : 0));
+            victim.LastHarm = now;
+            feedback.harmSource = origin;
+            feedback.harmSequence++;
+            BeginGesture(victim, HarborCharacter.Gesture.Impact, now, origin);
+            victim.Pose.impactStrength = Mathf.Clamp01(feedback.harmAmount / 55f);
             if (victim.Pose.health <= 0)
             {
                 victim.Pose.health = 100;
@@ -1118,6 +1207,39 @@ namespace CostaLivre
                 victim.RespawnProtection = now + 3;
                 SetNotice(victim, 11);
             }
+        }
+
+        private void NearMiss(Peer shooter, Peer victim, Vector3 origin, Vector3 direction, float distance, float now)
+        {
+            foreach (Peer peer in peers)
+            {
+                if (!peer.Ready || peer == shooter || peer == victim || now < peer.NextPressure ||
+                    !peer.Pose.playing || peer.Pose.vehicle >= 0 || now < peer.HeldUntil)
+                    continue;
+                Vector3 center = peer.Pose.pos + Vector3.up * (peer.Pose.crouched ? .71f : 1.18f);
+                float t = Vector3.Dot(center - origin, direction);
+                if (t < .8f || t > distance)
+                    continue;
+                Vector3 closest = origin + direction * t;
+                if ((center - closest).sqrMagnitude > 1.35f * 1.35f ||
+                    Physics.Linecast(closest, center, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    continue;
+                peer.NextPressure = now + .46f;
+                peer.Snapshot.pressureSequence++;
+                peer.Snapshot.pressureSource = closest;
+            }
+        }
+
+        private void BroadcastImpact(RaycastHit hit, bool broken)
+        {
+            impactFrame.point = hit.point;
+            impactFrame.normal = hit.normal;
+            impactFrame.material = (int)scenery.Resolve(hit.collider);
+            impactFrame.broken = broken;
+            string json = JsonUtility.ToJson(impactFrame);
+            foreach (Peer peer in peers)
+                if (peer.Ready && peer.Pose.playing && (peer.Pose.pos - hit.point).sqrMagnitude < 62 * 62)
+                    peer.Wire.Send(json);
         }
 
         internal static float CapsuleEntry(Vector3 origin, Vector3 direction, float halfSegment, float radius)
@@ -1529,6 +1651,11 @@ namespace CostaLivre
             disconnected.Clear();
             expiredResumes.Clear();
             Array.Clear(restock, 0, restock.Length);
+            scenery?.Reset();
+            surfaceEvents.Clear();
+            lastHarm = lastPressure = 0;
+            Harm = default;
+            Pressure = null;
             Players = Array.Empty<Avatar>();
             Cars = null;
             Sites = null;

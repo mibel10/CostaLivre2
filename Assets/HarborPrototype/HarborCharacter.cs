@@ -324,16 +324,21 @@ namespace CostaLivre
             AlignArm(leftShoulder, leftElbow, leftHand, Vector3.Lerp(leftHand.position, left, weight), -Root.right);
         }
 
-        internal void PlayGesture(Gesture gesture, float progress, Vector3 target = default)
+        internal void PlayGesture(Gesture gesture, float progress, Vector3 target = default, float intensity = .5f)
         {
             if (gesture == Gesture.None || progress < 0 || progress > 1)
                 return;
             float reach = Pulse(progress, 0, 1);
             bool pickup = gesture == Gesture.PickUp;
-            float pitch = gesture == Gesture.Impact ? -16f : pickup ? 17f : 6f;
+            float pitch = gesture == Gesture.Impact ? -Mathf.Lerp(5f, 24f, intensity) : pickup ? 17f : 6f;
             Chest.rotation = Quaternion.AngleAxis(pitch * reach, Root.right) * Chest.rotation;
             if (gesture == Gesture.Impact)
+            {
+                float bearing = target == default ? 0 : Root.InverseTransformPoint(target).normalized.x;
+                Chest.rotation = Quaternion.AngleAxis(-bearing * Mathf.Lerp(4, 18, intensity) * reach, Root.forward)
+                    * Chest.rotation;
                 return;
+            }
 
             Vector3 original = rightHand.position;
             Vector3 fallback = Root.TransformPoint(pickup ? new Vector3(0.22f, 0.76f, 0.42f)
@@ -370,6 +375,17 @@ namespace CostaLivre
                     support ? Mathf.Lerp(0.66f, 1, weight) : weight), -Root.right);
             }
         }
+
+        internal Vector3 ReloadGrip(float amount)
+        {
+            Vector3 hold = Root.TransformPoint(new Vector3(.24f, 1.13f + mesh.transform.localPosition.y, .25f));
+            Chest.rotation = Quaternion.AngleAxis(-8f * amount, Root.up) * Chest.rotation;
+            AlignArm(rightShoulder, rightElbow, rightHand, Vector3.Lerp(rightHand.position, hold, amount), Root.right);
+            return rightHand.position;
+        }
+
+        internal void ReloadSupport(Vector3 target, float weight) =>
+            AlignArm(leftShoulder, leftElbow, leftHand, Vector3.Lerp(leftHand.position, target, weight), -Root.right);
 
         internal void HoldKnife(bool sprinting, float swing)
         {

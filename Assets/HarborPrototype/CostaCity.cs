@@ -149,6 +149,14 @@ namespace CostaLivre
                     new Vector3(0.80f, 0.88f, 0.59f), Brass);
             }
 
+            for (int i = 0; i < 3; i++)
+            {
+                Vector3 point = Electronics + new Vector3(-6.2f + i * .72f, .25f, 2.95f);
+                GameObject crate = art.Box("Loose delivery crate", point, new Vector3(.45f, .50f, .42f),
+                    new Color(.34f, .24f, .16f), true, bake: false);
+                art.Damage.Mark(crate, CostaWorldDamage.Surface.Wood, 30);
+            }
+
             yield return 0.35f;
 
             for (int i = 0; i < Estate.Length; i++)
@@ -395,8 +403,9 @@ namespace CostaLivre
                     {
                         Vector3 location = new(x + side * 0.31f, 0, z + planter * 10);
                         art.Box("Boulevard planter", location + Vector3.up * 0.17f, new Vector3(1.2f, 0.34f, 1.2f), Pavement);
-                        art.Box("Planter soil", location + Vector3.up * 0.345f, new Vector3(1.03f, 0.025f, 1.03f),
-                            new Color(0.20f, 0.19f, 0.15f));
+                        GameObject soil = art.Box("Planter soil", location + Vector3.up * 0.345f,
+                            new Vector3(1.03f, 0.025f, 1.03f), new Color(.20f, .19f, .15f), true, bake: false);
+                        art.Damage.Mark(soil, CostaWorldDamage.Surface.Earth, 0);
                         Tree(location + Vector3.up * 0.345f);
                     }
                 }
@@ -437,13 +446,21 @@ namespace CostaLivre
             {
                 art.Box("Lobby side", center + new Vector3(side * (width / 2 - 0.21f), 1.65f, 0),
                     new Vector3(0.42f, 3.30f, depth), color, true, "Concrete", new Vector2(depth / 2.4f, 2));
-                art.Box("Stone entrance wing", new Vector3(entry.x + side * (1.4f + wing / 2), 1.65f, front),
-                    new Vector3(wing, 3.30f, 0.44f), color, true, "Concrete", new Vector2(wing / 2, 2));
-                art.Box("Lobby glazing", new Vector3(entry.x + side * (1.5f + wing / 2), 1.67f, front - 0.24f),
-                    new Vector3(wing * 0.76f, 1.45f, 0.04f), Glass, finish: HarborBlockout.Finish.Glass);
+                float wallX = entry.x + side * (1.4f + wing / 2);
+                art.Box("Stone window base", new Vector3(wallX, .47f, front),
+                    new Vector3(wing, .94f, .44f), color, true, "Concrete", new Vector2(wing / 2, 1));
+                art.Box("Stone window lintel", new Vector3(wallX, 2.85f, front),
+                    new Vector3(wing, .90f, .44f), color, true, "Concrete", new Vector2(wing / 2, 1));
+                for (int jamb = -1; jamb <= 1; jamb += 2)
+                    art.Box("Stone window jamb", new Vector3(wallX + jamb * wing * .44f, 1.67f, front),
+                        new Vector3(wing * .12f, 1.46f, .44f), color, true, "Concrete", Vector2.one);
+                GameObject pane = art.Box("Lobby glazing",
+                    new Vector3(wallX, 1.67f, front - 0.12f),
+                    new Vector3(wing * 0.76f + .03f, 1.47f, 0.055f), Glass, true, bake: false, finish: HarborBlockout.Finish.Glass);
+                art.Damage.Mark(pane, CostaWorldDamage.Surface.Glass, 10);
                 art.Box("Metal entry column", new Vector3(entry.x + side * 1.53f, 1.58f, front - 0.22f),
                     new Vector3(0.18f, 3.16f, 0.18f), trim, finish: HarborBlockout.Finish.Metal);
-                float bay = entry.x + side * (1.5f + wing / 2);
+                float bay = wallX;
                 Color frame = Color.Lerp(Glass, trim, 0.33f);
                 for (int mullion = -1; mullion <= 1; mullion++)
                     art.BatchDecoration("Window mullion", new Vector3(bay + mullion * wing * 0.23f, 1.67f, front - 0.273f),
@@ -589,6 +606,8 @@ namespace CostaLivre
         {
             GameObject part = art.Part(root, primitive, name, center, size, color,
                 name == "Tree trunk" || name == "Fountain basin" || name == "Fountain column");
+            if (name == "Tree trunk")
+                art.Damage.Mark(part, CostaWorldDamage.Surface.Wood, 0);
             if (name == "Tree crown" || name == "Street lamp")
                 part.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
         }

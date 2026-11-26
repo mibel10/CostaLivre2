@@ -7,7 +7,8 @@ namespace CostaLivre
         internal enum Cue
         {
             StepA, StepB, StepC, Jump, Land, Roll, Lock, DoorOpen, DoorShut, Mount, Brake,
-            Equip, Reload, PanelOpen, PanelClose, Loot, Sale, Purchase, Alert, Cuffs, Reward, CarEngine, BikeEngine
+            Equip, PanelOpen, PanelClose, Loot, Sale, Purchase, Alert, Cuffs, Reward, CarEngine, BikeEngine,
+            Concrete, MetalHit, Wood, Glass, Earth, Blast, Incoming, Hurt, ReloadOut, ReloadIn, ReloadDone
         }
 
         internal struct Footfalls
@@ -41,10 +42,20 @@ namespace CostaLivre
         }
 
         private const int Rate = 22050;
-        private readonly AudioClip[] bank = new AudioClip[(int)Cue.BikeEngine + 1];
+        private readonly AudioClip[] bank = new AudioClip[(int)Cue.ReloadDone + 1];
         private readonly AudioSource feedback;
         private readonly AudioSource engine;
         private float nextBrake;
+        private const int ImpactVoices = 6;
+        private readonly AudioSource[] impacts = new AudioSource[ImpactVoices];
+        private readonly CostaImpactParticles particles;
+        private int voice;
+        private float nextPressure;
+        private float pressureAt = -10;
+        private float hurtAt = -10;
+        private float strength;
+        private Vector3 sourcePoint;
+        private Texture2D edgeFade;
 
         internal CostaEffects(Transform parent)
         {
@@ -52,6 +63,15 @@ namespace CostaLivre
             engine = NewSource("Local vehicle engine", parent);
             engine.loop = true;
             engine.volume = 0;
+            particles = new CostaImpactParticles(parent);
+            for (int i = 0; i < impacts.Length; i++)
+            {
+                impacts[i] = NewSource("Spatial impact " + i, parent);
+                impacts[i].spatialBlend = 1;
+                impacts[i].minDistance = 2;
+                impacts[i].maxDistance = 26;
+                impacts[i].rolloffMode = AudioRolloffMode.Linear;
+            }
         }
 
         internal void Play(Cue cue, float volume = 0.45f, AudioSource spatial = null)
@@ -59,6 +79,102 @@ namespace CostaLivre
             AudioSource source = spatial != null ? spatial : feedback;
             if (source.isActiveAndEnabled && volume > 0)
                 source.PlayOneShot(Get(cue), volume);
+        }
+
+        internal void SurfaceHit(CostaWorldDamage.Surface surface, Vector3 point, Vector3 normal, bool broken, Vector3 listener)
+        {
+            if ((listener - point).sqrMagnitude > 56 * 56)
+                return;
+            particles.Burst(surface, point, normal, broken, Application.isMobilePlatform);
+            PlayAt((Cue)((int)Cue.Concrete + (int)surface), point, broken ? .60f : .25f);
+        }
+
+        internal void Explosion(Vector3 point)
+        {
+            particles.Blast(point, Application.isMobilePlatform);
+            PlayAt(Cue.Blast, point, .68f);
+        }
+
+        private void PlayAt(Cue cue, Vector3 point, float volume)
+        {
+            AudioSource source = impacts[voice];
+            voice = (voice + 1) % impacts.Length;
+            source.Stop();
+            source.transform.position = point;
+            Play(cue, volume, source);
+        }
+
+        internal void CombatFeedback(Vector3 from, int damage)
+        {
+            float now = Time.unscaledTime;
+            if (damage > 0)
+            {
+                bool sound = now - hurtAt > .085f;
+                strength = Mathf.Clamp01(Mathf.Max((now - hurtAt < .12f ? strength * .65f : 0),
+                    .23f + damage / 92f));
+                hurtAt = now;
+                sourcePoint = from;
+                if (sound)
+                    Play(Cue.Hurt, Mathf.Lerp(.25f, .47f, strength));
+            }
+            else if (now >= nextPressure)
+            {
+                pressureAt = now;
+                nextPressure = now + .46f;
+                PlayAt(Cue.Incoming, from, .34f);
+            }
+        }
+
+        internal void ResetCombat()
+        {
+            hurtAt = pressureAt = -10;
+            nextPressure = 0;
+        }
+
+        internal void DrawCombat(Camera camera)
+        {
+            float damage = Mathf.Clamp01(1 - (Time.unscaledTime - hurtAt) / .86f) * strength;
+            float pressure = Mathf.Clamp01(1 - (Time.unscaledTime - pressureAt) / .39f);
+            if (damage <= 0 && pressure <= 0)
+                return;
+
+            float w = Screen.width, h = Screen.height;
+            float edge = Mathf.Min(w, h) * .12f;
+            Color previous = GUI.color;
+            GUI.color = new Color(.54f + damage * .23f, .32f - damage * .13f, .22f,
+                .26f * damage + .12f * pressure);
+            edgeFade ??= CreateEdgeFade();
+            GUI.DrawTexture(new Rect(0, 0, edge, h), edgeFade);
+            GUI.DrawTextureWithTexCoords(new Rect(w - edge, 0, edge, h), edgeFade, new Rect(1, 0, -1, 1));
+            if (damage > 0)
+            {
+                Vector3 relative = camera.transform.InverseTransformPoint(sourcePoint);
+                float bearing = Mathf.Atan2(relative.x, relative.z) * Mathf.Rad2Deg;
+                Vector2 center = new(w * .5f, h * .5f);
+                Matrix4x4 matrix = GUI.matrix;
+                GUIUtility.RotateAroundPivot(bearing, center);
+                GUI.color = new Color(.94f, .42f, .29f, damage * .88f);
+                float offset = Mathf.Min(w, h) * .15f;
+                GUI.DrawTexture(new Rect(center.x - offset * .145f, center.y - offset, offset * .29f, edge * .045f),
+                    Texture2D.whiteTexture);
+                GUI.matrix = matrix;
+            }
+            GUI.color = previous;
+        }
+
+        private static Texture2D CreateEdgeFade()
+        {
+            var texture = new Texture2D(48, 1, TextureFormat.RGBA32, false)
+                { name = "Combat edge fade", wrapMode = TextureWrapMode.Clamp };
+            var pixels = new Color32[texture.width];
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                float alpha = 1 - Mathf.SmoothStep(0, 1, i / (float)(pixels.Length - 1));
+                pixels[i] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(alpha * 255));
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            return texture;
         }
 
         internal void Drive(CostaVehicle vehicle, float throttle)
@@ -93,6 +209,13 @@ namespace CostaLivre
 
         internal void Release()
         {
+            particles.Release();
+            Object.Destroy(edgeFade);
+            foreach (AudioSource source in impacts)
+            {
+                source.Stop();
+                Object.Destroy(source.gameObject);
+            }
             engine.Stop();
             feedback.Stop();
             foreach (AudioClip clip in bank)
@@ -119,9 +242,13 @@ namespace CostaLivre
                 Cue.StepA or Cue.StepB or Cue.StepC => 0.15f,
                 Cue.Jump or Cue.Mount or Cue.Equip or Cue.PanelOpen or Cue.PanelClose => 0.19f,
                 Cue.Lock or Cue.DoorShut or Cue.Cuffs => 0.24f,
-                Cue.DoorOpen or Cue.Land or Cue.Roll or Cue.Reload => 0.34f,
+                Cue.DoorOpen or Cue.Land or Cue.Roll => 0.34f,
                 Cue.Brake or Cue.Loot or Cue.Sale or Cue.Purchase => 0.40f,
                 Cue.Alert or Cue.Reward => 0.56f,
+                Cue.Concrete or Cue.Wood or Cue.Earth or Cue.Hurt => 0.20f,
+                Cue.MetalHit or Cue.Glass or Cue.Incoming => 0.30f,
+                Cue.Blast => 0.70f,
+                Cue.ReloadOut or Cue.ReloadIn or Cue.ReloadDone => .13f,
                 _ => 1f
             };
             var samples = new float[Mathf.RoundToInt(Rate * length)];
@@ -159,7 +286,20 @@ namespace CostaLivre
                     Cue.DoorShut => (0.50f * low + 0.42f * Wave(time, 73)) * Fade(time, 23)
                         + 0.7f * Metal(time - 0.020f, high, 610),
                     Cue.Mount or Cue.Equip => Metal(time, high, 840) * 0.62f + 0.25f * low * Fade(time, 24),
-                    Cue.Reload => 0.65f * Metal(time, high, 870) + 0.65f * Metal(time - 0.13f, high, 1140),
+                    Cue.Concrete => (0.74f * low + .37f * high) * Fade(time, 43) + .22f * high * Fade(time - .027f, 56),
+                    Cue.MetalHit => .55f * Metal(time, high, 1530) + .42f * Wave(time, 2316) * Fade(time, 19),
+                    Cue.Wood => (.65f * low + .26f * Wave(time, 287)) * Fade(time, 41) + .22f * high * Fade(time - .014f, 66),
+                    Cue.Glass => (.59f * high + .27f * Wave(time, 3297)) * Fade(time, 49)
+                        + .33f * Metal(time - .024f, high, 2490) + .18f * Metal(time - .065f, high, 3954),
+                    Cue.Earth => (.82f * low + .13f * high) * Fade(time, 31),
+                    Cue.Hurt => (.59f * low + .32f * Wave(time, 74)) * Fade(time, 27),
+                    Cue.Incoming => (.37f * high + .19f * Wave(time, 1650 - 2730 * time))
+                        * Fade(time, 21) * Mathf.Clamp01(time * 53),
+                    Cue.Blast => (.87f * low + .51f * Wave(time, 66 - 72 * time)) * Fade(time, 8)
+                        + .35f * high * Fade(time, 20),
+                    Cue.ReloadOut => .54f * Metal(time, high, 680),
+                    Cue.ReloadIn => .72f * Metal(time, high, 940) + .16f * low * Fade(time, 30),
+                    Cue.ReloadDone => .62f * Metal(time, high, 1290),
                     Cue.Brake => (0.32f * high + 0.13f * Wave(time, 630 - time * 270)) * Fade(time, 10),
                     Cue.PanelOpen => Tone(time, 480) + Tone(time - 0.032f, 680) * 0.68f,
                     Cue.PanelClose => Tone(time, 620) + Tone(time - 0.032f, 420) * 0.65f,

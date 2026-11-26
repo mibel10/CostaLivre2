@@ -78,6 +78,7 @@ namespace CostaLivre
         private readonly LineRenderer tracer;
         private readonly Material tracerMaterial;
         private readonly CostaJobs economy;
+        private readonly CostaReloadMotion reloadMotion = new();
         private int slot = -1;
         private int heavy = -1;
         private int? onlineWeapons;
@@ -145,6 +146,8 @@ namespace CostaLivre
         internal int Capacity => Armed ? Current.Capacity : 0;
         internal float AimFov => Armed ? Current.AimFov : 66f;
         internal Vector3 ShotDirection { get; private set; }
+        internal float ReloadProgress => HasFirearm && !onlineWeapons.HasValue && reloadedAt > Time.time
+            ? Mathf.Clamp01(1 - (reloadedAt - Time.time) / Current.ReloadTime) : -1;
         internal bool Reloading => Armed && (onlineWeapons.HasValue ? hostReloading?[slot] == true : reloadedAt > 0);
         internal void SyncAmmo(int[] loaded, bool[] reloading)
         {
@@ -222,6 +225,7 @@ namespace CostaLivre
             if (IsHeavy(index))
                 heavy = index;
             slot = index;
+            reloadMotion.Attach(index >= 0 && index < Knife ? weapons[index].Model : null, index);
             reloadedAt = 0;
             knifeSwingUntil = 0;
             for (int i = 0; i < weapons.Length; i++)
@@ -274,12 +278,14 @@ namespace CostaLivre
                 reloadedAt = Time.time + Current.ReloadTime;
         }
 
-        internal bool Update(Camera camera, Vector3 hand, float pitch, bool triggerPressed, bool triggerHeld, bool aiming, bool crouching,
-            Action<Collider, int> applyHit)
+        internal bool Update(Camera camera, HarborCharacter body, float pitch, bool triggerPressed, bool triggerHeld, bool aiming, bool crouching,
+            Action<RaycastHit, int, bool> applyHit, CostaEffects effects, float onlineReload, bool canPoseReload)
         {
             if (!Armed)
                 return false;
-            mount.SetPositionAndRotation(hand, mount.parent.rotation * Quaternion.Euler(KnifeEquipped ? 20f : pitch, 0, 0));
+            float progress = onlineWeapons.HasValue ? onlineReload : ReloadProgress;
+            if (!reloadMotion.Apply(canPoseReload ? progress : -1, body, mount, effects))
+                mount.SetPositionAndRotation(body.WeaponHand, mount.parent.rotation * Quaternion.Euler(KnifeEquipped ? 20f : pitch, 0, 0));
             if (flash.gameObject.activeSelf && Time.time >= flashUntil)
                 HideEffects();
 
@@ -301,7 +307,7 @@ namespace CostaLivre
                 Vector3 knifeOrigin = mount.parent.position + Vector3.up * KnifeHitHeight;
                 if (!onlineWeapons.HasValue && Physics.Raycast(knifeOrigin, ShotDirection, out RaycastHit strike, weapon.Range,
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Collide))
-                    applyHit(strike.collider, weapon.Damage);
+                    applyHit(strike, weapon.Damage, true);
                 return true;
             }
             if (weapon.Loaded == 0)
@@ -329,6 +335,7 @@ namespace CostaLivre
             ShotDirection = forward;
             Vector3 tracerEnd = origin + forward * weapon.Range;
             int visualPellets = onlineWeapons.HasValue ? 1 : weapon.Pellets;
+            bool firstHit = true;
             for (int i = 0; i < visualPellets; i++)
             {
                 Vector2 scatter = onlineWeapons.HasValue ? Vector2.zero : Scatter(i, weapon.Pellets, weapon.Spread, aiming);
@@ -337,7 +344,8 @@ namespace CostaLivre
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Collide))
                 {
                     if (!onlineWeapons.HasValue)
-                        applyHit(hit.collider, weapon.Damage);
+                        applyHit(hit, weapon.Damage, firstHit);
+                    firstHit = false;
                     if (i == 0)
                         tracerEnd = hit.point;
                 }

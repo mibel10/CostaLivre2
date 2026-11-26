@@ -19,6 +19,8 @@ namespace CostaLivre
             internal Transform Flash;
             internal AudioSource Audio;
             internal int Weapon = -1;
+            internal readonly CostaReloadMotion Reload = new();
+            internal float ReloadProgress = -1;
             internal int LastShot;
             internal float FlashUntil;
             internal float KnifeSwingUntil;
@@ -192,6 +194,8 @@ namespace CostaLivre
             if (model.Weapon != avatar.equipped)
             {
                 model.Weapon = avatar.equipped;
+                model.Reload.Attach(null);
+                model.ReloadProgress = -1;
                 for (int i = model.Mount.childCount - 1; i >= 0; i--)
                 {
                     Transform child = model.Mount.GetChild(i);
@@ -203,7 +207,9 @@ namespace CostaLivre
                 if (model.Weapon >= 0 && model.Weapon < HarborArsenal.WeaponNames.Length)
                 {
                     EnsureWeaponTemplates();
-                    Object.Instantiate(weapons[model.Weapon], model.Mount, false).SetActive(true);
+                    GameObject instance = Object.Instantiate(weapons[model.Weapon], model.Mount, false);
+                    instance.SetActive(true);
+                    model.Reload.Attach(instance.transform, model.Weapon);
                 }
             }
 
@@ -223,9 +229,16 @@ namespace CostaLivre
             model.Body.BraceLanding(avatar.rollPose < 0 ? avatar.landingCompression : 0);
             var gesture = (HarborCharacter.Gesture)avatar.gesture;
             if (avatar.rollPose < 0 && (gesture == HarborCharacter.Gesture.Impact || !avatar.aiming && avatar.jumpPose < 0))
-                model.Body.PlayGesture(gesture, avatar.gestureProgress, avatar.gestureTarget);
-            model.Mount.SetPositionAndRotation(model.Body.WeaponHand,
-                model.Body.Root.rotation * Quaternion.Euler(knife ? 20f : model.AimPitch, 0, 0));
+                model.Body.PlayGesture(gesture, avatar.gestureProgress, avatar.gestureTarget, avatar.impactStrength);
+            if (avatar.reloadProgress >= 0 && model.Weapon >= 0 && !knife && avatar.rollPose < 0)
+                model.ReloadProgress = model.ReloadProgress < 0 ? avatar.reloadProgress : Mathf.Min(
+                    avatar.reloadProgress + .075f, Mathf.Max(avatar.reloadProgress, model.ReloadProgress +
+                    Time.unscaledDeltaTime / HarborArsenal.ShotRules(model.Weapon).reload));
+            else
+                model.ReloadProgress = -1;
+            if (!model.Reload.Apply(model.ReloadProgress, model.Body, model.Mount, effects, model.Audio))
+                model.Mount.SetPositionAndRotation(model.Body.WeaponHand,
+                    model.Body.Root.rotation * Quaternion.Euler(knife ? 20f : model.AimPitch, 0, 0));
             model.Flash.gameObject.SetActive(Time.unscaledTime < model.FlashUntil);
         }
 

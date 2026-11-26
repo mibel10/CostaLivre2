@@ -16,6 +16,7 @@ namespace CostaLivre
 
         internal static readonly Vector2[] WarehouseCenters = { new(-11, 8), new(8.5f, 9), new(-10.5f, -7.5f), new(8.5f, -9.5f) };
 
+        internal readonly CostaWorldDamage Damage = new();
         private readonly Transform root;
         private readonly Shader shader;
         private readonly Material surfaceTemplate = Resources.Load<Material>("Harbor/HarborSurface");
@@ -66,6 +67,12 @@ namespace CostaLivre
                     Quaternion.Euler(90, 0, i * 57));
             }
             Wear(3, new Vector3(24.52f, 0.72f, 8), new Vector2(3.8f, 1.2f), Quaternion.Euler(0, 90, 0));
+            GameObject crate = Box("Loose dock crate", new(14.4f, 0.26f, 5.2f), new(0.56f, 0.52f, 0.51f),
+                new Color(.36f, .26f, .16f), true, bake: false);
+            Damage.Mark(crate, CostaWorldDamage.Surface.Wood, 36);
+            GameObject cap = Box("Replaceable concrete cap", new(23.17f, .22f, 5.5f),
+                new(.30f, .28f, .55f), new Color(.53f, .51f, .46f), true, "Concrete", Vector2.one, bake: false);
+            Damage.Mark(cap, CostaWorldDamage.Surface.Concrete, 80);
             Box("Quay edge", new(23.7f, 0.04f, 0), new(2.6f, 0.08f, 44), concrete, false, "Concrete", new(3, 28));
             Box("Quay parapet", new(24.7f, 0.68f, 0), new(0.35f, 1.36f, 44), concrete, true, "Concrete", new(24, 1));
 
@@ -201,10 +208,22 @@ namespace CostaLivre
                     new(0.12f, 0.18f, 0.05f), metal);
             }
 
-            if (slot == 2 || slot == 3)
+            if (slot == 1)
             {
-                Part(model, PrimitiveType.Cube, "Magazine", new(0, -0.13f, length * 0.32f),
-                    new(0.09f, 0.18f, 0.13f), metal);
+                Part(model, PrimitiveType.Cube, "Reload action", new(0, -.035f, length * .61f),
+                    new(.094f, .073f, .19f), body);
+                Part(model, PrimitiveType.Cube, "Reload prop", new(-.055f, -.078f, length * .31f),
+                    new(.026f, .027f, .092f), new Color(.50f, .20f, .13f)).SetActive(false);
+            }
+            else
+            {
+                Vector3 reloadSeat = slot == 0 ? new Vector3(0, -.165f, -.027f)
+                    : new Vector3(0, -.13f, length * .32f);
+                Part(model, PrimitiveType.Cube, "Reload prop", reloadSeat,
+                    slot == 0 ? new Vector3(.05f, .07f, .06f) : new Vector3(.075f, .16f, .105f), metal);
+                Part(model, PrimitiveType.Cube, "Reload action",
+                    slot == 4 ? new Vector3(.054f, .044f, .105f) : new Vector3(0, .065f, .054f),
+                    slot == 4 ? new Vector3(.065f, .027f, .047f) : new Vector3(.047f, .019f, .088f), metal);
             }
 
             if (slot == 4)
@@ -406,6 +425,8 @@ namespace CostaLivre
                 if (surface == "Asphalt" || surface == "Steel")
                     renderer.reflectionProbeUsage = ReflectionProbeUsage.BlendProbesAndSkybox;
             }
+            if (solid && (surface == "Steel" || surface == "Asphalt"))
+                Damage.Mark(box, surface == "Steel" ? CostaWorldDamage.Surface.Metal : CostaWorldDamage.Surface.Concrete, 0);
             if (solid && bake)
             {
                 walkableGeometry.Add(new NavMeshBuildSource

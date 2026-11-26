@@ -68,6 +68,7 @@ namespace CostaLivre
             var collision = new GameObject("Vehicle collision").transform;
             collision.SetParent(Root, false);
             body = collision.gameObject.AddComponent<BoxCollider>();
+            art.Damage.Mark(collision.gameObject, CostaWorldDamage.Surface.Metal, 0);
             body.center = Vector3.up * (collisionSize.y / 2 + 0.01f);
             body.size = collisionSize;
             var obstacle = Root.gameObject.AddComponent<UnityEngine.AI.NavMeshObstacle>();

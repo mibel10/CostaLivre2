@@ -1305,7 +1305,7 @@ namespace CostaLivre
                 float separation = (candidate.Root.position - player.transform.position).sqrMagnitude;
                 if (separation <= distance && (!Physics.Linecast(player.transform.position + Vector3.up * 0.8f,
                     candidate.Root.position + Vector3.up * 0.8f, out RaycastHit obstruction,
-                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) || obstruction.transform == candidate.Root))
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) || candidate.OwnsCollider(obstruction.collider)))
                 {
                     distance = separation;
                     result = candidate;

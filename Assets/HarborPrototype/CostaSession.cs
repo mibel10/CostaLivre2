@@ -302,7 +302,11 @@ namespace CostaLivre
                     hostCars = new Vehicle[sceneVehicles.Length];
                     doorBusyUntil = new float[hostCars.Length];
                     for (int i = 0; i < hostCars.Length; i++)
+                    {
                         hostCars[i] = new Vehicle { pos = sceneVehicles[i].Home, yaw = initialHomes[i] };
+                        sceneVehicles[i].SetAuthoritativePose(hostCars[i].pos, hostCars[i].yaw);
+                    }
+                    Physics.SyncTransforms();
                 }
 
                 connectionCancellation = new CancellationTokenSource();
@@ -570,6 +574,8 @@ namespace CostaLivre
                 float travel = Mathf.Abs(vehicle.speed) * delta;
                 float safeTravel = sceneVehicles[i].SimulatedTravel(vehicle.pos, rotation, direction, travel);
                 vehicle.pos += direction * safeTravel;
+                if (sceneVehicles[i].SetAuthoritativePose(vehicle.pos, vehicle.yaw))
+                    Physics.SyncTransforms();
                 vehicle.lean = Mathf.MoveTowards(vehicle.lean, 0, 80 * delta);
                 vehicle.speed = safeTravel < travel ? 0 : Mathf.MoveTowards(vehicle.speed, 0, 4.5f * delta);
             }
@@ -891,6 +897,8 @@ namespace CostaLivre
                 Vehicle car = hostCars[avatar.vehicle];
                 car.pos = new Vector3(pose.pos.x, 0, pose.pos.z);
                 car.yaw = avatar.yaw;
+                if (sceneVehicles[avatar.vehicle].SetAuthoritativePose(car.pos, car.yaw))
+                    Physics.SyncTransforms();
                 car.speed = pose.held / 10f;
                 car.lean = sceneVehicles[avatar.vehicle].IsBike && Finite(pose.bikeLean)
                     ? Mathf.Clamp(pose.bikeLean, -24, 24) : 0;
@@ -1382,8 +1390,13 @@ namespace CostaLivre
             clientIdentity?.Dispose();
             clientIdentity = null;
             identitySent = false;
-            listener?.Stop();
-            listener = null;
+            if (listener != null)
+            {
+                listener.Stop();
+                listener = null;
+                foreach (CostaVehicle vehicle in sceneVehicles)
+                    vehicle.FollowPresentation();
+            }
             connection?.Dispose();
             connection = null;
             connectionCancellation?.Cancel();

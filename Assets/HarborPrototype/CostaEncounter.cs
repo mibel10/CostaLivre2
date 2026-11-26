@@ -148,7 +148,7 @@ namespace CostaLivre
                 return false;
             Vector3 location = Location(player);
             return CostaJobs.Near(player, location, step.Radius)
-                && Accessible(player, location, step.Mode == Action.Seize ? cars[step.Vehicle].Root : null);
+                && Accessible(player, location, step.Mode == Action.Seize ? cars[step.Vehicle] : null);
         }
 
         internal bool ReservesVehicle(int index)
@@ -368,9 +368,9 @@ namespace CostaLivre
             };
         }
 
-        private static bool Accessible(Vector3 from, Vector3 to, Transform allowed = null) =>
+        private static bool Accessible(Vector3 from, Vector3 to, CostaVehicle allowed = null) =>
             !Physics.Linecast(from + Vector3.up, to + Vector3.up, out RaycastHit hit,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) || hit.transform == allowed;
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) || (allowed != null && allowed.OwnsCollider(hit.collider));
 
         private void TickOpponents(Vector3 player, bool invulnerable, float delta)
         {

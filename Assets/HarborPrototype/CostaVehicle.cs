@@ -65,7 +65,9 @@ namespace CostaLivre
                 collisionSize = Vector3.Scale(new Vector3(2.06f, 1.40f, 4.44f), scale);
             }
 
-            body = Root.gameObject.AddComponent<BoxCollider>();
+            var collision = new GameObject("Vehicle collision").transform;
+            collision.SetParent(Root, false);
+            body = collision.gameObject.AddComponent<BoxCollider>();
             body.center = Vector3.up * (collisionSize.y / 2 + 0.01f);
             body.size = collisionSize;
             var obstacle = Root.gameObject.AddComponent<UnityEngine.AI.NavMeshObstacle>();
@@ -228,6 +230,27 @@ namespace CostaLivre
             return TryExit(position, rotation, side, out step)
                 && !Physics.Linecast(from + handHeight, step + handHeight,
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        }
+
+        internal bool OwnsCollider(Collider collider) => collider == body;
+
+        internal bool SetAuthoritativePose(Vector3 position, float yaw)
+        {
+            Transform collision = body.transform;
+            if (collision.parent == Root)
+                collision.SetParent(Root.parent, true);
+            Quaternion rotation = Quaternion.Euler(0, yaw, 0);
+            if (collision.position.Equals(position) && collision.rotation.Equals(rotation))
+                return false;
+            collision.SetPositionAndRotation(position, rotation);
+            return true;
+        }
+
+        internal void FollowPresentation()
+        {
+            Transform collision = body.transform;
+            collision.SetParent(Root, false);
+            collision.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
         }
 
         internal void StopForBoarding() => speed = 0;

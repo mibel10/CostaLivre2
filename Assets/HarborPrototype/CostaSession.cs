@@ -645,8 +645,7 @@ namespace CostaLivre
             world.worldHour = WorldHour;
             for (int i = 0; i < world.sites.Length; i++)
                 world.sites[i] = now >= restock[i];
-            string shared = JsonUtility.ToJson(world);
-            string prefix = shared.Substring(0, shared.Length - 1);
+            byte[] shared = Encoding.UTF8.GetBytes(JsonUtility.ToJson(world));
 
             foreach (Peer peer in peers)
             {
@@ -664,8 +663,7 @@ namespace CostaLivre
                     snapshot.loaded[i] = HarborArsenal.ShotRules(i).magazine - peer.UsedRounds[i];
                     snapshot.reloading[i] = peer.ReloadEnds[i] > 0;
                 }
-                string personal = JsonUtility.ToJson(snapshot);
-                peer.Wire.Send(string.Concat(prefix, ",", personal.Substring(1)));
+                peer.Wire.SendState(shared, JsonUtility.ToJson(snapshot));
             }
         }
 

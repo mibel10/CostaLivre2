@@ -96,10 +96,12 @@ namespace CostaLivre
             public Avatar[] players;
             public Vehicle[] vehicles;
             public int[] bag;
+            public int equipSequence;
             public int[] loaded;
             public bool[] reloading;
             public bool[] sites;
             public Vector3 direction;
+            public int equipSequence;
         }
 
         [Serializable]
@@ -123,6 +125,7 @@ namespace CostaLivre
             public int notice;
             public int noticeVersion;
             public int[] bag;
+            public int equipSequence;
             public int[] loaded = new int[HarborArsenal.WeaponNames.Length];
             public bool[] reloading = new bool[HarborArsenal.WeaponNames.Length];
         }
@@ -204,6 +207,7 @@ namespace CostaLivre
         internal CostaBag Bag { get; } = new();
         internal int Cash { get; private set; }
         internal int WeaponMask { get; private set; }
+        internal int EquipAcknowledged { get; private set; }
         internal int[] Loaded { get; private set; }
         internal bool[] Reloading { get; private set; }
         internal bool Online => Local != null && connection != null && !connection.Closed;
@@ -419,6 +423,7 @@ namespace CostaLivre
                 }
                 Cash = frame.credits;
                 WeaponMask = frame.weapons;
+                EquipAcknowledged = frame.equipSequence;
                 Loaded = frame.loaded;
                 Reloading = frame.reloading;
                 Bag.Replace(frame.bag);
@@ -647,6 +652,14 @@ namespace CostaLivre
                 }
                 return;
             }
+            if (msg.type == "equip")
+            {
+                if (now >= peer.HeldUntil && now >= peer.DoorUntil && CanEquip(peer, msg.index))
+                    avatar.equipped = msg.index;
+                peer.Snapshot.equipSequence = msg.equipSequence;
+                return;
+            }
+
             if ((now < peer.HeldUntil || now < peer.DoorUntil) && msg.type != "outfit")
                 return;
 
@@ -715,10 +728,6 @@ namespace CostaLivre
                     break;
                 case "fire":
                     Fire(peer, msg.index, msg.direction, now);
-                    break;
-                case "equip":
-                    if (msg.index == -1 || CanEquip(peer, msg.index))
-                        avatar.equipped = msg.index;
                     break;
                 case "reload":
                     if (msg.index != HarborArsenal.Knife && CanEquip(peer, msg.index)
@@ -1345,6 +1354,9 @@ namespace CostaLivre
         private void Send(Frame frame) => connection?.Send(JsonUtility.ToJson(frame));
 
         internal void Request(string type, int index = 0) => Send(new Frame { type = type, index = index });
+
+        internal void Equip(int weapon, int sequence) =>
+            Send(new Frame { type = "equip", index = weapon, equipSequence = sequence });
 
         internal void Fire(int weapon, Vector3 direction) =>
             Send(new Frame { type = "fire", index = weapon, direction = direction });

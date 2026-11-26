@@ -63,6 +63,8 @@ namespace CostaLivre
         private CostaLook menuLook;
         private bool wasOnline;
         private bool enteredOnlineWorld;
+        private int equipSequence;
+        private int queuedEquip = -1;
         private bool soloResumable;
         private bool soloHarborJob;
         private RunState soloState;
@@ -575,6 +577,8 @@ namespace CostaLivre
                 {
                     wasOnline = false;
                     enteredOnlineWorld = false;
+                    equipSequence = 0;
+                    queuedEquip = -1;
                     netRevision = -1;
                     pendingBuy = -1;
                     remotes.Clear();
@@ -701,6 +705,15 @@ namespace CostaLivre
                 wasPolice = avatar.police;
                 pendingBuy = -1;
                 arsenal.Reset();
+                arsenal.Select(avatar.equipped);
+            }
+            if (avatar.playing && queuedEquip >= 0)
+            {
+                session.Equip(queuedEquip, ++equipSequence);
+                queuedEquip = -1;
+            }
+            else if (queuedEquip < 0 && session.EquipAcknowledged == equipSequence && arsenal.Slot != avatar.equipped)
+            {
                 arsenal.Select(avatar.equipped);
             }
             bool reloadWasActive = arsenal.Reloading;
@@ -1306,8 +1319,16 @@ namespace CostaLivre
             {
                 effects.Play(Cue.Equip, 0.27f);
                 if (session.Online)
-                    session.Request("equip", arsenal.Slot);
+                    QueueOnlineEquip();
             }
+        }
+
+        private void QueueOnlineEquip()
+        {
+            if (session.Local.playing)
+                session.Equip(arsenal.Slot, ++equipSequence);
+            else
+                queuedEquip = arsenal.Slot;
         }
 
         private void CycleWeapons()
@@ -1343,7 +1364,7 @@ namespace CostaLivre
             {
                 effects.Play(Cue.Equip, 0.27f);
                 if (session.Online)
-                    session.Request("equip", arsenal.Slot);
+                    QueueOnlineEquip();
             }
         }
 

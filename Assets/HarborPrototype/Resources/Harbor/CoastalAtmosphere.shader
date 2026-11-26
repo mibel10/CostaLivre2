@@ -110,12 +110,12 @@ Shader "Hidden/CostaLivre/CoastalAtmosphere"
             float4 _CostaFogLights[2];
             float4 _CostaFogLightColor;
 
-            float3 LampScattering(float3 point)
+            float3 LampScattering(float3 positionWS)
             {
                 float radiance = 0;
                 [loop] for (int i = 0; i < (int)_CostaFogLightCount; i++)
                 {
-                    float3 offset = point - _CostaFogLights[i].xyz;
+                    float3 offset = positionWS - _CostaFogLights[i].xyz;
                     float squared = dot(offset, offset);
                     float range = _CostaFogLights[i].w;
                     float rangeFade = saturate(1 - squared / (range * range));
@@ -177,8 +177,8 @@ Shader "Hidden/CostaLivre/CoastalAtmosphere"
             float4 Lighting(Varyings input) : SV_Target
             {
                 float2 uv = input.texcoord;
-                float3 point = WorldPoint(uv);
-                float3 ray = point - _WorldSpaceCameraPos;
+                float3 positionWS = WorldPoint(uv);
+                float3 ray = positionWS - _WorldSpaceCameraPos;
                 float distanceToSurface = length(ray);
                 float3 direction = ray / max(distanceToSurface, 0.001);
                 int steps = (int)_CostaMist.w;
@@ -207,7 +207,7 @@ Shader "Hidden/CostaLivre/CoastalAtmosphere"
                 }
                 float depth = EyeDepth(uv);
                 if (_CostaMeterParams.x > 0.5 && depth < min(100, _ProjectionParams.z * 0.99))
-                    airlight += transmittance * DiffuseBounce(uv, point, depth);
+                    airlight += transmittance * DiffuseBounce(uv, positionWS, depth);
                 return float4(airlight, transmittance);
             }
             ENDHLSL

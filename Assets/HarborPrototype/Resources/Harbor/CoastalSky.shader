@@ -40,10 +40,10 @@ Shader "CostaLivre/CoastalSky"
                 return output;
             }
 
-            float Noise(float2 point)
+            float Noise(float2 cloudUV)
             {
-                float2 cell = floor(point);
-                float2 f = frac(point);
+                float2 cell = floor(cloudUV);
+                float2 f = frac(cloudUV);
                 f = f * f * (3 - 2 * f);
                 float4 x = frac((cell.x + float4(0, 1, 0, 1)) * 0.1031);
                 float4 y = frac((cell.y + float4(0, 0, 1, 1)) * 0.1099);
@@ -65,14 +65,14 @@ Shader "CostaLivre/CoastalSky"
 
                 if (ray.y > 0.012 && _CloudCover > 0.015)
                 {
-                    float2 point = ray.xz * (2.2 / max(altitude, 0.07)) + _CloudDrift * float2(0.22, 0.08);
+                    float2 cloudUV = ray.xz * (2.2 / max(altitude, 0.07)) + _CloudDrift * float2(0.22, 0.08);
                     float threshold = lerp(0.76, 0.34, _CloudCover);
                     float transmittance = 1;
                     float3 scattered = 0;
                     // Short optical integration through a high cloud slab.
                     [unroll] for (int i = 0; i < 3; i++)
                     {
-                        float2 samplePoint = point * (1 + i * 0.08) + float2(0.07, 0.12) * i;
+                        float2 samplePoint = cloudUV * (1 + i * 0.08) + float2(0.07, 0.12) * i;
                         float shape = Noise(samplePoint) * 0.64 + Noise(samplePoint * 2.13) * 0.26 +
                             Noise(samplePoint * 4.53) * 0.10;
                         float density = smoothstep(threshold, threshold + 0.26, shape);

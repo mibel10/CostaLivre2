@@ -1657,7 +1657,7 @@ namespace CostaLivre
             if (menu != null)
                 EquipWeapon(menu.SelectedWeapon);
             UpdateContractWeapon();
-            playerBody.Animate(HarborCharacter.Motion.Idle, progress: 0);
+            playerBody.Animate(HarborCharacter.Motion.Idle, progress: 0, snap: true);
             PositionCamera(false, true);
             if (Application.isFocused)
                 SetCursor(true);

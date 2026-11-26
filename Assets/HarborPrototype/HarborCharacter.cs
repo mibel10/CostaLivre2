@@ -55,11 +55,16 @@ namespace CostaLivre
         private readonly Transform leftThigh;
         private readonly Transform leftCalf;
         private readonly Transform leftFoot;
+        private readonly float[] phases;
+        private readonly float[] blendFrom;
         private Motion activeMotion;
-        private Motion previousMotion;
-        private float blendRemaining;
-        private const float BlendTime = 0.14f;
-        private float clock;
+        private float blend = 1;
+        private float blendDuration;
+        private float gaitSpeed = 1;
+        private float turnLean;
+        private float previousYaw;
+        private bool hasHeading;
+        private float Clock => phases[(int)activeMotion];
 
         internal Vector3 WeaponHand => rightHand.position;
         internal Transform Head { get; }
@@ -85,6 +90,8 @@ namespace CostaLivre
             AnimationPlayableOutput output = AnimationPlayableOutput.Create(graph, "Character pose", animator);
             output.SetSourcePlayable(mixer);
             tracks = new AnimationClipPlayable[clips.Length];
+            phases = new float[clips.Length];
+            blendFrom = new float[clips.Length];
             for (int i = 0; i < clips.Length; i++)
             {
                 if (clips[i] == null)
@@ -122,40 +129,70 @@ namespace CostaLivre
             leftFoot = foot;
         }
 
-        internal void Animate(Motion motion, float cycleSpeed = 1f, float progress = -1f)
+        internal void Animate(Motion motion, float cycleSpeed = 1f, float progress = -1f, bool snap = false)
         {
-            if (motion != activeMotion)
-            {
-                if (blendRemaining > 0)
-                    mixer.SetInputWeight((int)previousMotion, 0);
-                bool sameGait = (activeMotion == Motion.Walk || activeMotion == Motion.Run)
-                    && (motion == Motion.Walk || motion == Motion.Run);
-                if (!sameGait)
-                    clock = 0;
-                previousMotion = activeMotion;
-                activeMotion = motion;
-                blendRemaining = progress < 0 && previousMotion <= Motion.Run && motion <= Motion.Run ? BlendTime : 0;
-                mixer.SetInputWeight((int)previousMotion, blendRemaining > 0 ? 1 : 0);
-                mixer.SetInputWeight((int)activeMotion, blendRemaining > 0 ? 0 : 1);
-            }
-
-            if (blendRemaining > 0)
-            {
-                blendRemaining = progress >= 0 ? 0 : Mathf.Max(0, blendRemaining - Time.unscaledDeltaTime);
-                float weight = Mathf.SmoothStep(0, 1, blendRemaining / BlendTime);
-                mixer.SetInputWeight((int)previousMotion, weight);
-                mixer.SetInputWeight((int)activeMotion, 1f - weight);
-            }
-
-            AnimationClip clip = clips[(int)motion];
-            if (clip == null)
+            int requested = (int)motion;
+            if (!tracks[requested].IsValid())
                 return;
 
-            clock = Mathf.Repeat(clock + Time.unscaledDeltaTime * cycleSpeed / Mathf.Max(clip.length, 0.02f), 1f);
-            float sample = progress < 0 ? clock : Mathf.Clamp01(progress);
-            tracks[(int)motion].SetTime(sample * clip.length);
+            if (motion != activeMotion || snap)
+            {
+                bool sameGait = IsGait(activeMotion) && IsGait(motion);
+                phases[requested] = sameGait && !snap ? Clock : 0;
+                for (int i = 0; i < tracks.Length; i++)
+                    blendFrom[i] = mixer.GetInputWeight(i);
+                blendDuration = motion == Motion.Roll ? 0.055f : motion == Motion.Jump ? 0.085f :
+                    activeMotion >= Motion.Jump ? 0.13f : 0.19f;
+                activeMotion = motion;
+                blend = snap ? 1 : 0;
+            }
+
+            float dt = Time.unscaledDeltaTime;
+            blend = Mathf.MoveTowards(blend, 1, dt / Mathf.Max(blendDuration, 0.01f));
+            float eased = Mathf.SmoothStep(0, 1, blend);
+            gaitSpeed = snap ? cycleSpeed : Mathf.MoveTowards(gaitSpeed, cycleSpeed, dt * 6f);
+            for (int i = 0; i < tracks.Length; i++)
+            {
+                if (!tracks[i].IsValid())
+                    continue;
+
+                bool selected = i == requested;
+                float weight = Mathf.Lerp(blendFrom[i], selected ? 1 : 0, eased);
+                mixer.SetInputWeight(i, weight);
+                if (!selected && weight <= 0)
+                    continue;
+
+                float duration = Mathf.Max(clips[i].length, 0.02f);
+                if (selected && progress >= 0)
+                    phases[i] = Mathf.Clamp01(progress);
+                else if (i <= (int)Motion.Run)
+                    phases[i] = Mathf.Repeat(phases[i] + dt * (i == (int)Motion.Idle ? 1 : gaitSpeed) / duration, 1);
+
+                tracks[i].SetTime(phases[i] * duration);
+            }
+
             graph.Evaluate(0);
             mesh.transform.localPosition = Vector3.zero;
+            UpdateTurnLean(snap, dt);
+        }
+
+        private static bool IsGait(Motion motion) => motion is Motion.Walk or Motion.Run;
+
+        private void UpdateTurnLean(bool snap, float dt)
+        {
+            float yaw = Root.eulerAngles.y;
+            float target = 0;
+            if (hasHeading && !snap && IsGait(activeMotion) && dt > 0)
+            {
+                float rate = Mathf.DeltaAngle(previousYaw, yaw) / dt;
+                target = -Mathf.Clamp(rate / 32f, -1, 1) * (activeMotion == Motion.Run ? 8 : 4);
+            }
+
+            previousYaw = yaw;
+            hasHeading = true;
+            turnLean = snap ? 0 : Mathf.Lerp(turnLean, target, 1 - Mathf.Exp(-dt * 11f));
+            if (activeMotion < Motion.Jump && Mathf.Abs(turnLean) > 0.05f)
+                Chest.rotation = Quaternion.AngleAxis(turnLean, Root.forward) * Chest.rotation;
         }
 
         internal void Release()
@@ -166,7 +203,11 @@ namespace CostaLivre
 
         internal void HoldWeapon(bool aiming, float pitch, bool support)
         {
-            Vector3 pivot = new(0.25f, aiming ? 1.36f : 1.15f, aiming ? 0.34f : 0.28f);
+            float phase = Clock * 2 * Mathf.PI;
+            float sway = aiming ? 0.007f : activeMotion == Motion.Run ? 0.049f : 0.025f;
+            Vector3 pivot = new(0.25f + Mathf.Sin(phase) * sway * 0.35f,
+                (aiming ? 1.36f : 1.15f) + mesh.transform.localPosition.y + Mathf.Cos(phase * 2) * sway,
+                (aiming ? 0.34f : 0.28f) + Mathf.Sin(phase) * sway * 0.4f);
             Vector3 lift = Quaternion.Euler(pitch * 0.65f, 0, 0) * Vector3.forward * 0.14f;
             AlignArm(rightShoulder, rightElbow, rightHand, Root.TransformPoint(pivot + lift), Root.right);
             if (aiming && support)
@@ -178,7 +219,7 @@ namespace CostaLivre
 
         internal void HoldKnife(bool sprinting, bool crouched, float swing)
         {
-            float stride = sprinting ? Mathf.Sin(clock * 2 * Mathf.PI) : 0;
+            float stride = sprinting ? Mathf.Sin(Clock * 2 * Mathf.PI) : 0;
             Vector3 right = new(0.31f, sprinting ? 1.03f : 1.17f, 0.19f + stride * 0.16f);
             if (swing >= 0)
             {
@@ -215,7 +256,7 @@ namespace CostaLivre
 
         internal void Ride()
         {
-            Animate(Motion.Idle, progress: 0);
+            Animate(Motion.Idle, progress: 0, snap: true);
             AlignArm(rightShoulder, rightElbow, rightHand, Root.TransformPoint(new Vector3(0.29f, 1.17f, 0.47f)), Root.right);
             AlignArm(leftShoulder, leftElbow, leftHand, Root.TransformPoint(new Vector3(-0.29f, 1.17f, 0.47f)), -Root.right);
             AlignLimb(rightThigh, rightCalf, rightFoot, Root.TransformPoint(new Vector3(0.26f, 0.41f, 0.04f)), Root.forward);
@@ -226,26 +267,42 @@ namespace CostaLivre
         {
             if (entering && progress < 0.29f)
             {
-                Animate(Motion.Walk, progress: progress * 5f % 1f);
+                Animate(Motion.Walk, progress: Mathf.Lerp(0.11f, 0.46f, progress / 0.29f));
                 return;
             }
 
             Animate(Motion.Idle, progress: 0);
-            float knockPhase = Mathf.Clamp01((progress - 0.29f) / 0.22f);
-            float knock = entering && !bike ? Mathf.Sin(Mathf.PI * knockPhase) : 0f;
-            float brace = entering ? knock : Mathf.Sin(Mathf.PI * progress);
-            mesh.transform.localPosition = Vector3.down * (seated * 0.38f + brace * 0.08f);
+            float reach = entering ? Ease((progress - 0.26f) / 0.12f) * (1 - Ease((progress - 0.56f) / 0.16f))
+                : 1 - Ease((progress - 0.31f) / 0.42f);
+            float knock = entering && !bike ? Pulse(progress, 0.29f, 0.43f) : 0;
+            float brace = entering ? Pulse(progress, 0.48f, 0.87f) : Pulse(progress, 0.14f, 0.84f);
+            float lift = Mathf.Sin(seated * Mathf.PI);
+            mesh.transform.localPosition = Vector3.down * (seated * 0.38f + brace * 0.10f);
 
-            Vector3 right = new(0.28f, 1.10f - seated * 0.23f, 0.20f + brace * 0.19f);
-            Vector3 left = new(-0.28f, 1.02f - seated * 0.21f, 0.12f + seated * 0.20f);
+            Quaternion shoulderTurn = Quaternion.AngleAxis(-side * (reach * 13f + brace * 5f), Root.up);
+            Chest.rotation = Quaternion.AngleAxis(brace * 13f, Root.right) * shoulderTurn * Chest.rotation;
+
+            float doorReach = bike ? 0.12f : 0.25f;
+            Vector3 hand = new(0.28f, 1.10f - seated * 0.23f, 0.19f + reach * doorReach + knock * 0.13f);
+            Vector3 support = new(0.28f, 1.02f - seated * 0.21f, 0.12f + seated * 0.19f + brace * 0.08f);
+            Vector3 right = side > 0 ? hand : support;
+            Vector3 left = side > 0 ? support : hand;
+            left.x = -left.x;
             AlignArm(rightShoulder, rightElbow, rightHand, Root.TransformPoint(right), Root.right);
             AlignArm(leftShoulder, leftElbow, leftHand, Root.TransformPoint(left), -Root.right);
-            float step = Mathf.Sin(Mathf.PI * seated) * 0.17f;
+
+            float rightStep = lift * (side > 0 ? 0.24f : 0.09f);
+            float leftStep = lift * (side > 0 ? 0.09f : 0.24f);
             AlignLimb(rightThigh, rightCalf, rightFoot,
-                Root.TransformPoint(new Vector3(0.15f + 0.10f * side * step, 0.06f + step, 0.05f + seated * 0.30f)), Root.forward);
+                Root.TransformPoint(new Vector3(0.15f + rightStep * 0.15f, 0.065f + rightStep, 0.05f + seated * 0.30f)), Root.forward);
             AlignLimb(leftThigh, leftCalf, leftFoot,
-                Root.TransformPoint(new Vector3(-0.15f, 0.05f + step * 0.45f, -0.07f + seated * 0.32f)), Root.forward);
+                Root.TransformPoint(new Vector3(-0.15f - leftStep * 0.15f, 0.065f + leftStep, -0.07f + seated * 0.32f)), Root.forward);
         }
+
+        private static float Ease(float value) => Mathf.SmoothStep(0, 1, Mathf.Clamp01(value));
+
+        private static float Pulse(float progress, float start, float end) =>
+            Mathf.Sin(Mathf.PI * Mathf.InverseLerp(start, end, progress));
 
         private void AlignArm(Transform shoulder, Transform elbow, Transform hand, Vector3 target, Vector3 outward)
         {

@@ -146,6 +146,7 @@ namespace CostaLivre
         private readonly WorldSnapshot world = new() { sites = new bool[CostaRobberies.Sites.Length] };
         private readonly Dictionary<string, Peer> disconnected = new();
         private RSA clientIdentity;
+        private bool identitySent;
         private readonly CostaVehicle[] sceneVehicles;
         private readonly float[] restock = new float[CostaRobberies.Sites.Length];
         private readonly int[] initialHomes;
@@ -210,6 +211,17 @@ namespace CostaLivre
                 || ip.AddressFamily != AddressFamily.InterNetwork)))
             {
                 status = L("Enter a valid IPv4 address and port.", "Informe um IPv4 e uma porta válidos.");
+                return;
+            }
+
+            try
+            {
+                LoadIdentity();
+            }
+            catch (Exception error) when (error is CryptographicException || error is PlatformNotSupportedException)
+            {
+                Dispose();
+                status = L("Could not load the player identity.", "Não foi possível carregar a identidade do jogador.");
                 return;
             }
 
@@ -1045,27 +1057,31 @@ namespace CostaLivre
             catch (ArgumentException) { return null; }
         }
 
+        private void LoadIdentity()
+        {
+            clientIdentity = new RSACryptoServiceProvider(2048);
+            const string key = "CostaResumeIdentity";
+            string saved = PlayerPrefs.GetString(key, "");
+            if (saved.Length != 0)
+                clientIdentity.FromXmlString(saved);
+            else
+            {
+                PlayerPrefs.SetString(key, clientIdentity.ToXmlString(true));
+                PlayerPrefs.DeleteKey("CostaResumeKey");
+                PlayerPrefs.Save();
+            }
+        }
+
         private bool SendIdentity(string challenge)
         {
-            if (clientIdentity != null || challenge == null || challenge.Length != 44)
+            if (identitySent || clientIdentity == null || challenge == null || challenge.Length != 44)
                 return false;
             try
             {
                 byte[] nonce = Convert.FromBase64String(challenge);
                 if (nonce.Length != 32)
                     return false;
-                clientIdentity = new RSACryptoServiceProvider(2048);
-                const string key = "CostaResumeIdentity";
-                string saved = PlayerPrefs.GetString(key, "");
-                if (saved.Length != 0)
-                    clientIdentity.FromXmlString(saved);
-                else
-                {
-                    PlayerPrefs.SetString(key, clientIdentity.ToXmlString(true));
-                    PlayerPrefs.DeleteKey("CostaResumeKey");
-                    PlayerPrefs.Save();
-                }
-
+                identitySent = true;
                 RSAParameters identityKey = clientIdentity.ExportParameters(false);
                 Send(new Frame
                 {
@@ -1136,6 +1152,7 @@ namespace CostaLivre
         {
             clientIdentity?.Dispose();
             clientIdentity = null;
+            identitySent = false;
             listener?.Stop();
             listener = null;
             connection?.Dispose();

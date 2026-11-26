@@ -6,7 +6,8 @@ namespace CostaLivre
     internal sealed class CostaItemPreview
     {
         private static readonly Vector3 Stage = new(0, -4800, 0);
-        private const int Layer = 31;
+        private const int Layer = 8;
+        internal const int Mask = 1 << Layer;
         private readonly HarborBlockout art;
         private readonly Transform anchor;
         private Transform stage;
@@ -58,7 +59,7 @@ namespace CostaLivre
             camera.transform.SetParent(stage, false);
             camera.transform.localPosition = new Vector3(1.2f, 1.13f, -3.0f);
             camera.transform.rotation = Quaternion.LookRotation(stage.position + Vector3.up * .12f - camera.transform.position);
-            camera.cullingMask = 1 << Layer;
+            camera.cullingMask = Mask;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(.057f,.103f,.114f,1);
             camera.nearClipPlane = .1f;
@@ -86,7 +87,7 @@ namespace CostaLivre
             lamp.range = 4;
             lamp.intensity = power;
             lamp.color = color;
-            lamp.cullingMask = 1 << Layer;
+            lamp.cullingMask = Mask;
         }
 
         private Transform Build(int index)

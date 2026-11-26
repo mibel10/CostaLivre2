@@ -210,6 +210,8 @@ namespace CostaLivre
             touch = new CostaTouch();
             BindControls();
             followCamera.nearClipPlane = 0.07f;
+            followCamera.cullingMask &= ~CostaItemPreview.Mask;
+            sun.cullingMask &= ~CostaItemPreview.Mask;
             menu = new HarborMenu(bindings, padBindings, followCamera, sun, volume);
             jobs = new CostaJobs();
             harbor = new HarborBlockout(transform, blockoutShader);

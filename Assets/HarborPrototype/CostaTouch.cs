@@ -34,6 +34,51 @@ namespace CostaLivre
             ResetInput();
         }
 
+        private Rect layoutArea;
+
+        private void FitLayout()
+        {
+            Rect safe = Screen.safeArea;
+            if (safe.Equals(layoutArea))
+                return;
+            layoutArea = safe;
+            for (int i = 0; i < sizes.Length; i++)
+                SetSize(i, sizes[i]);
+        }
+
+        private void SetSize(int index, float requested)
+        {
+            float low = .065f;
+            float high = requested;
+            for (int pass = 0; pass < 12; pass++)
+            {
+                float size = pass == 0 ? high : (low + high) * .5f;
+                Rect area = Bounds(index, size);
+                bool overlaps = false;
+                for (int i = 0; i < sizes.Length; i++)
+                {
+                    if (i == index || (i == (int)Control.Retry || index == (int)Control.Retry)
+                        && i != (int)Control.Menu && index != (int)Control.Menu)
+                        continue;
+                    if (area.Overlaps(Bounds(i)))
+                    {
+                        overlaps = true;
+                        break;
+                    }
+                }
+                if (overlaps)
+                    high = size;
+                else if (pass == 0)
+                {
+                    sizes[index] = size;
+                    return;
+                }
+                else
+                    low = size;
+            }
+            sizes[index] = low;
+        }
+
         private static float DefaultSize(int i) => i == 0 ? .28f : i == (int)Control.Fire ? .15f : .105f;
 
         internal bool Down(Control control) => down[(int)control];
@@ -56,6 +101,7 @@ namespace CostaLivre
                 return;
             }
 
+            FitLayout();
             Array.Clear(pressed, 0, pressed.Length);
             Array.Clear(down, 0, down.Length);
             Move = Look = stickOffset = Vector2.zero;
@@ -124,10 +170,12 @@ namespace CostaLivre
                 || control == Control.Use || control == Control.Menu || control == Control.Map || control == Control.Bag);
         }
 
-        private Rect Bounds(int i)
+        private Rect Bounds(int i) => Bounds(i, sizes[i]);
+
+        private Rect Bounds(int i, float relativeSize)
         {
-            Rect safe = Screen.safeArea;
-            float size = Mathf.Min(safe.width, safe.height) * sizes[i];
+            Rect safe = layoutArea;
+            float size = Mathf.Min(safe.width, safe.height) * relativeSize;
             Vector2 p = new(safe.x + safe.width * Centers[i].x, Screen.height - safe.yMax + safe.height * Centers[i].y);
             return new Rect(Mathf.Clamp(p.x - size * .5f, safe.xMin, safe.xMax - size),
                 Mathf.Clamp(p.y - size * .5f, Screen.height - safe.yMax, Screen.height - safe.yMin - size), size, size);
@@ -173,6 +221,7 @@ namespace CostaLivre
 
         internal bool DrawEditor()
         {
+            FitLayout();
             if (Event.current.type == EventType.Repaint)
                 for (int i = 0; i < sizes.Length; i++)
                     DrawButton(i, i == selected, false);
@@ -188,9 +237,11 @@ namespace CostaLivre
             if (CostaUi.Button(new Rect(x + 278, 170, 42, 34), "›", GUI.skin.button))
                 selected = (selected + 1) % sizes.Length;
             GUI.Label(new Rect(x + 105, 177, 130, 30), Title(selected));
-            sizes[selected] = CostaUi.Slider(new Rect(x + 25, 220, 290, 24), sizes[selected], .065f, selected == 0 ? .34f : .18f);
+            float requested = CostaUi.Slider(new Rect(x + 25, 220, 290, 24), sizes[selected], .065f, selected == 0 ? .34f : .18f);
+            if (requested != sizes[selected])
+                SetSize(selected, requested);
             if (CostaUi.Button(new Rect(x + 25, 266, 130, 35), L("Reset this button", "Restaurar botão"), GUI.skin.button))
-                sizes[selected] = DefaultSize(selected);
+                SetSize(selected, DefaultSize(selected));
             bool done = CostaUi.Button(new Rect(x + 185, 266, 130, 35), L("Save and close", "Salvar e fechar"), GUI.skin.button);
             GUI.matrix = old;
             if (done)

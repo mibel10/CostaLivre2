@@ -248,7 +248,10 @@ namespace CostaLivre
 
         private void DrawBase(Vector2 size, Projection p)
         {
-            Fill(new Rect(Vector2.zero, size), Water);
+            if (Event.current.type != EventType.Repaint)
+                return;
+            var viewport = new Rect(Vector2.zero, size);
+            Fill(viewport, Water);
             Fill(p.Area(new Rect(-152, 22, 230, 146)), Land);
             Fill(p.Area(new Rect(-152, -64, 177, 86)), Land);
             Fill(p.Area(new Rect(26, 97, 40, 47)), new Color(0.21f, 0.28f, 0.24f));
@@ -272,9 +275,17 @@ namespace CostaLivre
             Fill(p.Area(CostaCity.HighwayArea), Street);
 
             foreach (Rect building in buildings)
-                Fill(p.Area(building), Buildings);
+            {
+                Rect projected = p.Area(building);
+                if (viewport.Overlaps(projected))
+                    Fill(projected, Buildings);
+            }
             foreach (Vector2 center in HarborBlockout.WarehouseCenters)
-                Fill(p.Area(new Rect(center.x - 5.25f, center.y - 4.25f, 10.5f, 8.5f)), Buildings);
+            {
+                Rect projected = p.Area(new Rect(center.x - 5.25f, center.y - 4.25f, 10.5f, 8.5f));
+                if (viewport.Overlaps(projected))
+                    Fill(projected, Buildings);
+            }
         }
 
         private static Color ColorFor(Kind kind)
@@ -429,6 +440,8 @@ namespace CostaLivre
 
         private static void Fill(Rect area, Color color)
         {
+            if (Event.current.type != EventType.Repaint)
+                return;
             Color previous = GUI.color;
             GUI.color = color;
             GUI.DrawTexture(area, Texture2D.whiteTexture);

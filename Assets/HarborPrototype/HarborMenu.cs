@@ -7,7 +7,7 @@ namespace CostaLivre
     internal sealed class HarborMenu
     {
         private enum ScreenPage { Deploy, Loadout, Options, Jobs, Online }
-        private enum SettingsPage { Controls, Graphics, Language }
+        private enum SettingsPage { Controls, Graphics, Display, Language }
 
         private static readonly Color Paper = new(0.98f, 0.95f, 0.89f);
         private static readonly Color Grey = new(0.73f, 0.78f, 0.78f);
@@ -64,11 +64,7 @@ namespace CostaLivre
         private ScreenPage page;
         private SettingsPage settings;
         private bool editTouch;
-        private const string PresetKey = "CostaGraphicsPreset";
-        private static readonly float[] ViewDistances = { 95f, 155f, 245f, 360f, 540f };
-        private int quality = Mathf.Clamp(PlayerPrefs.GetInt(PresetKey,
-            PlayerPrefs.GetInt("CostaQuality", Application.isMobilePlatform ? 0 : 1) == 0 ? 1 : 3), 0, 4);
-        private readonly Camera camera;
+        private readonly HarborGraphics graphics;
         private int frameCap = PlayerPrefs.GetInt("CostaFrameCap", 60);
         private bool vsync = PlayerPrefs.GetInt("CostaVSync", 0) != 0;
         private readonly CostaBindings bindings;
@@ -79,6 +75,8 @@ namespace CostaLivre
         private int jobPage;
         private const int JobsPerPage = 6;
 
+        internal void SaveGraphicsIfDue() => graphics.SaveIfDue();
+        internal void FlushGraphics() => graphics.Flush();
         internal bool CapturingKey => bindings.Waiting || padBindings.Waiting;
         internal void ReadBinding()
         {
@@ -95,6 +93,7 @@ namespace CostaLivre
         private GUIStyle subhead;
         private GUIStyle label;
         private GUIStyle button;
+        private GUIStyle centeredButton;
         internal int SelectedWeapon { get; private set; }
         internal int SelectionVersion { get; private set; }
         internal float Sensitivity { get; private set; } = PlayerPrefs.GetFloat("HarborSensitivity", 1f);
@@ -104,10 +103,10 @@ namespace CostaLivre
         {
             this.bindings = bindings;
             this.padBindings = padBindings;
-            this.camera = camera;
-            ApplyGraphics();
+            graphics = new HarborGraphics(camera);
+            ApplyFrameSettings();
             int fullscreen = PlayerPrefs.GetInt("CostaFullscreen", -1);
-            if (fullscreen >= 0)
+            if (!Application.isMobilePlatform && fullscreen >= 0)
                 Screen.fullScreenMode = fullscreen > 0 ? FullScreenMode.FullScreenWindow : FullScreenMode.Windowed;
             gradient = new Texture2D(64, 32, TextureFormat.RGBA32, false)
             {
@@ -316,14 +315,16 @@ namespace CostaLivre
         {
             Text(new Rect(x, top - 5, 380, 62), L("Options", "Opções"), headline, Paper);
             float tab = top + 63;
-            if (MenuButton(new Rect(x, tab, 111, 39), L("Controls", "Controles"), settings == SettingsPage.Controls))
+            if (MenuButton(new Rect(x, tab, 110, 39), L("Controls", "Controles"), settings == SettingsPage.Controls))
                 settings = SettingsPage.Controls;
-            if (MenuButton(new Rect(x + 116, tab, 109, 39), L("Graphics", "Gráficos"), settings == SettingsPage.Graphics))
+            if (MenuButton(new Rect(x + 115, tab, 105, 39), L("Graphics", "Gráficos"), settings == SettingsPage.Graphics))
                 settings = SettingsPage.Graphics;
-            if (MenuButton(new Rect(x + 230, tab, 120, 39), L("Language", "Idioma"), settings == SettingsPage.Language))
+            if (MenuButton(new Rect(x + 225, tab, 142, 39), L("Display & sound", "Tela e som"), settings == SettingsPage.Display))
+                settings = SettingsPage.Display;
+            if (MenuButton(new Rect(x + 372, tab, 98, 39), L("Language", "Idioma"), settings == SettingsPage.Language))
                 settings = SettingsPage.Language;
 
-            if (CostaTouch.Available && MenuButton(new Rect(x + 355, tab, 135, 39), L("Touch layout", "Toque"), false))
+            if (CostaTouch.Available && MenuButton(new Rect(x + 475, tab, 113, 39), L("Touch layout", "Toque"), false))
                 editTouch = true;
 
             float y = tab + 51;
@@ -334,6 +335,9 @@ namespace CostaLivre
                     break;
                 case SettingsPage.Graphics:
                     DrawGraphics(x, y);
+                    break;
+                case SettingsPage.Display:
+                    DrawDisplay(x, y);
                     break;
                 case SettingsPage.Language:
                     if (MenuButton(new Rect(x, y, 155, 38), "English", !Portuguese))
@@ -424,44 +428,127 @@ namespace CostaLivre
 
         private void DrawGraphics(float x, float y)
         {
-            string[] presets = { L("Super Low (Potato)", "Super baixa (Batata)"), L("Low", "Baixa"),
-                L("Medium", "Média"), L("High", "Alta"), "Ultra" };
-            Text(new Rect(x, y, 115, 24), L("Quality", "Qualidade"), label, Paper);
-            for (int i = 0; i < presets.Length; i++)
+            Text(new Rect(x, y, 588, 23), graphics.IsCustom
+                ? L("Preset   /   Custom settings", "Predefinição   /   Personalizada")
+                : L("Preset", "Predefinição"), label, Grey);
+            if (MenuButton(new Rect(x, y + 25, 150, 34), L("Super Low (Potato)", "Super baixa (Batata)"),
+                    graphics.Preset == 0 && !graphics.IsCustom))
+                SetGraphicsPreset(0);
+            for (int i = 1; i <= HarborGraphics.MaxPreset; i++)
             {
-                float left = i == 0 ? x + 105 : x + 250 + (i - 1) * 72;
-                if (!MenuButton(new Rect(left, y, i == 0 ? 139 : 66, 26), presets[i], quality == i) || quality == i)
-                    continue;
-                quality = i;
-                ApplyGraphics();
-                PlayerPrefs.Save();
+                string preset = i == 4 ? "Ultra" : QualityLabel(i);
+                if (MenuButton(new Rect(x + 156 + (i - 1) * 81, y + 25, 76, 34), preset,
+                        graphics.Preset == i && !graphics.IsCustom))
+                    SetGraphicsPreset(i);
             }
 
-            Text(new Rect(x, y + 39, 115, 26), L("Display", "Tela"), label, Paper);
-            if (MenuButton(new Rect(x + 105, y + 39, 108, 27), L("Windowed", "Janela"), !Screen.fullScreen))
-                SetFullscreen(false);
-            if (MenuButton(new Rect(x + 219, y + 39, 118, 27), L("Fullscreen", "Tela cheia"), Screen.fullScreen))
-                SetFullscreen(true);
+            float right = x + 302;
+            Fill(new Rect(x, y + 68, 286, 183), Rail);
+            Fill(new Rect(right, y + 68, 286, 183), Rail);
+            float inset = x + 12;
+            float options = right + 12;
 
-            Text(new Rect(x, y + 78, 105, 24), L("Frame limit", "Limite de FPS"), label, Paper);
-            if (MenuButton(new Rect(x + 105, y + 78, 57, 26), "30", frameCap == 30))
+            Text(new Rect(inset, y + 78, 262, 23),
+                L($"3D resolution   {graphics.ResolutionPercent}%", $"Resolução 3D   {graphics.ResolutionPercent}%"), label, Paper);
+            graphics.SetScale(GraphicsSlider(new Rect(inset, y + 104, 262, 31), graphics.ResolutionPercent, 0, 100));
+            int percent = graphics.ActualPercent;
+            string scaleNote;
+            if (percent != graphics.ResolutionPercent)
+                scaleNote = L($"Engine minimum   {percent}%", $"Mínimo da Unity   {percent}%");
+            else if (percent == 100)
+                scaleNote = L("Native resolution", "Resolução nativa");
+            else
+                scaleNote = $"{Screen.width * percent / 100} × {Screen.height * percent / 100}";
+            Text(new Rect(inset, y + 136, 262, 22), scaleNote, label, Grey);
+            Fill(new Rect(inset, y + 164, 262, 1), Line);
+            Text(new Rect(inset, y + 174, 262, 23), L($"Render distance   {graphics.Distance} m",
+                $"Distância de renderização   {graphics.Distance} m"), label, Paper);
+            graphics.SetDistance(GraphicsSlider(new Rect(inset, y + 202, 262, 32), graphics.Distance,
+                HarborGraphics.MinDistance, HarborGraphics.MaxDistance));
+
+            Text(new Rect(options, y + 78, 262, 23), L("Shadows", "Sombras"), label, Paper);
+            for (int i = 0; i <= HarborGraphics.MaxPreset; i++)
+            {
+                string name = i == 0 ? L("Off", "Sem") : i == 4 ? "Ultra" : QualityLabel(i);
+                if (MenuButton(new Rect(options + i * 53, y + 105, 50, 32), name, graphics.ShadowQuality == i, true))
+                    graphics.SetShadows(i);
+            }
+
+            Text(new Rect(options, y + 144, 262, 22), L("Textures", "Texturas"), label, Paper);
+            for (int i = 0; i < 4; i++)
+            {
+                if (MenuButton(new Rect(options + i * 66, y + 169, 63, 32), QualityLabel(i),
+                        graphics.TextureQuality == i, true))
+                    graphics.SetTextures(i);
+            }
+
+            bool compatible = HarborGraphics.FsrSupported;
+            string fsr = !compatible ? L("Unavailable", "Indisponível") :
+                graphics.FsrEnabled ? L("On", "Ligado") : L("Off", "Desligado");
+            Text(new Rect(options, y + 211, 145, 32), "AMD FSR 1.0", label, Paper);
+            bool enabled = GUI.enabled;
+            GUI.enabled = enabled && compatible;
+            if (MenuButton(new Rect(options + 147, y + 211, 115, 32), fsr, graphics.FsrEnabled && compatible, true))
+                graphics.ToggleFsr();
+            GUI.enabled = enabled;
+            if (compatible && graphics.FsrEnabled && percent == 100)
+                Text(new Rect(options, y + 252, 270, 22), L("FSR scales up below 100%.", "O FSR atua abaixo de 100%."), label, Grey);
+        }
+
+        private void SetGraphicsPreset(int preset)
+        {
+            graphics.SetPreset(preset);
+            ApplyFrameSettings();
+        }
+
+        private static string QualityLabel(int quality) => quality switch
+        {
+            0 => L("Min", "Mínima"),
+            1 => L("Low", "Baixa"),
+            2 => L("Medium", "Média"),
+            _ => L("High", "Alta")
+        };
+
+        private static float GraphicsSlider(Rect bounds, float value, float min, float max)
+        {
+            Color old = GUI.color;
+            GUI.color = Copper;
+            float result = CostaUi.Slider(bounds, value, min, max);
+            GUI.color = old;
+            return result;
+        }
+
+        private void DrawDisplay(float x, float y)
+        {
+            if (!Application.isMobilePlatform)
+            {
+                Text(new Rect(x, y, 115, 32), L("Display", "Tela"), label, Paper);
+                if (MenuButton(new Rect(x + 113, y, 115, 34), L("Windowed", "Janela"), !Screen.fullScreen))
+                    SetFullscreen(false);
+                if (MenuButton(new Rect(x + 234, y, 126, 34), L("Fullscreen", "Tela cheia"), Screen.fullScreen))
+                    SetFullscreen(true);
+            }
+
+            float frame = y + (Application.isMobilePlatform ? 0 : 48);
+            Text(new Rect(x, frame, 108, 34), L("Frame limit", "Limite de FPS"), label, Paper);
+            if (MenuButton(new Rect(x + 113, frame, 56, 34), "30", frameCap == 30, true))
             {
                 frameCap = 30;
-                ApplyGraphics();
+                ApplyFrameSettings();
             }
-            if (MenuButton(new Rect(x + 168, y + 78, 57, 26), "60", frameCap == 60))
+            if (MenuButton(new Rect(x + 175, frame, 56, 34), "60", frameCap == 60, true))
             {
                 frameCap = 60;
-                ApplyGraphics();
+                ApplyFrameSettings();
             }
-            if (MenuButton(new Rect(x + 231, y + 78, 106, 26), "VSync", vsync))
+            if (!Application.isMobilePlatform && MenuButton(new Rect(x + 237, frame, 100, 34), "VSync", vsync))
             {
                 vsync = !vsync;
-                ApplyGraphics();
+                ApplyFrameSettings();
             }
 
-            Text(new Rect(x, y + 120, 280, 24), L($"Master volume   {Volume:P0}", $"Volume geral   {Volume:P0}"), label, Paper);
-            float volume = CostaUi.Slider(new Rect(x, y + 149, 229, 20), Volume, 0f, 1f);
+            Text(new Rect(x, frame + 53, 280, 24), L($"Master volume   {Volume:P0}", $"Volume geral   {Volume:P0}"), label, Paper);
+            float volume = GraphicsSlider(new Rect(x, frame + 82, 229, 27), Volume, 0f, 1f);
             if (!Mathf.Approximately(Volume, volume))
             {
                 Volume = volume;
@@ -470,15 +557,10 @@ namespace CostaLivre
             }
         }
 
-        private void ApplyGraphics()
+        private void ApplyFrameSettings()
         {
-            int level = Mathf.Clamp(quality, 0, QualitySettings.names.Length - 1);
-            if (QualitySettings.GetQualityLevel() != level)
-                QualitySettings.SetQualityLevel(level, true);
-            camera.farClipPlane = ViewDistances[quality];
             QualitySettings.vSyncCount = vsync ? 1 : 0;
             Application.targetFrameRate = frameCap;
-            PlayerPrefs.SetInt(PresetKey, quality);
             PlayerPrefs.SetInt("CostaFrameCap", frameCap);
             PlayerPrefs.SetInt("CostaVSync", vsync ? 1 : 0);
         }
@@ -491,6 +573,7 @@ namespace CostaLivre
 
         internal void Release()
         {
+            graphics.Release();
             PlayerPrefs.Save();
             UnityEngine.Object.Destroy(gradient);
         }
@@ -501,7 +584,7 @@ namespace CostaLivre
                 page = id;
         }
 
-        private bool MenuButton(Rect bounds, string name, bool selected)
+        private bool MenuButton(Rect bounds, string name, bool selected, bool centered = false)
         {
             bool hover = bounds.Contains(Event.current.mousePosition) || CostaUi.Hovering(bounds);
             Fill(bounds, selected ? Copper : hover ? Hover : Carbon);
@@ -509,13 +592,14 @@ namespace CostaLivre
                 Fill(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), Line);
             Color before = GUI.contentColor;
             GUI.contentColor = selected ? Carbon : Paper;
-            int fontSize = button.fontSize;
+            GUIStyle style = centered ? centeredButton : button;
+            int fontSize = style.fontSize;
             float available = bounds.width - 8;
-            float required = button.CalcSize(new GUIContent(name)).x;
+            float required = style.CalcSize(new GUIContent(name)).x;
             if (required > available)
-                button.fontSize = Mathf.Max(11, Mathf.FloorToInt(fontSize * available / required));
-            bool pressed = CostaUi.Button(bounds, name, button);
-            button.fontSize = fontSize;
+                style.fontSize = Mathf.Max(11, Mathf.FloorToInt(fontSize * available / required));
+            bool pressed = CostaUi.Button(bounds, name, style);
+            style.fontSize = fontSize;
             GUI.contentColor = before;
             return pressed;
         }
@@ -528,6 +612,11 @@ namespace CostaLivre
             label = Style(15, FontStyle.Bold);
             button = Style(16, FontStyle.Bold);
             button.padding = new RectOffset(12, 6, 0, 0);
+            centeredButton = new GUIStyle(button)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                padding = new RectOffset(3, 3, 0, 0)
+            };
         }
 
         private static GUIStyle Style(int size, FontStyle weight, bool wrap = false)

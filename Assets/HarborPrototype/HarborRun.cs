@@ -386,6 +386,7 @@ namespace CostaLivre
         {
             if (!focused)
             {
+                menu?.FlushGraphics();
                 SetCursor(false);
                 pausedForFocus = !session.Online && !inMenu && overlay == FieldOverlay.None;
                 if (pausedForFocus)
@@ -584,6 +585,7 @@ namespace CostaLivre
 
         private void Update()
         {
+            menu.SaveGraphicsIfDue();
             if (navigationBuild != null && navigationBuild.isDone)
             {
                 navigationBuild = null;

@@ -233,6 +233,7 @@ namespace CostaLivre
         }
 
         internal bool OwnsCollider(Collider collider) => collider == body;
+        internal Vector3 NearestBodyPoint(Vector3 point) => body.ClosestPoint(point);
 
         internal bool SetAuthoritativePose(Vector3 position, float yaw)
         {

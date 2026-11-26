@@ -1628,12 +1628,18 @@ namespace CostaLivre
 
                 Vector3 feet = guard.Agent.transform.position;
                 float range = (feet - position).sqrMagnitude;
-                if (range > 28f * 28f || Physics.Linecast(feet + Vector3.up * 0.85f, position + Vector3.up * 0.85f,
-                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                Vector3 sightTarget = position + Vector3.up * 0.85f;
+                if (car != null)
+                    sightTarget = car.NearestBodyPoint(feet + Vector3.up * 0.85f);
+                if (range > 28f * 28f || Physics.Linecast(feet + Vector3.up * 0.85f, sightTarget,
+                    out RaycastHit obstruction, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
+                    && (car == null || !car.OwnsCollider(obstruction.collider)))
                     continue;
 
                 spotted = true;
-                if (range <= 1.75f * 1.75f && (car == null || car.Speed < 1.45f) && rollClock <= 0
+                Vector3 arrestOffset = sightTarget - (feet + Vector3.up * 0.85f);
+                if (arrestOffset.sqrMagnitude <= 1.75f * 1.75f
+                    && (car == null || car.Speed < 1.45f) && rollClock <= 0
                     && (nearby == null || guard == arrestingGuard))
                     nearby = guard;
             }

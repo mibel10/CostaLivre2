@@ -25,6 +25,7 @@ namespace CostaLivre
 
         private readonly Dictionary<int, Rendered> models = new();
         private readonly List<int> stale = new();
+        private readonly Plane[] viewPlanes = new Plane[6];
         private readonly HarborBlockout art;
         private readonly Transform root;
         private GUIStyle nameTag;
@@ -37,8 +38,9 @@ namespace CostaLivre
             this.root = root;
         }
 
-        internal void Refresh(CostaSession session, CostaVehicle[] cars)
+        internal void Refresh(CostaSession session, CostaVehicle[] cars, Camera camera)
         {
+            GeometryUtility.CalculateFrustumPlanes(camera, viewPlanes);
             foreach (CostaSession.Avatar avatar in session.Players)
             {
                 if (avatar.id == session.Local.id || !avatar.playing)
@@ -52,6 +54,8 @@ namespace CostaLivre
                     model.Flash = art.WeaponFlash(model.Mount);
                     model.Audio = body.Root.gameObject.AddComponent<AudioSource>();
                     model.Audio.spatialBlend = 1f;
+                    model.Audio.rolloffMode = AudioRolloffMode.Linear;
+                    model.Audio.maxDistance = 75f;
                     model.LastShot = avatar.shotNumber;
                     model.UniformMeshes = body.Root.GetComponentsInChildren<MeshFilter>(true)
                         .Where(filter => filter.name == "Front vest" || filter.name == "Back vest")
@@ -70,7 +74,8 @@ namespace CostaLivre
                     Quaternion rotation = car.Root.rotation * Quaternion.Euler(11, 0, car.RiderLean);
                     Vector3 seat = car.Root.TransformPoint(new Vector3(0, 0.85f, -0.27f));
                     model.Body.Root.SetPositionAndRotation(seat - rotation * Vector3.up * 0.94f, rotation);
-                    model.Body.Ride();
+                    if (InView(model.Body.Root.position))
+                        model.Body.Ride();
                 }
                 else if (avatar.vehicle < 0)
                 {
@@ -80,6 +85,9 @@ namespace CostaLivre
                         ? avatar.pos : Vector3.Lerp(body.position, avatar.pos, amount);
                     body.SetPositionAndRotation(position,
                         Quaternion.Slerp(body.rotation, Quaternion.Euler(0, avatar.yaw, 0), amount));
+                    PlayShot(model, avatar, camera.transform.position);
+                    if (!InView(position))
+                        continue;
                     if (avatar.rollPose >= 0)
                         model.Body.Animate(HarborCharacter.Motion.Roll, progress: avatar.rollPose);
                     else if (avatar.jumpPose >= 0)
@@ -108,12 +116,35 @@ namespace CostaLivre
             }
         }
 
+        private bool InView(Vector3 position) =>
+            GeometryUtility.TestPlanesAABB(viewPlanes, new Bounds(position + Vector3.up, new Vector3(3, 4, 3)));
+
+        private void PlayShot(Rendered model, CostaSession.Avatar avatar, Vector3 listener)
+        {
+            if (avatar.shotNumber != model.LastShot)
+            {
+                model.LastShot = avatar.shotNumber;
+                if (avatar.shotWeapon >= 0 && avatar.shotWeapon < HarborArsenal.WeaponNames.Length
+                    && (model.Body.Root.position - listener).sqrMagnitude < 75f * 75f)
+                {
+                    EnsureWeaponTemplates();
+                    model.Audio.PlayOneShot(shotClips[avatar.shotWeapon], 0.42f);
+                    if (avatar.shotWeapon == HarborArsenal.Knife)
+                        model.KnifeSwingUntil = Time.unscaledTime + HarborArsenal.KnifeSwingTime;
+                    else
+                    {
+                        model.Flash.localPosition = Vector3.forward * 0.50f;
+                        model.FlashUntil = Time.unscaledTime + 0.055f;
+                    }
+                }
+            }
+        }
+
         private void DrawWeapon(Rendered model, CostaSession.Avatar avatar)
         {
             if (model.Weapon != avatar.equipped)
             {
                 model.Weapon = avatar.equipped;
-                model.KnifeSwingUntil = 0;
                 for (int i = model.Mount.childCount - 1; i >= 0; i--)
                 {
                     Transform child = model.Mount.GetChild(i);
@@ -129,22 +160,6 @@ namespace CostaLivre
                 }
             }
 
-            if (avatar.shotNumber != model.LastShot)
-            {
-                model.LastShot = avatar.shotNumber;
-                if (avatar.shotWeapon >= 0 && avatar.shotWeapon < HarborArsenal.WeaponNames.Length)
-                {
-                    EnsureWeaponTemplates();
-                    model.Audio.PlayOneShot(shotClips[avatar.shotWeapon], 0.42f);
-                    if (avatar.shotWeapon == HarborArsenal.Knife)
-                        model.KnifeSwingUntil = Time.unscaledTime + HarborArsenal.KnifeSwingTime;
-                    else
-                    {
-                        model.Flash.localPosition = Vector3.forward * 0.50f;
-                        model.FlashUntil = Time.unscaledTime + 0.055f;
-                    }
-                }
-            }
             bool knife = model.Weapon == HarborArsenal.Knife;
             if (model.Weapon >= 0 && avatar.rollPose < 0)
             {

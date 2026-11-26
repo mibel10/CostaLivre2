@@ -525,7 +525,7 @@ namespace CostaLivre
                 pendingBuy = -1;
             }
             localLook.Apply(avatar.outfit, avatar.police);
-            remotes.Refresh(session, cars);
+            remotes.Refresh(session, cars, followCamera);
             robberies.Refresh(session.Sites);
         }
 

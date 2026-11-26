@@ -652,8 +652,10 @@ namespace CostaLivre
                 foreach (Guard guard in guards)
                     guard?.Agent.gameObject.SetActive(false);
                 session.Request("outfit", onlinePanel.Outfit);
-                if (inMenu)
-                    ShowMenu();
+                // A connection can finish while a solo session is active.
+                CloseOverlay();
+                menu.ShowOnline();
+                ShowMenu();
             }
 
             CostaSession.Avatar avatar = session.Local;

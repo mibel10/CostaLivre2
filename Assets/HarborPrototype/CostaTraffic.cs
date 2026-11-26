@@ -47,6 +47,8 @@ namespace CostaLivre
         private float accumulator;
         private float motorHour;
         private bool running;
+        private Car[] lastTrafficFrame;
+        private CityEvent lastEventFrame;
 
         internal CostaTraffic(HarborBlockout art, Transform root)
         {
@@ -111,11 +113,14 @@ namespace CostaLivre
         {
             accumulator = 0;
             running = false;
+            lastTrafficFrame = null;
+            lastEventFrame = null;
             nextEvent = 24;
             SetIncident(-1, 0);
             incident.remaining = 0;
             for (int i = 0; i < cars.Length; i++)
             {
+                cars[i].FollowPresentation();
                 cars[i].Root.gameObject.SetActive(false);
                 var route = Routes[i / 2];
                 segment[i] = (i % 2) * 2;
@@ -255,6 +260,9 @@ namespace CostaLivre
         {
             if (remote?.Length != cars.Length)
                 return;
+            bool receivedTraffic = remote != lastTrafficFrame;
+            bool receivedEvent = worldEvent != lastEventFrame;
+            bool collisionChanged = false;
             float night = HarborDaylight.CityNight(hour);
             for (int i = 0; i < cars.Length; i++)
             {
@@ -262,16 +270,23 @@ namespace CostaLivre
                     continue;
                 bool spawn = !cars[i].Root.gameObject.activeSelf;
                 cars[i].Root.gameObject.SetActive(true);
+                if (receivedTraffic || spawn)
+                    collisionChanged |= cars[i].SetAuthoritativePose(remote[i].position, remote[i].yaw) || spawn;
                 cars[i].ApplyNetwork(remote[i].position, remote[i].yaw, remote[i].speed, spawn);
                 cars[i].SetRunningLights(night);
             }
-            if (worldEvent != null)
+            if (receivedEvent && worldEvent != null)
             {
+                int previousSite = incident.site, previousKind = incident.kind;
                 SetIncident(worldEvent.site, worldEvent.kind);
                 incident.remaining = worldEvent.remaining;
+                collisionChanged |= previousSite != incident.site || previousKind != incident.kind;
             }
+            lastTrafficFrame = remote;
+            lastEventFrame = worldEvent;
             UpdateSignals(hour);
-            Physics.SyncTransforms();
+            if (collisionChanged)
+                Physics.SyncTransforms();
         }
 
         private int previousSignalMask = -1;

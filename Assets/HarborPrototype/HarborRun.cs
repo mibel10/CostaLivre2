@@ -1435,7 +1435,7 @@ namespace CostaLivre
             hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? -1 : jobs.Remaining,
                 session.Online ? session.Local.wanted : pursuit, notice, prompt, stamina / FullStamina,
                 car != null ? car.Speed : -1, session.Online ? session.Local.health : encounter.Active ? encounter.Health : -1,
-                arsenal, CostaTouch.Available, gamepad);
+                IsPolice ? session.Local.armor : -1, arsenal, CostaTouch.Available, gamepad);
         }
 
         private Vector3? MissionLocation()

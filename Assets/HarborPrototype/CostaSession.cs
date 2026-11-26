@@ -14,6 +14,7 @@ namespace CostaLivre
         internal const int MaxPlayers = 16;
         private const int Protocol = 5;
         private const float Interval = 0.083f;
+        internal const int PoliceArmor = 50;
         private const int PoliceKit = (1 << 0) | (1 << 3);
         internal static readonly Vector3 CriminalSpawn = CostaCity.CitySpawn + Vector3.left * 2.8f;
         internal static readonly Vector3 PoliceSpawn = CostaCity.Station + new Vector3(0, 0, -4.1f);
@@ -39,6 +40,7 @@ namespace CostaLivre
             public int shotNumber;
             public int shotWeapon = -1;
             public int health = 100;
+            public int armor;
             public bool wanted;
             public int outfit;
             public int vehicle = -1;
@@ -468,6 +470,10 @@ namespace CostaLivre
                     {
                         SetRole(peer, false);
                     }
+                    else if (avatar.wanted || peer.Bag.Count > 0)
+                    {
+                        SetNotice(peer, 12);
+                    }
                     else if (CountPolice() >= AllowedPolice(CountPlayers()))
                     {
                         SetNotice(peer, 1);
@@ -767,11 +773,14 @@ namespace CostaLivre
 
             if (victim == null)
                 return;
-            victim.Pose.health -= damage;
+            int absorbed = Mathf.Min(victim.Pose.armor, (damage + 1) / 2);
+            victim.Pose.armor -= absorbed;
+            victim.Pose.health -= damage - absorbed;
             SetNotice(victim, 10);
             if (victim.Pose.health <= 0)
             {
                 victim.Pose.health = 100;
+                victim.Pose.armor = victim.Pose.police ? PoliceArmor : 0;
                 victim.Pose.pos = victim.Pose.police ? PoliceSpawn : FindCriminalSpawn();
                 ResetMotion(victim);
                 victim.Pose.revision++;
@@ -831,6 +840,7 @@ namespace CostaLivre
             peer.Pose.police = police;
             peer.Pose.equipped = police ? 0 : HarborArsenal.Knife;
             peer.Pose.health = 100;
+            peer.Pose.armor = police ? PoliceArmor : 0;
             Array.Clear(peer.UsedRounds, 0, peer.UsedRounds.Length);
             Array.Clear(peer.ReloadEnds, 0, peer.ReloadEnds.Length);
             peer.Pose.standing = true;
@@ -948,6 +958,7 @@ namespace CostaLivre
                 case 9: return L("Criminal role assigned.", "Função de criminoso atribuída.");
                 case 10: return L("You were hit.", "Você foi atingido.");
                 case 11: return L("You respawned.", "Você voltou à cidade.");
+                case 12: return L("Clear your wanted status before joining police.", "Deixe de ser procurado antes de entrar na polícia.");
                 default: return "";
             }
         }

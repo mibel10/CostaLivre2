@@ -24,7 +24,7 @@ namespace CostaLivre
 
         internal void DrawRun(Vector3 player, float heading, Vector3? destination, Vector3 viewport, float side,
             string objective, float timer, bool pursuit, string notice, string prompt, float stamina, float speed,
-            int health, HarborArsenal arsenal, bool touch, bool gamepad)
+            int health, int armor, HarborArsenal arsenal, bool touch, bool gamepad)
         {
             Matrix4x4 old = GUI.matrix;
             Begin(out float width, out float height);
@@ -44,7 +44,9 @@ namespace CostaLivre
                 Chip(statusX, statusY, status, Paper, 258);
             }
 
-            float meterY = touch ? 146 : height - 53;
+            int meters = (speed >= 0 || stamina < 0.99f ? 1 : 0)
+                + (health >= 0 && health < 100 ? 1 : 0) + (armor >= 0 ? 1 : 0);
+            float meterY = touch ? 146 : height - 26 - meters * 27;
             if (speed >= 0)
             {
                 Chip(18, meterY, $"{speed * 3.6f:0} km/h", Paper, 123);
@@ -56,7 +58,13 @@ namespace CostaLivre
                 meterY += 27;
             }
             if (health >= 0 && health < 100)
+            {
                 DrawMeter(18, meterY, L($"Health {health}", $"Vida {health}"), health / 100f, Danger);
+                meterY += 27;
+            }
+            if (armor >= 0)
+                DrawMeter(18, meterY, L($"Armor {armor}", $"Colete {armor}"),
+                    armor / (float)CostaSession.PoliceArmor, HarborBlockout.Mint);
 
             if (speed < 0)
             {

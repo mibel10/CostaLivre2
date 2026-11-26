@@ -58,6 +58,13 @@ namespace CostaLivre
 
         internal static bool IsNight(float hour) => hour >= 19f || hour < 6f;
 
+        internal static float CityNight(float hour)
+        {
+            float evening = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(17.7f, 20f, hour));
+            float morning = 1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(5f, 7.2f, hour));
+            return Mathf.Max(evening, morning);
+        }
+
         internal static float SolarHeight(float hour) => Mathf.Sin((hour - 6f) * (Mathf.PI / 12f));
 
         internal void Apply(float? hour, int preset, HarborWeather.Conditions weather)

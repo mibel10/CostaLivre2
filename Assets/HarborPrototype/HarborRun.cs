@@ -43,6 +43,7 @@ namespace CostaLivre
         private readonly Guard[] guards = new Guard[GuardPosts.Length];
         private readonly InputAction[] weaponSlots = new InputAction[3];
         private HarborBlockout harbor;
+        private CostaVenueLife venues;
         private HarborWeather atmosphere;
         private CostaCity city;
         private CostaJobs jobs;
@@ -292,6 +293,7 @@ namespace CostaLivre
 
             loadingPhase = L("Preparing vehicles and contracts", "Preparando veículos e missões");
             yield return 0.69f;
+            venues = new CostaVenueLife(harbor, transform);
             jobs.AttachDoors(city.HouseDoors);
             city.UpdateHouseDoors(jobs, false, snap: true);
             robberies = new CostaRobberies(harbor);
@@ -544,6 +546,7 @@ namespace CostaLivre
             effects?.Release();
             encounter?.Dispose();
             atmosphere?.Release();
+            venues?.Release();
             harbor?.ReleaseMaterials();
         }
 
@@ -804,6 +807,8 @@ namespace CostaLivre
             harbor.SetWaterDaylight(hour ?? HarborDaylight.StartHour);
             bool night = hour.HasValue && (session.Online ? session.WorldIsNight : HarborDaylight.IsNight(hour.Value));
             harbor.UpdateStreetLights(night, followCamera.transform.position, menu.StreetLightBudget);
+            if (hour.HasValue)
+                venues?.Update(hour.Value, followCamera.transform.position);
         }
 
         private void Update()
@@ -972,6 +977,13 @@ namespace CostaLivre
             }
             if (interaction && TryUseVehicle())
                 interaction = false;
+            if (interaction && car == null && grounded && !UsingContractObjective()
+                && robberies.Nearby(player.transform.position) < 0 && venues.Use(player.transform.position))
+            {
+                GestureAt(HarborCharacter.Gesture.Reach);
+                effects.Play(Cue.PanelOpen, .25f);
+                interaction = false;
+            }
             if (vehicleMotion.Active)
                 return;
 
@@ -2108,10 +2120,14 @@ namespace CostaLivre
             Vector3 position = player.transform.position;
             Vector3 target = destination ?? position;
             string prompt = InteractionPrompt(missionLocation ?? position);
+            if (prompt.Length == 0 && car == null)
+                prompt = venues.Prompt(position);
             Vector3 viewport = followCamera.WorldToViewportPoint(target + Vector3.up * 1.35f);
             float side = Vector3.Dot(target - position, followCamera.transform.right);
             string notice = session.Online ? session.CurrentNotice
                 : robberies.Notice.Length > 0 ? robberies.Notice : jobs.Notice;
+            if (notice.Length == 0)
+                notice = venues.Notice;
             hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? -1 : jobs.Remaining,
                 session.Online ? session.Local.wantedLevel : wantedLevel, notice, prompt, stamina / FullStamina,
                 session.Online ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat) : arrestProgress,

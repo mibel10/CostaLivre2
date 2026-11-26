@@ -9,6 +9,9 @@ namespace CostaLivre
         private static bool active;
         private static bool click;
         private static bool held;
+        private static float clickedAt = -10;
+        private static int lastButton;
+        private static readonly GUIContent content = new();
 
         internal static void Update(bool capturing)
         {
@@ -17,7 +20,7 @@ namespace CostaLivre
             {
                 foreach (var finger in Touchscreen.current.touches)
                 {
-                    if (!finger.press.wasPressedThisFrame && !finger.press.isPressed)
+                    if (!finger.press.wasPressedThisFrame && !finger.press.isPressed && !finger.press.wasReleasedThisFrame)
                         continue;
                     active = true;
                     pointer = CostaTouch.ScreenPoint(finger.position.ReadValue());
@@ -29,7 +32,9 @@ namespace CostaLivre
             if (capturing)
                 return;
             Gamepad pad = Gamepad.current;
-            if (pad == null || Mouse.current?.delta.ReadValue().sqrMagnitude > 0.1f)
+            Mouse mouseInput = Mouse.current;
+            if (pad == null || mouseInput?.delta.ReadValue().sqrMagnitude > 0.1f
+                || mouseInput?.leftButton.wasPressedThisFrame == true)
                 active = false;
             if (pad == null)
                 return;
@@ -59,17 +64,45 @@ namespace CostaLivre
             return true;
         }
 
+        internal static bool PointerActive => active;
+        internal static bool PointerPressed => active && click;
+        internal static bool PointerHeld => active && held;
+
         internal static Vector2 Position => GUIUtility.ScreenToGUIPoint(pointer);
 
         internal static bool Hovering(Rect area) => active && area.Contains(Position);
 
         internal static bool Button(Rect area, string label, GUIStyle style)
         {
-            if (!CostaTouch.Available)
-                return GUI.Button(area, label, style) || Pick(area);
-            if (Event.current.type == EventType.Repaint)
-                style.Draw(area, new GUIContent(label), false, held && area.Contains(Position), false, false);
-            return Pick(area);
+            int identity = unchecked(label.GetHashCode() * 397 ^ (int)area.x * 31 ^ (int)area.y);
+            bool touch = CostaTouch.Available;
+            bool pressed;
+            if (!touch)
+                pressed = GUI.Button(area, label, style) || Pick(area);
+            else
+            {
+                if (Event.current.type == EventType.Repaint)
+                {
+                    content.text = label;
+                    style.Draw(area, content, false, held && area.Contains(Position), false, false);
+                }
+                pressed = Pick(area);
+            }
+            if (pressed)
+            {
+                clickedAt = Time.unscaledTime;
+                lastButton = identity;
+            }
+            float time = (Time.unscaledTime - clickedAt) * 5.5f;
+            if (Event.current.type == EventType.Repaint && identity == lastButton && time < 1)
+            {
+                Color old = GUI.color;
+                GUI.color = new Color(1,.83f,.59f,.24f * (1-time));
+                GUI.DrawTexture(new Rect(area.x, area.yMax - 2, area.width * Mathf.Lerp(.44f, 1, time), 2),
+                    Texture2D.whiteTexture);
+                GUI.color = old;
+            }
+            return pressed;
         }
 
         internal static float Slider(Rect area, float value, float min, float max)

@@ -306,7 +306,7 @@ namespace CostaLivre
             cityMap = new CostaMap(city.Footprints);
             gunShop = new CostaGunShop();
             hud = new HarborHud(cityMap);
-            bagPanel = new CostaBagPanel();
+            bagPanel = new CostaBagPanel(harbor, transform);
             yield return 0.74f;
 
             CreateWorldActors();
@@ -550,6 +550,7 @@ namespace CostaLivre
             Destroy(controls);
             arsenal?.Dispose();
             effects?.Release();
+            bagPanel?.Release();
             encounter?.Dispose();
             atmosphere?.Release();
             venues?.Release();
@@ -1134,6 +1135,8 @@ namespace CostaLivre
         {
             effects.Play(Cue.PanelOpen, 0.32f);
             overlay = screen;
+            if (screen is FieldOverlay.Bag or FieldOverlay.Vendor)
+                bagPanel?.Open();
             Time.timeScale = 0;
             SetCursor(false);
         }
@@ -1142,6 +1145,7 @@ namespace CostaLivre
         {
             if (overlay != FieldOverlay.None)
                 effects.Play(Cue.PanelClose, 0.27f);
+            bagPanel?.Hide();
             overlay = FieldOverlay.None;
             Time.timeScale = 1;
             SetCursor(true);

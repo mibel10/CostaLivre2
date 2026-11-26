@@ -15,6 +15,37 @@ namespace CostaLivre
         private GUIStyle label;
         private GUIStyle button;
 
+        private readonly CostaItemPreview preview;
+        private readonly int[] order = { 0, 1, 2, 3, 4, 5, 6, 7 };
+        private readonly Rect[] slots = new Rect[CostaBag.Catalog.Length];
+        private int selected = -1;
+        private int filter;
+        private int drag = -1;
+        private bool dragWithPointer;
+        private Vector2 dragOrigin;
+        private bool moved;
+        private float shownAt;
+        private float selectedAt;
+        private float rotation;
+
+        internal CostaBagPanel(HarborBlockout art, Transform root) => preview = new CostaItemPreview(art, root);
+
+        internal void Open()
+        {
+            shownAt = Time.unscaledTime;
+            drag = -1;
+        }
+
+        internal void Hide()
+        {
+            preview.Hide();
+            drag = -1;
+        }
+
+        internal void Release() => preview.Release();
+
+        private static int Category(int index) => index switch { 2 or 3 => 2, 6 or 7 => 3, _ => 1 };
+
         internal void Draw(CostaBag bag, int cash, bool vendor, Action<int> sell, Action close)
         {
             if (heading == null)
@@ -24,61 +55,186 @@ namespace CostaLivre
                 button = Style(14, TextAnchor.MiddleCenter);
             }
             Matrix4x4 before = GUI.matrix;
-            float scale = Mathf.Min(Screen.width / 840f, Screen.height / 560f, 1.6f);
-            float width = Screen.width / scale;
-            float height = Screen.height / scale;
-            GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
-            Box(new Rect(0, 0, width, height), new Color(0.03f, 0.06f, 0.07f, 0.74f));
-            int rows = 0;
-            foreach (int count in bag.Amounts)
-                if (count > 0)
-                    rows++;
-            float panelHeight = rows == 0 ? 151 : 142 + rows * 36;
-            Rect bounds = new((width - 590) / 2, (height - panelHeight) / 2, 590, panelHeight);
+            Rect screen = new(0, 0, Screen.width, Screen.height);
+            Rect safe = Screen.safeArea;
+            if (safe.width <= 0 || safe.height <= 0)
+                safe = screen;
+            Box(screen, new Color(0.03f, 0.06f, 0.07f, 0.74f));
+            float scale = Mathf.Min(safe.width / 840f, safe.height / 560f, 1.6f);
+            float width = safe.width / scale;
+            float height = safe.height / scale;
+            GUI.matrix = before * Matrix4x4.TRS(new Vector3(safe.x, Screen.height - safe.yMax, 0),
+                Quaternion.identity, new Vector3(scale, scale, 1));
+
+            float opening = Mathf.SmoothStep(0, 1, Mathf.Clamp01((Time.unscaledTime - shownAt) / .21f));
+            Rect bounds = new((width - 700) * .5f, (height - 485) * .5f + (1-opening)*12, 700, 485);
             Box(bounds, Background);
             Box(new Rect(bounds.x, bounds.y, bounds.width, 3), Gold);
-            Text(new Rect(bounds.x + 20, bounds.y + 12, 420, 38),
+            Text(new Rect(bounds.x + 23, bounds.y + 9, 440, 42),
                 vendor ? L("Loot exchange", "Posto de venda") : L("Backpack", "Mochila"), heading, Ink);
-            if (Button(new Rect(bounds.xMax - 93, bounds.y + 16, 73, 27), L("Close", "Fechar"), true))
+            if (Button(new Rect(bounds.xMax - 98, bounds.y + 15, 75, 29), L("Close", "Fechar"), true))
+            {
+                GUI.matrix = before;
                 close();
+                return;
+            }
+            Text(new Rect(bounds.x + 24, bounds.y + 51, 530, 27),
+                $"{bag.Count} / {CostaBag.Capacity}  {L("spaces", "espaços")}   ·   {Money(cash)}", label, Gold);
 
-            Text(new Rect(bounds.x + 20, bounds.y + 55, 536, 29),
-                $"{bag.Count} / {CostaBag.Capacity}  {L("spaces", "espaços")}   ·   {L("Cash", "Saldo")}  {Money(cash)}", label, Gold);
-            if (bag.Count == 0)
-                Text(new Rect(bounds.x + 25, bounds.y + 105, 510, 30), L("The backpack is empty.", "A mochila está vazia."), label, Detail);
+            for (int i = 0; i < 4; i++)
+            {
+                string title = i switch
+                {
+                    0 => L("All", "Todos"), 1 => L("Valuables", "Valores"),
+                    2 => L("Museum", "Museu"), _ => L("Electronics", "Eletrônicos")
+                };
+                Rect tab = new(bounds.x + 24 + i * 87, bounds.y + 81, 82, 29);
+                if (Button(tab, title, true, filter == i))
+                {
+                    filter = i;
+                    drag = -1;
+                }
+            }
+
+            if (selected < 0 || bag.Amounts[selected] == 0 || filter != 0 && Category(selected) != filter)
+            {
+                selected = -1;
+                foreach (int id in order)
+                    if (bag.Amounts[id] > 0 && (filter == 0 || Category(id) == filter))
+                    {
+                        Select(id);
+                        break;
+                    }
+            }
 
             int visible = 0;
-            for (int i = 0; i < CostaBag.Catalog.Length; i++)
+            Array.Clear(slots, 0, slots.Length);
+            foreach (int id in order)
             {
-                int quantity = bag.Amounts[i];
-                if (quantity == 0)
+                int quantity = bag.Amounts[id];
+                if (quantity <= 0 || filter != 0 && Category(id) != filter)
                     continue;
-                var item = CostaBag.Catalog[i];
-                float y = bounds.y + 94 + visible++ * 36;
-                Box(new Rect(bounds.x + 20, y, bounds.width - 40, 31), Row);
-                Text(new Rect(bounds.x + 31, y, 77, 31), $"{quantity}×", label, Gold);
-                Text(new Rect(bounds.x + 73, y, 263, 31), item.Title, label, Ink);
-                Text(new Rect(bounds.x + 328, y, 105, 31), Money(item.Price), label, Detail);
-                if (vendor && Button(new Rect(bounds.xMax - 110, y + 3, 80, 25), L("Sell 1", "Vender 1"), true))
-                    sell(i);
+                float y = bounds.y + 120 + visible++ * 37;
+                Rect slot = slots[id] = new(bounds.x + 24, y, 350, 34);
+                Box(slot, id == selected ? Color.Lerp(Row, new Color(.35f,.29f,.21f), .3f +
+                    .7f * Mathf.Clamp01((Time.unscaledTime - selectedAt) * 6)) : Row);
+                if (id == selected)
+                    Box(new Rect(slot.x, slot.y, 3, slot.height), Gold);
+                Text(new Rect(slot.x + 13, y, 45, 34), $"{quantity}×", label, Gold);
+                Text(new Rect(slot.x + 57, y, 200, 34), CostaBag.Catalog[id].Title, label, Ink);
+                Text(new Rect(slot.xMax - 88, y, 85, 34), Money(CostaBag.Catalog[id].Price), label, Detail);
             }
+            if (visible == 0)
+                Text(new Rect(bounds.x + 25, bounds.y + 145, 349, 34), L("No items here.", "Nenhum item aqui."), label, Detail);
 
-            if (rows > 0)
+            Rect showcase = new(bounds.x + 391, bounds.y + 85, 283, 241);
+            Box(showcase, Row);
+            if (selected >= 0)
             {
-                Text(new Rect(bounds.x + 20, bounds.yMax - 43, 334, 30),
-                    L("Total value  ", "Valor total  ") + Money(bag.Value), label, Ink);
-                if (vendor && Button(new Rect(bounds.xMax - 176, bounds.yMax - 43, 156, 30), L("Sell all", "Vender tudo"), true))
+                if (Event.current.type == EventType.Repaint)
+                {
+                    rotation = Mathf.Repeat(rotation + Time.unscaledDeltaTime * 24, 360);
+                    Texture texture = preview.Render(selected, rotation);
+                    GUI.DrawTexture(new Rect(showcase.center.x - 114, showcase.y, 228, 228), texture);
+                }
+                Text(new Rect(showcase.x + 13, showcase.yMax - 29, 259, 25), CostaBag.Catalog[selected].Title, label, Ink);
+            }
+            else
+                preview.Hide();
+
+            Rect drop = new(showcase.x, bounds.y + 338, showcase.width, 49);
+            if (vendor)
+            {
+                Box(drop, drag >= 0 ? Color.Lerp(Row, Gold, .32f) : Row);
+                Text(new Rect(drop.x+12, drop.y, drop.width-20, drop.height),
+                    L("Drop an item here to sell", "Solte um item aqui para vender"), label, Ink);
+                if (Button(new Rect(showcase.x, bounds.y + 402, 134, 32), L("Sell one", "Vender um"), selected >= 0))
+                    sell(selected);
+                if (Button(new Rect(showcase.x + 146, bounds.y + 402, 137, 32), L("Sell all", "Vender tudo"), bag.Count > 0))
                     sell(-1);
             }
+            else
+                Text(new Rect(showcase.x, bounds.y + 340, 279, 34), L("Drag to reorder", "Arraste para reorganizar"), label, Detail);
+            Text(new Rect(showcase.x, bounds.yMax - 39, 279, 27),
+                L("Total value  ", "Valor total  ") + Money(bag.Value), label, Gold);
+
+            HandleDrag(bag, vendor, sell, drop);
             GUI.matrix = before;
         }
 
-        private bool Button(Rect area, string text, bool active)
+        private void HandleDrag(CostaBag bag, bool vendor, Action<int> sell, Rect drop)
         {
-            Box(area, active ? Gold : Row);
+            Event input = Event.current;
+            bool pointer = CostaUi.PointerActive;
+            if (drag >= 0 && dragWithPointer != pointer)
+                drag = -1;
+            if (pointer && input.type != EventType.Repaint)
+                return;
+            Vector2 at = pointer ? CostaUi.Position : input.mousePosition;
+            bool press = pointer ? CostaUi.PointerPressed : input.type == EventType.MouseDown && input.button == 0;
+            bool release = pointer ? !CostaUi.PointerHeld : input.type == EventType.MouseUp && input.button == 0;
+
+            if (press && drag < 0)
+                for (int i = 0; i < slots.Length; i++)
+                    if (slots[i].Contains(at))
+                    {
+                        drag = i;
+                        dragWithPointer = pointer;
+                        dragOrigin = at;
+                        moved = false;
+                        Select(i);
+                        if (!pointer)
+                            input.Use();
+                        break;
+                    }
+
+            if (drag < 0)
+                return;
+
+            moved |= (at - dragOrigin).sqrMagnitude > 36;
+            if (release)
+            {
+                if (moved && bag.Amounts[drag] > 0)
+                {
+                    if (vendor && drop.Contains(at))
+                        sell(drag);
+                    else
+                        for (int i = 0; i < slots.Length; i++)
+                            if (i != drag && slots[i].Contains(at))
+                            {
+                                int a = Array.IndexOf(order, drag), b = Array.IndexOf(order, i);
+                                (order[a], order[b]) = (order[b], order[a]);
+                                selectedAt = Time.unscaledTime;
+                                break;
+                            }
+                }
+                drag = -1;
+                if (!pointer)
+                    input.Use();
+                return;
+            }
+
+            if (moved && input.type == EventType.Repaint)
+            {
+                Rect card = new(at.x + 8, at.y + 9, 207, 31);
+                Box(card, new Color(Gold.r, Gold.g, Gold.b, .89f));
+                Text(new Rect(card.x + 7, card.y, card.width - 14, card.height), CostaBag.Catalog[drag].Title, label, Background);
+            }
+        }
+
+        private void Select(int index)
+        {
+            selected = index;
+            selectedAt = Time.unscaledTime;
+            rotation = 28;
+        }
+
+        private bool Button(Rect area, string text, bool active, bool selected = true)
+        {
+            Box(area, active && selected ? Gold : Row);
             bool old = GUI.enabled;
             GUI.enabled = old && active;
-            button.normal.textColor = Background;
+            button.normal.textColor = active && selected ? Background : Ink;
             bool clicked = CostaUi.Button(area, text, button);
             GUI.enabled = old;
             return clicked;

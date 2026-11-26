@@ -1053,11 +1053,9 @@ namespace CostaLivre
                     || now < candidate.HeldUntil || now < candidate.RespawnProtection)
                     continue;
                 Vector3 center = avatar.pos + Vector3.up * (avatar.crouched ? 0.59f : 0.91f);
-                float distance = Vector3.Dot(center - origin, direction);
-                Vector3 point = origin + direction * distance;
                 float height = avatar.crouched ? 0.24f : 0.56f;
-                center.y += Mathf.Clamp(point.y - center.y, -height, height);
-                if (distance > 0 && distance < closest && (point - center).sqrMagnitude <= 0.32f * 0.32f)
+                float distance = CapsuleEntry(origin - center, direction, height, 0.32f);
+                if (distance < closest)
                 {
                     victim = candidate;
                     closest = distance;
@@ -1082,6 +1080,40 @@ namespace CostaLivre
                 victim.RespawnProtection = now + 3;
                 SetNotice(victim, 11);
             }
+        }
+
+        internal static float CapsuleEntry(Vector3 origin, Vector3 direction, float halfSegment, float radius)
+        {
+            float radiusSquared = radius * radius;
+            float endpoint = Mathf.Clamp(origin.y, -halfSegment, halfSegment);
+            if ((origin - Vector3.up * endpoint).sqrMagnitude <= radiusSquared)
+                return 0;
+
+            float closest = Mathf.Min(
+                SphereEntry(origin - Vector3.up * halfSegment, direction, radiusSquared),
+                SphereEntry(origin + Vector3.up * halfSegment, direction, radiusSquared));
+            Vector2 horizontal = new Vector2(direction.x, direction.z);
+            Vector2 flatOrigin = new Vector2(origin.x, origin.z);
+            float a = horizontal.sqrMagnitude;
+            float b = Vector2.Dot(flatOrigin, horizontal);
+            float discriminant = b * b - a * (flatOrigin.sqrMagnitude - radiusSquared);
+            if (a > 0.000001f && discriminant >= 0)
+            {
+                float entry = (-b - Mathf.Sqrt(discriminant)) / a;
+                if (entry >= 0 && Mathf.Abs(origin.y + entry * direction.y) <= halfSegment)
+                    closest = Mathf.Min(closest, entry);
+            }
+            return closest;
+        }
+
+        private static float SphereEntry(Vector3 offset, Vector3 direction, float radiusSquared)
+        {
+            float projection = Vector3.Dot(offset, direction);
+            float discriminant = projection * projection - offset.sqrMagnitude + radiusSquared;
+            if (discriminant < 0)
+                return float.PositiveInfinity;
+            float entry = -projection - Mathf.Sqrt(discriminant);
+            return entry >= 0 ? entry : float.PositiveInfinity;
         }
 
         private bool MovementBlocked(Avatar avatar, Avatar pose, Vector3 direction, float distance)

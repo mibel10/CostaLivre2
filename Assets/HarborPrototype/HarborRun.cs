@@ -193,8 +193,8 @@ namespace CostaLivre
             ShowMenu();
         }
 
-        private void Connect(string name, string address, int port, bool host) =>
-            WithWorld(() => session.Start(name, address, port, host));
+        private void Connect(string name, string address, int port, bool host, string relay = null) =>
+            WithWorld(() => session.Start(name, address, port, host, relay));
 
         private void WithWorld(System.Action play)
         {

@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Sockets;
+using System.Net.WebSockets;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +15,7 @@ namespace CostaLivre
         private const int Limit = 32768;
         private readonly TcpClient client;
         private readonly NetworkStream stream;
+        private readonly ClientWebSocket websocket;
         private readonly ConcurrentQueue<string> incoming = new();
         private readonly ConcurrentQueue<byte[]> outgoing = new();
         private readonly SemaphoreSlim pending = new(0);
@@ -29,6 +33,30 @@ namespace CostaLivre
             stream = client.GetStream();
             _ = ReadLoop();
             _ = WriteLoop();
+        }
+
+        internal CostaWire(ClientWebSocket websocket)
+        {
+            this.websocket = websocket;
+            _ = ReadLoop();
+            _ = WriteLoop();
+        }
+
+        internal static async Task<CostaWire> ConnectTcp(IPAddress address, int port, CancellationToken token)
+        {
+            var client = new TcpClient(AddressFamily.InterNetwork);
+            try
+            {
+                using (token.Register(client.Close))
+                    await client.ConnectAsync(address, port).ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
+                return new CostaWire(client);
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
+            }
         }
 
         internal bool Receive(out string frame)
@@ -55,20 +83,27 @@ namespace CostaLivre
             pending.Release();
         }
 
-        internal static async Task Reject(TcpClient client, string text)
+        internal async Task Reject(string text)
         {
-            using (client)
+            try
             {
-                try
-                {
-                    byte[] response = Encode(text, Encoding.UTF8.GetByteCount(text));
-                    await client.GetStream().WriteAsync(response, 0, response.Length).ConfigureAwait(false);
-                }
-                catch (Exception e) when (e is System.IO.IOException || e is SocketException || e is ObjectDisposedException)
-                {
-                }
+                await WriteFrame(Encode(text, Encoding.UTF8.GetByteCount(text))).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (NetworkException(exception))
+            {
+            }
+            finally
+            {
+                Dispose();
             }
         }
+
+        private Task WriteFrame(byte[] frame) => websocket == null
+            ? stream.WriteAsync(frame, 0, frame.Length, cancel.Token)
+            : websocket.SendAsync(new ArraySegment<byte>(frame), WebSocketMessageType.Binary, true, cancel.Token);
+
+        internal static bool NetworkException(Exception error) => error is IOException || error is SocketException
+            || error is WebSocketException || error is OperationCanceledException || error is ObjectDisposedException;
 
         private static byte[] Encode(string text, int length)
         {
@@ -98,8 +133,7 @@ namespace CostaLivre
                     incoming.Enqueue(Encoding.UTF8.GetString(bytes));
                 }
             }
-            catch (Exception exception) when (exception is System.IO.IOException || exception is SocketException
-                || exception is OperationCanceledException || exception is ObjectDisposedException)
+            catch (Exception exception) when (NetworkException(exception))
             {
             }
             finally
@@ -113,10 +147,21 @@ namespace CostaLivre
             int offset = 0;
             while (offset < buffer.Length)
             {
-                int size = await stream.ReadAsync(buffer, offset, buffer.Length - offset, cancel.Token).ConfigureAwait(false);
-                if (size == 0)
-                    throw new System.IO.EndOfStreamException();
-                offset += size;
+                if (websocket != null)
+                {
+                    var chunk = new ArraySegment<byte>(buffer, offset, buffer.Length - offset);
+                    var result = await websocket.ReceiveAsync(chunk, cancel.Token).ConfigureAwait(false);
+                    if (result.MessageType != WebSocketMessageType.Binary || (result.Count == 0 && result.EndOfMessage))
+                        throw new EndOfStreamException();
+                    offset += result.Count;
+                }
+                else
+                {
+                    int size = await stream.ReadAsync(buffer, offset, buffer.Length - offset, cancel.Token).ConfigureAwait(false);
+                    if (size == 0)
+                        throw new EndOfStreamException();
+                    offset += size;
+                }
             }
         }
 
@@ -130,12 +175,11 @@ namespace CostaLivre
                     if (outgoing.TryDequeue(out byte[] frame))
                     {
                         Interlocked.Decrement(ref outCount);
-                        await stream.WriteAsync(frame, 0, frame.Length, cancel.Token).ConfigureAwait(false);
+                        await WriteFrame(frame).ConfigureAwait(false);
                     }
                 }
             }
-            catch (Exception exception) when (exception is System.IO.IOException || exception is SocketException
-                || exception is OperationCanceledException || exception is ObjectDisposedException)
+            catch (Exception exception) when (NetworkException(exception))
             {
             }
             finally
@@ -149,7 +193,8 @@ namespace CostaLivre
             if (Interlocked.Exchange(ref closed, 1) == 0)
             {
                 cancel.Cancel();
-                client.Close();
+                client?.Close();
+                websocket?.Dispose();
             }
         }
     }

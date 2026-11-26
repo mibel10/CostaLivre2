@@ -73,7 +73,25 @@ Referências dos modelos e chips. [Snapdragon 778G](https://www.qualcomm.com/sma
 
 ## Multiplayer e controles
 
-No menu **Multiplayer**, um jogador seleciona **Hospedar LAN**. Os demais usam **Entrar por IP** com o IPv4 do anfitrião e a mesma porta. A porta padrão é `7777`. Todos devem usar a mesma versão da build.
+### Jogar pela internet
+
+No menu **Multiplayer → Internet**, o anfitrião preenche **Endereço do servidor** com o endereço HTTPS do relay e clica em **Criar sala**. Depois, usa **Copiar convite** e manda o convite aos amigos. Os convidados colam o texto em **Código ou convite da sala** e clicam em **Entrar na sala**. Todos usam a mesma versão da build. A sessão dura enquanto o anfitrião estiver conectado.
+
+O relay está em `Server/relay`. Para rodar uma instância com Node.js, execute:
+
+```bash
+cd Server/relay
+npm ci
+npm start
+```
+
+O relay escuta na porta `8080` da máquina local por padrão. Para disponibilizá-lo pela internet, publique-o atrás de HTTPS com suporte a WebSocket. Para um teste temporário, execute `cloudflared tunnel --url http://127.0.0.1:8080` e use a URL HTTPS gerada no jogo. O endereço temporário depende do processo do túnel. [Documentação do Quick Tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+
+### Jogar na rede local
+
+Em **Multiplayer → LAN**, um jogador seleciona **Hospedar LAN**. Os demais usam **Entrar por IP** com o IPv4 do anfitrião e a mesma porta. A porta padrão é `7777`.
+
+### Controles
 
 | Entrada | Ação |
 | --- | --- |

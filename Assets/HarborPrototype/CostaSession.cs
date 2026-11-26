@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using static CostaLivre.CostaText;
@@ -176,8 +177,9 @@ namespace CostaLivre
         private Vehicle[] hostCars;
         private float[] doorBusyUntil;
         private CostaWire connection;
-        private Task connecting;
-        private TcpClient pendingClient;
+        private Task<CostaWire> connecting;
+        private CancellationTokenSource connectionCancellation;
+        private CostaInternetRoom internetRoom;
         private float connectDeadline;
         private int identity;
         private int nextIdentity;
@@ -207,6 +209,8 @@ namespace CostaLivre
         internal bool Online => Local != null && connection != null && !connection.Closed;
         internal bool Connecting => connecting != null || (connection != null && Local == null);
         internal bool Hosting => listener != null;
+        internal string RelayAddress { get; private set; } = "";
+        internal string RoomCode => internetRoom?.Code ?? "";
         internal float WorldHour
         {
             get
@@ -243,10 +247,27 @@ namespace CostaLivre
                 initialHomes[i] = Mathf.RoundToInt(vehicles[i].Root.eulerAngles.y);
         }
 
-        internal void Start(string name, string address, int port, bool host)
+        internal void Start(string name, string address, int port, bool host, string relayAddress = null)
         {
             Dispose();
-            if (port < 1 || port > 65535 || (!host && (!IPAddress.TryParse(address, out IPAddress ip)
+            Uri relay = null;
+            IPAddress ip = null;
+            if (relayAddress != null)
+            {
+                if (!CostaInternetRoom.TryEndpoint(relayAddress, out relay))
+                {
+                    status = L("Enter a valid HTTPS relay address.", "Informe um endereço HTTPS válido para o servidor.");
+                    return;
+                }
+
+                address = address.Trim().ToUpperInvariant();
+                if (!host && !CostaInternetRoom.ValidCode(address, 10, CostaInternetRoom.UpperHex))
+                {
+                    status = L("Enter the room code from the host.", "Informe o código da sala do anfitrião.");
+                    return;
+                }
+            }
+            else if (port < 1 || port > 65535 || (!host && (!IPAddress.TryParse(address, out ip)
                 || ip.AddressFamily != AddressFamily.InterNetwork)))
             {
                 status = L("Enter a valid IPv4 address and port.", "Informe um IPv4 e uma porta válidos.");
@@ -271,16 +292,27 @@ namespace CostaLivre
             {
                 if (host)
                 {
-                    listener = new TcpListener(IPAddress.Any, port);
+                    listener = new TcpListener(relay != null ? IPAddress.Loopback : IPAddress.Any, relay != null ? 0 : port);
                     listener.Start(MaxPlayers);
+                    port = ((IPEndPoint)listener.LocalEndpoint).Port;
                     hostCars = new Vehicle[sceneVehicles.Length];
                     doorBusyUntil = new float[hostCars.Length];
                     for (int i = 0; i < hostCars.Length; i++)
                         hostCars[i] = new Vehicle { pos = sceneVehicles[i].Home, yaw = initialHomes[i] };
                 }
-                pendingClient = new TcpClient(AddressFamily.InterNetwork);
-                connecting = pendingClient.ConnectAsync(host ? IPAddress.Loopback : IPAddress.Parse(address), port);
-                connectDeadline = Time.realtimeSinceStartup + 8f;
+
+                connectionCancellation = new CancellationTokenSource();
+                var token = connectionCancellation.Token;
+                if (relay == null)
+                    connecting = CostaWire.ConnectTcp(host ? IPAddress.Loopback : ip, port, token);
+                else
+                {
+                    RelayAddress = relay.GetLeftPart(UriPartial.Authority);
+                    if (host)
+                        internetRoom = new CostaInternetRoom(relay);
+                    connecting = host ? internetRoom.Host(port, token) : CostaInternetRoom.Join(relay, address, token);
+                }
+                connectDeadline = Time.realtimeSinceStartup + (relay != null ? 18f : 8f);
                 status = L("Connecting…", "Conectando…");
                 lastClock = Time.realtimeSinceStartup;
             }
@@ -297,6 +329,12 @@ namespace CostaLivre
             float delta = Mathf.Clamp(now - lastClock, 0, 0.10f);
             lastClock = now;
 
+            if (internetRoom?.Ended == true)
+            {
+                Dispose();
+                status = L("The relay disconnected.", "O servidor intermediário desconectou.");
+                return;
+            }
             if (listener != null)
                 TickHost(now, delta);
             TickClient(now, localPose);
@@ -309,15 +347,19 @@ namespace CostaLivre
             {
                 if (connecting.Status == TaskStatus.RanToCompletion)
                 {
+                    connection = connecting.Result;
                     connecting = null;
-                    connection = new CostaWire(pendingClient);
-                    pendingClient = null;
-                    nextWatchdog = now + 8f;
+                    connectionCancellation.Dispose();
+                    connectionCancellation = null;
+                    nextWatchdog = now + 10f;
                 }
                 else if (connecting.IsFaulted || connecting.IsCanceled || now >= connectDeadline)
                 {
+                    bool internet = RelayAddress.Length > 0;
                     Dispose();
-                    status = L("Connection failed.", "A conexão falhou.");
+                    status = internet
+                        ? L("Check the relay address and room code.", "Confira o endereço do servidor e o código da sala.")
+                        : L("Connection failed.", "A conexão falhou.");
                     return;
                 }
             }
@@ -405,19 +447,29 @@ namespace CostaLivre
             }
         }
 
+        private bool TryAcceptPeer(out CostaWire wire)
+        {
+            if (listener.Pending())
+            {
+                wire = new CostaWire(listener.AcceptTcpClient());
+                return true;
+            }
+            wire = null;
+            return internetRoom != null && internetRoom.TryAccept(out wire);
+        }
+
         private void TickHost(float now, float delta)
         {
-            for (int i = 0; i < 3 && listener.Pending(); i++)
+            for (int i = 0; i < 3 && TryAcceptPeer(out var wire); i++)
             {
-                TcpClient client = listener.AcceptTcpClient();
                 if (peers.Count >= MaxPlayers)
-                    _ = CostaWire.Reject(client, JsonUtility.ToJson(new Frame { type = "full", protocol = Protocol }));
+                    _ = wire.Reject(JsonUtility.ToJson(new Frame { type = "full", protocol = Protocol }));
                 else
                 {
                     byte[] challenge = new byte[32];
                     using (var random = RandomNumberGenerator.Create())
                         random.GetBytes(challenge);
-                    var peer = new Peer { Wire = new CostaWire(client), LastPacket = now, Challenge = challenge };
+                    var peer = new Peer { Wire = wire, LastPacket = now, Challenge = challenge };
                     peers.Add(peer);
                     peer.Wire.Send(JsonUtility.ToJson(new Frame
                     {
@@ -1299,6 +1351,17 @@ namespace CostaLivre
 
         internal void ExitVehicle(int side) => Request("exit", side);
 
+        private static async Task DiscardConnection(Task<CostaWire> task)
+        {
+            try
+            {
+                (await task.ConfigureAwait(false)).Dispose();
+            }
+            catch (Exception exception) when (CostaWire.NetworkException(exception) || exception is NotSupportedException)
+            {
+            }
+        }
+
         public void Dispose()
         {
             clientIdentity?.Dispose();
@@ -1308,9 +1371,15 @@ namespace CostaLivre
             listener = null;
             connection?.Dispose();
             connection = null;
-            pendingClient?.Close();
-            pendingClient = null;
+            connectionCancellation?.Cancel();
+            connectionCancellation?.Dispose();
+            connectionCancellation = null;
+            if (connecting != null)
+                _ = DiscardConnection(connecting);
             connecting = null;
+            internetRoom?.Dispose();
+            internetRoom = null;
+            RelayAddress = "";
             foreach (Peer peer in peers)
                 peer.Wire.Dispose();
             peers.Clear();

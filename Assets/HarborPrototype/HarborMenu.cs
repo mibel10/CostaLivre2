@@ -219,7 +219,7 @@ namespace CostaLivre
                 Text(new Rect(x + 3, top + 18, cardWidth - 35, 64),
                     sessionActive ? L("Match menu", "Menu da partida") : L("Paused", "Pausa"), pauseHeadline, Paper);
                 Text(new Rect(x + 4, top + 83, cardWidth - 35, 27),
-                    sessionActive ? L("LAN session is still running", "Sessão LAN em andamento") : "Santa Luz", label, Grey);
+                    sessionActive ? L("Online session is still running", "Sessão multiplayer em andamento") : "Santa Luz", label, Grey);
                 Rect primary = new(x, top + 123, cardWidth - 32, 51);
                 if (MenuButton(primary, resume ? L("Resume", "Continuar") : L("Try again", "Tentar de novo"), true))
                     (resume ? continueRun : deploy)();

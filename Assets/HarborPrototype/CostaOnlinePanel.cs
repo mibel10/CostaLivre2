@@ -7,10 +7,14 @@ namespace CostaLivre
     internal sealed class CostaOnlinePanel
     {
         private CostaSession session;
-        private readonly Action<string, string, int, bool> connect;
+        private readonly Action<string, string, int, bool, string> connect;
         private string name = PlayerPrefs.GetString("CostaMultiplayerName", "Jogador");
         private string ip = "127.0.0.1";
         private string port = "7777";
+        private bool internet = true;
+        private string relay = PlayerPrefs.GetString("CostaRelayAddress", "");
+        private string invite = "";
+        private float copiedUntil;
         private static readonly int[] Powers = { 1, 3, 9, 27, 81 };
         private static readonly Color Text = new(0.90f, 0.91f, 0.84f);
         private static readonly Color Muted = new(0.67f, 0.74f, 0.69f);
@@ -23,7 +27,7 @@ namespace CostaLivre
         private int editing;
 
         internal int Outfit { get; private set; } = Mathf.Clamp(PlayerPrefs.GetInt("CostaOutfit", 0), 0, 242);
-        internal CostaOnlinePanel(Action<string, string, int, bool> connect) => this.connect = connect;
+        internal CostaOnlinePanel(Action<string, string, int, bool, string> connect) => this.connect = connect;
 
         internal void AttachSession(CostaSession readySession) => session = readySession;
 
@@ -44,17 +48,32 @@ namespace CostaLivre
                 bool connecting = session?.Connecting == true;
                 Label(new Rect(x + 8, row, 350, 22), L("PLAYER NAME", "NOME DO JOGADOR"), labels, Muted);
                 name = Input(new Rect(x + 8, row + 25, 362, 34), name, 20, 1, TouchScreenKeyboardType.Default);
-                Label(new Rect(x + 8, row + 61, 230, 20), L("HOST IPV4", "IPV4 DO ANFITRIÃO"), labels, Muted);
-                Label(new Rect(x + 286, row + 61, 76, 20), L("PORT", "PORTA"), labels, Muted);
-                ip = Input(new Rect(x + 8, row + 84, 264, 34), ip, 15, 2, TouchScreenKeyboardType.NumbersAndPunctuation);
-                port = Input(new Rect(x + 286, row + 84, 84, 34), port, 5, 3, TouchScreenKeyboardType.NumberPad);
-                if (Button(new Rect(x + 8, row + 127, 174, 40), L("Host LAN", "Hospedar LAN"), !connecting))
+                if (Button(new Rect(x + 8, row + 65, 174, 32), "Internet", !connecting))
+                    internet = true;
+                if (Button(new Rect(x + 195, row + 65, 175, 32), "LAN", !connecting))
+                    internet = false;
+                if (internet)
+                {
+                    Label(new Rect(x + 8, row + 104, 350, 20), L("RELAY ADDRESS", "ENDEREÇO DO SERVIDOR"), labels, Muted);
+                    relay = Input(new Rect(x + 8, row + 126, 362, 32), relay, 180, 4, TouchScreenKeyboardType.URL);
+                    Label(new Rect(x + 8, row + 165, 350, 20), L("ROOM CODE OR INVITE", "CÓDIGO OU CONVITE DA SALA"), labels, Muted);
+                    invite = Input(new Rect(x + 8, row + 188, 362, 32), invite, 210, 5, TouchScreenKeyboardType.URL);
+                }
+                else
+                {
+                    Label(new Rect(x + 8, row + 104, 230, 20), L("HOST IPV4", "IPV4 DO ANFITRIÃO"), labels, Muted);
+                    Label(new Rect(x + 286, row + 104, 76, 20), L("PORT", "PORTA"), labels, Muted);
+                    ip = Input(new Rect(x + 8, row + 126, 264, 34), ip, 15, 2, TouchScreenKeyboardType.NumbersAndPunctuation);
+                    port = Input(new Rect(x + 286, row + 126, 84, 34), port, 5, 3, TouchScreenKeyboardType.NumberPad);
+                }
+                float actions = row + (internet ? 228 : 172);
+                if (Button(new Rect(x + 8, actions, 174, 36), internet ? L("Create room", "Criar sala") : L("Host LAN", "Hospedar LAN"), !connecting))
                     Start(true);
-                if (Button(new Rect(x + 195, row + 127, 175, 40), L("Join by IP", "Entrar por IP"), !connecting))
+                if (Button(new Rect(x + 195, actions, 175, 36), internet ? L("Join room", "Entrar na sala") : L("Join by IP", "Entrar por IP"), !connecting))
                     Start(false);
-                if (connecting && Button(new Rect(x + 8, row + 199, 116, 30), L("Cancel", "Cancelar"), true))
+                if (connecting && Button(new Rect(x + 250, actions + 40, 120, 29), L("Cancel", "Cancelar"), true))
                     session.Dispose();
-                Label(new Rect(x + 8, row + 174, 378, 25), session?.Status ?? "", labels, Gold);
+                Label(new Rect(x + 8, actions + 39, connecting ? 236 : 372, 30), session?.Status ?? "", labels, Gold);
                 return;
             }
 
@@ -72,8 +91,18 @@ namespace CostaLivre
                 session.Dispose();
                 return;
             }
-            Label(new Rect(x + 8, row + 70, 369, 25),
-                L("WARDROBE", "VESTUÁRIO"), labels, Muted);
+            if (session.RoomCode.Length > 0)
+            {
+                Label(new Rect(x + 8, row + 70, 210, 25), L("ROOM ", "SALA ") + session.RoomCode, labels, Gold);
+                if (Button(new Rect(x + 222, row + 69, 148, 28),
+                    Time.unscaledTime < copiedUntil ? L("Copied", "Copiado") : L("Copy invite", "Copiar convite"), true))
+                {
+                    GUIUtility.systemCopyBuffer = session.RelayAddress + "/join/" + session.RoomCode;
+                    copiedUntil = Time.unscaledTime + 2f;
+                }
+            }
+            else
+                Label(new Rect(x + 8, row + 70, 369, 25), L("WARDROBE", "VESTUÁRIO"), labels, Muted);
             for (int i = 0; i < Powers.Length; i++)
             {
                 int index = Outfit / Powers[i] % 3;
@@ -112,6 +141,8 @@ namespace CostaLivre
                     case 1: name = keyboard.text; break;
                     case 2: ip = keyboard.text; break;
                     case 3: port = keyboard.text; break;
+                    case 4: relay = keyboard.text; break;
+                    case 5: invite = keyboard.text; break;
                 }
             }
             keyboard = null;
@@ -121,9 +152,19 @@ namespace CostaLivre
         {
             if (!int.TryParse(port, out int number))
                 number = 0;
+            string address = internet ? invite.Trim() : ip;
+            if (internet && !host && Uri.TryCreate(address, UriKind.Absolute, out var link)
+                && link.Query == "" && link.Fragment == "" && link.UserInfo == ""
+                && link.AbsolutePath.StartsWith("/join/", StringComparison.Ordinal))
+            {
+                relay = link.GetLeftPart(UriPartial.Authority);
+                address = link.AbsolutePath.Substring(6);
+            }
             PlayerPrefs.SetString("CostaMultiplayerName", name);
+            if (internet)
+                PlayerPrefs.SetString("CostaRelayAddress", relay);
             PlayerPrefs.Save();
-            connect(name, ip, number, host);
+            connect(name, address, number, host, internet ? relay : null);
         }
 
         private void Change(int category, int option, int offset)

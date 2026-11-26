@@ -25,10 +25,21 @@ namespace CostaLivre
         private static readonly int[] Textures = { 0, 1, 2, 3, 3 };
         private static readonly (int Distance, int Resolution, int Cascades)[] Shadows =
         {
-            (0, 512, 1), (30, 1024, 1), (65, 2048, 2), (95, 2048, 4), (145, 4096, 4)
+            (0, 512, 1), (30, 1024, 1), (65, 2048, 2), (95, 2048, 4), (175, 4096, 4)
         };
 
         private readonly Camera camera;
+        private readonly Light sun;
+        private readonly Volume volume;
+        private readonly VolumeProfile originalVolume;
+        private readonly Quaternion originalSunRotation;
+        private readonly Color originalSunColor;
+        private readonly float originalSunIntensity;
+        private readonly Color originalFog = RenderSettings.fogColor;
+        private readonly float originalFogDensity = RenderSettings.fogDensity;
+        private readonly Color originalSky = RenderSettings.ambientSkyColor;
+        private readonly Color originalHorizon = RenderSettings.ambientEquatorColor;
+        private readonly Color originalGround = RenderSettings.ambientGroundColor;
         private RenderPipelineAsset originalPipeline;
         private UniversalRenderPipelineAsset pipeline;
         private double? saveAt;
@@ -43,9 +54,18 @@ namespace CostaLivre
             ResolutionPercent != Scales[Preset] || Distance != Distances[Preset] || FsrEnabled;
         internal int ActualPercent => Mathf.Max(ResolutionPercent, MinActualPercent);
 
-        internal HarborGraphics(Camera camera)
+        internal HarborGraphics(Camera camera, Light sun, Volume volume)
         {
             this.camera = camera;
+            this.sun = sun;
+            this.volume = volume;
+            originalVolume = volume != null ? volume.sharedProfile : null;
+            if (sun != null)
+            {
+                originalSunRotation = sun.transform.rotation;
+                originalSunColor = sun.color;
+                originalSunIntensity = sun.intensity;
+            }
             int oldDefault = PlayerPrefs.GetInt("CostaQuality", Application.isMobilePlatform ? 0 : 1) == 0 ? 1 : 3;
             int maxPreset = Mathf.Min(MaxPreset, QualitySettings.names.Length - 1);
             Preset = Mathf.Clamp(PlayerPrefs.GetInt(PresetKey, oldDefault), 0, maxPreset);
@@ -142,6 +162,7 @@ namespace CostaLivre
         internal void Release()
         {
             Flush();
+            ApplyLighting(false);
             RestorePipeline();
         }
 
@@ -176,7 +197,26 @@ namespace CostaLivre
             ApplyShadows();
             ApplyTextures();
             ApplyUpscaling();
+            ApplyLighting(Preset == MaxPreset);
             camera.farClipPlane = Distance;
+        }
+
+        private void ApplyLighting(bool ultra)
+        {
+            if (volume != null)
+                volume.sharedProfile = ultra && pipeline?.volumeProfile != null ? pipeline.volumeProfile : originalVolume;
+            if (sun != null)
+            {
+                sun.transform.rotation = ultra ? Quaternion.Euler(34f, -46f, 0) : originalSunRotation;
+                sun.color = ultra ? new Color(1f, 0.94f, 0.83f) : originalSunColor;
+                sun.intensity = ultra ? 1.62f : originalSunIntensity;
+            }
+
+            RenderSettings.fogColor = ultra ? new Color(0.61f, 0.70f, 0.74f) : originalFog;
+            RenderSettings.fogDensity = ultra ? 0.0048f : originalFogDensity;
+            RenderSettings.ambientSkyColor = ultra ? new Color(0.52f, 0.59f, 0.66f) : originalSky;
+            RenderSettings.ambientEquatorColor = ultra ? new Color(0.18f, 0.22f, 0.25f) : originalHorizon;
+            RenderSettings.ambientGroundColor = ultra ? new Color(0.091f, 0.078f, 0.064f) : originalGround;
         }
 
         private void ApplyShadows()

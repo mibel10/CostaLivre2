@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.AI;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
 using static CostaLivre.CostaText;
 using TouchControl = CostaLivre.CostaTouch.Control;
 using Cue = CostaLivre.CostaEffects.Cue;
@@ -27,6 +28,8 @@ namespace CostaLivre
         }
 
         [SerializeField] private Camera followCamera;
+        [SerializeField] private Light sun;
+        [SerializeField] private Volume volume;
         [SerializeField] private InputActionAsset inputActions;
         [SerializeField] private Shader blockoutShader;
 
@@ -174,7 +177,7 @@ namespace CostaLivre
             touch = new CostaTouch();
             BindControls();
             followCamera.nearClipPlane = 0.07f;
-            menu = new HarborMenu(bindings, padBindings, followCamera);
+            menu = new HarborMenu(bindings, padBindings, followCamera, sun, volume);
             jobs = new CostaJobs();
             harbor = new HarborBlockout(transform, blockoutShader);
             onlinePanel = new CostaOnlinePanel(Connect);
@@ -716,6 +719,7 @@ namespace CostaLivre
         private void Update()
         {
             menu.SaveGraphicsIfDue();
+            harbor.SetUltraVisuals(menu.Ultra, menu.FullTextures);
             if (worldLoadFailed)
                 CostaUi.Update(false);
             if (worldLoading || worldLoadFailed)

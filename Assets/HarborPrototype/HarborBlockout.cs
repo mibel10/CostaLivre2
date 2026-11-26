@@ -27,6 +27,12 @@ namespace CostaLivre
         private HarborCharacter.Art characterArt;
         private Font signFont;
         private Material signMaterial;
+        private Renderer bay;
+        private Material bayBase;
+        private Material water;
+        private Material detailTemplate;
+        private bool ultra;
+        private bool detailedSurfaces;
 
         internal HarborBlockout(Transform root, Shader shader)
         {
@@ -41,7 +47,9 @@ namespace CostaLivre
             Color water = new(0.10f, 0.21f, 0.25f);
             Color paint = new(0.58f, 0.51f, 0.35f);
 
-            Box("Bay", new(22, -0.65f, 0), new(100, 0.15f, 110), water);
+            bay = Box("Bay", new(22, -0.65f, 0), new(100, 0.15f, 110), water).GetComponent<Renderer>();
+            bayBase = bay.sharedMaterial;
+            ApplyWater();
             Box("Harbor streets", new(0, -0.25f, 0), new(50, 0.5f, 44), road, true, "Asphalt", new(21, 19));
             Box("Quay edge", new(23.7f, 0.04f, 0), new(2.6f, 0.08f, 44), concrete, false, "Concrete", new(3, 28));
             Box("Quay parapet", new(24.7f, 0.68f, 0), new(0.35f, 1.36f, 44), concrete, true, "Concrete", new(24, 1));
@@ -213,6 +221,7 @@ namespace CostaLivre
 
         internal void ReleaseMaterials()
         {
+            Object.Destroy(water);
             if (signMaterial != null)
             {
                 Font.textureRebuilt -= RefreshSignAtlas;
@@ -461,7 +470,60 @@ namespace CostaLivre
                 material.EnableKeyword("_NORMALMAP");
             }
             surfaces.Add(key, material);
+            if (detailedSurfaces)
+                ApplySurfaceDetail(surface, material);
             return material;
+        }
+
+        internal void SetUltraVisuals(bool enabled, bool fullTextures)
+        {
+            if (ultra != enabled)
+            {
+                ultra = enabled;
+                ApplyWater();
+            }
+
+            bool detail = enabled && fullTextures;
+            if (detailedSurfaces == detail)
+                return;
+            detailedSurfaces = detail;
+            foreach (var entry in surfaces)
+                ApplySurfaceDetail(entry.Key.Item1, entry.Value);
+        }
+
+        private void ApplyWater()
+        {
+            if (bay == null)
+                return;
+            if (ultra && water == null && Resources.Load<Shader>("Harbor/CoastalWater") is Shader waterShader)
+                water = new Material(waterShader);
+            bay.sharedMaterial = ultra && water != null ? water : bayBase;
+        }
+
+        private void ApplySurfaceDetail(string surface, Material material)
+        {
+            if (surface == "Walker")
+                return;
+
+            if (detailedSurfaces && detailTemplate == null)
+                detailTemplate = Resources.Load<Material>("Harbor/HarborSurfaceUltra");
+            bool useDetail = detailedSurfaces && detailTemplate != null;
+            const string albedo = "_DetailAlbedoMap";
+            const string normal = "_DetailNormalMap";
+            material.SetTexture(albedo, useDetail ? detailTemplate.GetTexture(albedo) : null);
+            material.SetTexture(normal, useDetail ? detailTemplate.GetTexture(normal) : null);
+            material.SetFloat("_BumpScale", useDetail ? 0.91f : 0.65f);
+            material.SetFloat("_Smoothness", surface == "Steel" ? (useDetail ? 0.53f : 0.39f) : (useDetail ? 0.24f : 0.16f));
+            if (useDetail)
+            {
+                Vector2 tiling = material.GetTextureScale("_BaseMap") * (surface == "Steel" ? 2.5f : 3.2f);
+                material.SetTextureScale(albedo, tiling);
+                material.SetFloat("_DetailAlbedoMapScale", detailTemplate.GetFloat("_DetailAlbedoMapScale"));
+                material.SetFloat("_DetailNormalMapScale", detailTemplate.GetFloat("_DetailNormalMapScale"));
+                material.EnableKeyword("_DETAIL_SCALED");
+            }
+            else
+                material.DisableKeyword("_DETAIL_SCALED");
         }
 
         internal Transform Model(Transform parent, string name, Color color, params CostaMesh.Section[] section)

@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.Rendering;
 using static CostaLivre.CostaText;
 
 namespace CostaLivre
@@ -77,6 +78,8 @@ namespace CostaLivre
 
         internal void SaveGraphicsIfDue() => graphics.SaveIfDue();
         internal void FlushGraphics() => graphics.Flush();
+        internal bool Ultra => graphics.Preset == HarborGraphics.MaxPreset;
+        internal bool FullTextures => graphics.TextureQuality == 3;
         internal bool CapturingKey => bindings.Waiting || padBindings.Waiting;
         internal void ReadBinding()
         {
@@ -102,11 +105,11 @@ namespace CostaLivre
         internal float Sensitivity { get; private set; } = PlayerPrefs.GetFloat("HarborSensitivity", 1f);
         internal float Volume { get; private set; } = PlayerPrefs.GetFloat("HarborVolume", 0.85f);
 
-        internal HarborMenu(CostaBindings bindings, CostaPadBindings padBindings, Camera camera)
+        internal HarborMenu(CostaBindings bindings, CostaPadBindings padBindings, Camera camera, Light sun, Volume volume)
         {
             this.bindings = bindings;
             this.padBindings = padBindings;
-            graphics = new HarborGraphics(camera);
+            graphics = new HarborGraphics(camera, sun, volume);
             ApplyFrameSettings();
             int fullscreen = PlayerPrefs.GetInt("CostaFullscreen", -1);
             if (!Application.isMobilePlatform && fullscreen >= 0)

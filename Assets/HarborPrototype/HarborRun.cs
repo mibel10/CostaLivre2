@@ -169,6 +169,8 @@ namespace CostaLivre
         private bool pursuit;
         private float blockedExitUntil;
         private int wantedLevel;
+        private bool recoveryMissionStar;
+        private bool soloRecoveryMissionStar;
         private float heatUntil;
         private float nextCrime;
         private float arrestProgress;
@@ -622,6 +624,7 @@ namespace CostaLivre
                     escapeStartedAt = Time.time - soloEscapeElapsed;
                     cargo.SetActive(harborJob && state == RunState.FindCargo);
                     wantedLevel = soloWantedLevel;
+                    recoveryMissionStar = soloRecoveryMissionStar;
                     heatUntil = Time.time + soloHeatRemaining;
                     nextCrime = Time.time + soloCrimeRemaining;
                     if (wantedLevel > 0)
@@ -646,6 +649,7 @@ namespace CostaLivre
                 soloPitch = pitch;
                 soloEscapeElapsed = state == RunState.Escape ? Time.time - escapeStartedAt : 0;
                 soloWantedLevel = wantedLevel;
+                soloRecoveryMissionStar = recoveryMissionStar;
                 soloHeatRemaining = Mathf.Max(0, heatUntil - Time.time);
                 soloCrimeRemaining = Mathf.Max(0, nextCrime - Time.time);
                 soloContractCar = encounter.Active && (jobs.Current.Mode is CostaJobs.Action.Seize or CostaJobs.Action.DeliverVehicle)
@@ -1121,9 +1125,18 @@ namespace CostaLivre
                 missionInteraction = jobs.InProgress && takeAction
                     && CostaJobs.Near(player.transform.position, jobs.Current.Point, jobs.Current.Radius);
                 if (jobs.Advance(player.transform.position, car != null, takeAction))
+                {
+                    int previousHeat = wantedLevel;
                     StartPursuit(0.50f);
-                if (finishingEscape && !jobs.InProgress)
-                    StopPursuit();
+                    recoveryMissionStar |= wantedLevel > previousHeat;
+                }
+                if (finishingEscape && !jobs.InProgress && recoveryMissionStar)
+                {
+                    recoveryMissionStar = false;
+                    wantedLevel = Mathf.Max(jobs.Bag.Count > 0 ? 1 : 0, wantedLevel - 1);
+                    if (wantedLevel == 0)
+                        StopPursuit();
+                }
             }
             UpdateContractWeapon();
             if (jobs.Credits > cashBefore)
@@ -1197,6 +1210,7 @@ namespace CostaLivre
         private void StopPursuit()
         {
             wantedLevel = 0;
+            recoveryMissionStar = false;
             arrestProgress = 0;
             arrestingGuard = null;
             pursuit = false;
@@ -1675,6 +1689,7 @@ namespace CostaLivre
             else if (Time.time >= heatUntil && wantedLevel > (jobs.Bag.Count > 0 ? 1 : 0))
             {
                 wantedLevel--;
+                recoveryMissionStar = false;
                 heatUntil = Time.time + CostaSession.HeatDecayTime;
                 if (wantedLevel == 0)
                     StopPursuit();
@@ -1687,6 +1702,7 @@ namespace CostaLivre
             footfalls = default;
             engineThrottle = 0;
             wantedLevel = 0;
+            recoveryMissionStar = false;
             nextCrime = 0;
             arrestProgress = 0;
             arrestingGuard = null;

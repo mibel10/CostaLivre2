@@ -77,13 +77,13 @@ namespace CostaLivre
                 new Vector3(0.07f, 0.25f, 2.3f), Mint);
         }
 
-        internal NavMeshData BuildNavigation()
+        internal AsyncOperation BuildNavigation(NavMeshData data)
         {
             NavMeshBuildSettings settings = NavMesh.GetSettingsByIndex(0);
             settings.overrideVoxelSize = true;
             settings.voxelSize = 0.24f;
-            return NavMeshBuilder.BuildNavMeshData(settings, walkableGeometry,
-                new Bounds(new Vector3(-37, 3, 361), new Vector3(238, 46, 864)), Vector3.zero, Quaternion.identity);
+            return NavMeshBuilder.UpdateNavMeshDataAsync(data, settings, walkableGeometry,
+                new Bounds(new Vector3(-37, 3, 361), new Vector3(238, 46, 864)));
         }
 
         internal HarborCharacter Person(string name, Transform parent, Vector3 position, Color tint)

@@ -75,7 +75,7 @@ namespace CostaLivre
         }
 
         internal void Draw(bool resume, Action deploy, Action continueRun, Action quit, CostaJobs jobs, Action<int> selectJob,
-            CostaOnlinePanel online, HarborArsenal arsenal, bool sessionActive, CostaTouch touch)
+            CostaOnlinePanel online, HarborArsenal arsenal, bool sessionActive, CostaTouch touch, bool soloReady)
         {
             if (editTouch)
             {
@@ -110,6 +110,13 @@ namespace CostaLivre
             switch (page)
             {
                 case ScreenPage.Deploy:
+                    if (!soloReady && !sessionActive)
+                    {
+                        Text(new Rect(x, top + 12, 417, 74), "Santa Luz", headline, Paper);
+                        Text(new Rect(x, top + 101, 330, 48),
+                            L("Preparing city navigation…", "Preparando a navegação da cidade…"), label, Grey);
+                        break;
+                    }
                     Text(new Rect(x, top + 12, 417, 74), sessionActive ? "Multiplayer" : "Santa Luz", headline, Paper);
                     if (MenuButton(new Rect(x, top + 101, 202, 48), resume ? L("Resume", "Continuar") : L("Enter the city", "Entrar na cidade"), true))
                         (resume ? continueRun : deploy)();
@@ -137,7 +144,10 @@ namespace CostaLivre
                     DrawOptions(x, top);
                     break;
                 case ScreenPage.Jobs:
-                    if (!sessionActive)
+                    if (!soloReady && !sessionActive)
+                        Text(new Rect(x, top, 390, 45),
+                            L("Preparing city navigation…", "Preparando a navegação da cidade…"), label, Grey);
+                    else if (!sessionActive)
                         DrawJobs(x, top, jobs, selectJob);
                     break;
                 case ScreenPage.Online:

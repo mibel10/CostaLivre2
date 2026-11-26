@@ -103,6 +103,7 @@ namespace CostaLivre
         private bool inMenu;
         private bool enteredRun;
         private NavMeshData navMesh;
+        private AsyncOperation navigationBuild;
         private NavMeshDataInstance navMeshInstance;
         private InputActionAsset controls;
         private InputAction move;
@@ -157,9 +158,8 @@ namespace CostaLivre
             bagPanel = new CostaBagPanel();
             closeOverlay = CloseOverlay;
 
-            navMesh = harbor.BuildNavigation();
-            if (navMesh != null)
-                navMeshInstance = NavMesh.AddNavMeshData(navMesh);
+            navMesh = new NavMeshData();
+            navigationBuild = harbor.BuildNavigation(navMesh);
 
             GameObject runner = new GameObject("Runner");
             runner.layer = LayerMask.NameToLayer("Ignore Raycast");
@@ -177,8 +177,6 @@ namespace CostaLivre
 
             arsenal = new HarborArsenal(harbor, playerModel, blockoutShader, jobs);
             cargo = harbor.Case();
-            for (int i = 0; i < guards.Length; i++)
-                AddGuard(i);
 
             cars = new CostaVehicle[]
             {
@@ -271,6 +269,8 @@ namespace CostaLivre
 
         private void StartRun()
         {
+            if (!session.Online && navigationBuild != null)
+                return;
             if (!session.Online)
                 ResetRun();
             enteredRun = true;
@@ -350,6 +350,8 @@ namespace CostaLivre
                 guard?.Character?.Release();
             if (navMeshInstance.valid)
                 navMeshInstance.Remove();
+            if (navigationBuild != null)
+                NavMeshBuilder.Cancel(navMesh);
             Destroy(navMesh);
             Destroy(controls);
             arsenal?.Dispose();
@@ -471,7 +473,7 @@ namespace CostaLivre
                 harborJob = false;
                 cargo.SetActive(false);
                 foreach (Guard guard in guards)
-                    guard.Agent.gameObject.SetActive(false);
+                    guard?.Agent.gameObject.SetActive(false);
                 session.Request("outfit", onlinePanel.Outfit);
             }
 
@@ -533,6 +535,19 @@ namespace CostaLivre
 
         private void Update()
         {
+            if (navigationBuild != null && navigationBuild.isDone)
+            {
+                navigationBuild = null;
+                navMeshInstance = NavMesh.AddNavMeshData(navMesh);
+                for (int i = 0; i < guards.Length; i++)
+                {
+                    AddGuard(i);
+                    if (session.Online)
+                        guards[i].Agent.gameObject.SetActive(false);
+                }
+                if (!session.Online)
+                    ResetGuards();
+            }
             TickNetwork();
             touch.Update(!inMenu && overlay == FieldOverlay.None && !pausedForFocus,
                 car != null, !session.Online && (state == RunState.Caught || state == RunState.Delivered));
@@ -755,7 +770,7 @@ namespace CostaLivre
         {
             foreach (Guard guard in guards)
             {
-                if (guard.Active && (guard.Agent.transform.position - player.transform.position).sqrMagnitude < 4900)
+                if (guard != null && guard.Active && (guard.Agent.transform.position - player.transform.position).sqrMagnitude < 4900)
                 {
                     guard.Character.Animate(guard.Agent.velocity.sqrMagnitude > 0.35f
                         ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Idle, 0.82f);
@@ -765,6 +780,8 @@ namespace CostaLivre
 
         private void SelectJob(int index)
         {
+            if (navigationBuild != null)
+                return;
             if (CanResume() && (index >= 0 && jobs.Active == index || index == -2 && harborJob))
             {
                 ResumeRun();
@@ -900,7 +917,7 @@ namespace CostaLivre
             independentAlert = false;
             pursuit = false;
             foreach (Guard guard in guards)
-                if (guard.Active)
+                if (guard != null && guard.Active)
                     guard.Agent.isStopped = true;
         }
 
@@ -1219,7 +1236,7 @@ namespace CostaLivre
             }
             foreach (Guard guard in guards)
             {
-                if (guard.Hitbox != hit)
+                if (guard == null || guard.Hitbox != hit)
                     continue;
 
                 guard.Health -= damage;
@@ -1254,7 +1271,7 @@ namespace CostaLivre
 
             foreach (Guard guard in guards)
             {
-                if (!guard.Active)
+                if (guard == null || !guard.Active)
                     continue;
 
                 if (refreshPaths)
@@ -1318,8 +1335,15 @@ namespace CostaLivre
             if (Application.isFocused)
                 SetCursor(true);
 
+            ResetGuards();
+        }
+
+        private void ResetGuards()
+        {
             foreach (Guard guard in guards)
             {
+                if (guard == null)
+                    continue;
                 bool hasPost = NavMesh.SamplePosition(guard.Post, out NavMeshHit post, 2f, NavMesh.AllAreas);
                 guard.Health = 100;
                 if (!guard.Agent.gameObject.activeSelf)
@@ -1345,7 +1369,7 @@ namespace CostaLivre
             arsenal.HideEffects();
             foreach (Guard guard in guards)
             {
-                if (guard.Active)
+                if (guard != null && guard.Active)
                     guard.Agent.isStopped = true;
             }
         }
@@ -1375,7 +1399,7 @@ namespace CostaLivre
         {
             if (inMenu)
             {
-                menu.Draw(CanResume(), deploy, resume, quit, jobs, selectJob, onlinePanel, arsenal, session.Online, touch);
+                menu.Draw(CanResume(), deploy, resume, quit, jobs, selectJob, onlinePanel, arsenal, session.Online, touch, navigationBuild == null);
                 return;
             }
             if (overlay == FieldOverlay.Map)

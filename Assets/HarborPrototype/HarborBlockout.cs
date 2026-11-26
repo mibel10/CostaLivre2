@@ -516,7 +516,7 @@ namespace CostaLivre
             material.SetFloat("_Smoothness", surface == "Steel" ? (useDetail ? 0.53f : 0.39f) : (useDetail ? 0.24f : 0.16f));
             if (useDetail)
             {
-                Vector2 tiling = material.GetTextureScale("_BaseMap") * (surface == "Steel" ? 2.5f : 3.2f);
+                Vector2 tiling = Vector2.one * (surface == "Steel" ? 2.5f : 3.2f);
                 material.SetTextureScale(albedo, tiling);
                 material.SetFloat("_DetailAlbedoMapScale", detailTemplate.GetFloat("_DetailAlbedoMapScale"));
                 material.SetFloat("_DetailNormalMapScale", detailTemplate.GetFloat("_DetailNormalMapScale"));

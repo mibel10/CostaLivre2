@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using UnityEngine;
 using static CostaLivre.CostaText;
@@ -12,7 +13,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 5;
+        private const int Protocol = 6;
         private const float Interval = 0.083f;
         internal const int PoliceArmor = 50;
         private const int PoliceKit = (1 << 0) | (1 << 3);
@@ -72,7 +73,9 @@ namespace CostaLivre
             public int notice;
             public int noticeVersion;
             public string name;
-            public string resumeKey;
+            public string challenge;
+            public string publicKey;
+            public string signature;
             public Avatar pose;
             public Avatar[] players;
             public Vehicle[] vehicles;
@@ -89,6 +92,7 @@ namespace CostaLivre
             internal Avatar Pose;
             internal bool Ready;
             internal string ResumeKey;
+            internal byte[] Challenge;
             internal int Credits = 4500;
             internal int Weapons;
             internal int Notice;
@@ -112,7 +116,7 @@ namespace CostaLivre
 
         private readonly List<Peer> peers = new();
         private readonly Dictionary<string, Peer> disconnected = new();
-        private readonly string resumeKey = LoadResumeKey();
+        private RSA clientIdentity;
         private readonly CostaVehicle[] sceneVehicles;
         private readonly float[] restock = new float[CostaRobberies.Sites.Length];
         private readonly int[] initialHomes;
@@ -225,7 +229,6 @@ namespace CostaLivre
                     connecting = null;
                     connection = new CostaWire(pendingClient);
                     pendingClient = null;
-                    Send(new Frame { type = "hello", protocol = Protocol, name = playerName, resumeKey = resumeKey });
                     nextWatchdog = now + 8f;
                 }
                 else if (connecting.IsFaulted || connecting.IsCanceled || now >= connectDeadline)
@@ -247,6 +250,16 @@ namespace CostaLivre
                     Dispose();
                     status = L("The room is full.", "A sala está cheia.");
                     return;
+                }
+                if (Local == null && frame != null && frame.protocol == Protocol && frame.type == "challenge")
+                {
+                    if (!SendIdentity(frame.challenge))
+                    {
+                        Dispose();
+                        status = L("Could not authenticate the session.", "Não foi possível autenticar a sessão.");
+                        return;
+                    }
+                    continue;
                 }
                 if (frame == null || frame.type != "state" || frame.protocol != Protocol || frame.players == null
                     || frame.players.Length > MaxPlayers || frame.vehicles == null || frame.vehicles.Length != sceneVehicles.Length
@@ -308,7 +321,17 @@ namespace CostaLivre
                 if (peers.Count >= MaxPlayers)
                     _ = CostaWire.Reject(client, JsonUtility.ToJson(new Frame { type = "full", protocol = Protocol }));
                 else
-                    peers.Add(new Peer { Wire = new CostaWire(client), LastPacket = now });
+                {
+                    byte[] challenge = new byte[32];
+                    using (var random = RandomNumberGenerator.Create())
+                        random.GetBytes(challenge);
+                    var peer = new Peer { Wire = new CostaWire(client), LastPacket = now, Challenge = challenge };
+                    peers.Add(peer);
+                    peer.Wire.Send(JsonUtility.ToJson(new Frame
+                    {
+                        type = "challenge", protocol = Protocol, challenge = Convert.ToBase64String(challenge)
+                    }));
+                }
             }
 
             bool left = false;
@@ -336,14 +359,14 @@ namespace CostaLivre
                     peer.LastPacket = now;
                     if (!peer.Ready)
                     {
-                        if (message.type != "hello" || message.protocol != Protocol
-                            || !Guid.TryParseExact(message.resumeKey, "N", out _)
-                            || peers.Exists(other => other.Ready && other.ResumeKey == message.resumeKey))
+                        if (!VerifyIdentity(peer.Challenge, message, out string resumeKey)
+                            || peers.Exists(other => other.Ready && other.ResumeKey == resumeKey))
                         {
                             peer.Wire.Dispose();
                             break;
                         }
-                        peer.ResumeKey = message.resumeKey;
+                        peer.ResumeKey = resumeKey;
+                        peer.Challenge = null;
                         if (disconnected.TryGetValue(peer.ResumeKey, out Peer saved))
                         {
                             disconnected.Remove(peer.ResumeKey);
@@ -969,16 +992,67 @@ namespace CostaLivre
             catch (ArgumentException) { return null; }
         }
 
-        private static string LoadResumeKey()
+        private bool SendIdentity(string challenge)
         {
-            string value = PlayerPrefs.GetString("CostaResumeKey", "");
-            if (!Guid.TryParseExact(value, "N", out _))
+            if (clientIdentity != null || challenge == null || challenge.Length != 44)
+                return false;
+            try
             {
-                value = Guid.NewGuid().ToString("N");
-                PlayerPrefs.SetString("CostaResumeKey", value);
-                PlayerPrefs.Save();
+                byte[] nonce = Convert.FromBase64String(challenge);
+                if (nonce.Length != 32)
+                    return false;
+                clientIdentity = new RSACryptoServiceProvider(2048);
+                const string key = "CostaResumeIdentity";
+                string saved = PlayerPrefs.GetString(key, "");
+                if (saved.Length != 0)
+                    clientIdentity.FromXmlString(saved);
+                else
+                {
+                    PlayerPrefs.SetString(key, clientIdentity.ToXmlString(true));
+                    PlayerPrefs.DeleteKey("CostaResumeKey");
+                    PlayerPrefs.Save();
+                }
+
+                RSAParameters identityKey = clientIdentity.ExportParameters(false);
+                Send(new Frame
+                {
+                    type = "hello", protocol = Protocol, name = playerName,
+                    publicKey = Convert.ToBase64String(identityKey.Modulus),
+                    signature = Convert.ToBase64String(clientIdentity.SignData(nonce, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1))
+                });
+                return true;
             }
-            return value;
+            catch (Exception error) when (error is FormatException || error is CryptographicException)
+            {
+                return false;
+            }
+        }
+
+        private static bool VerifyIdentity(byte[] nonce, Frame frame, out string key)
+        {
+            key = null;
+            if (frame.type != "hello" || frame.protocol != Protocol || nonce == null
+                || frame.publicKey?.Length != 344 || frame.signature?.Length != 344)
+                return false;
+
+            try
+            {
+                byte[] modulus = Convert.FromBase64String(frame.publicKey);
+                byte[] signature = Convert.FromBase64String(frame.signature);
+                byte[] exponent = { 1, 0, 1 };
+                if (modulus.Length != 256 || signature.Length != 256)
+                    return false;
+                using var verifier = new RSACryptoServiceProvider();
+                verifier.ImportParameters(new RSAParameters { Modulus = modulus, Exponent = exponent });
+                if (!verifier.VerifyData(nonce, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1))
+                    return false;
+                key = Convert.ToBase64String(modulus);
+                return true;
+            }
+            catch (Exception error) when (error is FormatException || error is CryptographicException)
+            {
+                return false;
+            }
         }
 
         private static string SafeName(string value)
@@ -1007,6 +1081,8 @@ namespace CostaLivre
 
         public void Dispose()
         {
+            clientIdentity?.Dispose();
+            clientIdentity = null;
             listener?.Stop();
             listener = null;
             connection?.Dispose();

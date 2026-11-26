@@ -85,11 +85,13 @@ namespace CostaLivre
             else
                 bindings.Tick();
         }
+        internal void ShowDeploy() => page = ScreenPage.Deploy;
         internal void ShowJobs() => page = ScreenPage.Jobs;
         internal void ShowOnline() => page = ScreenPage.Online;
         internal bool DeployPage => page == ScreenPage.Deploy;
         internal bool OnlinePage => page == ScreenPage.Online;
         private GUIStyle headline;
+        private GUIStyle pauseHeadline;
         private GUIStyle hero;
         private GUIStyle subhead;
         private GUIStyle label;
@@ -172,14 +174,80 @@ namespace CostaLivre
                 Quaternion.identity, new Vector3(frame.Scale, frame.Scale, 1));
             DrawNavigation(frame, sessionActive, quit);
 
+            if (DeployPage)
+                DrawDeploy(x, stacked ? top : top + (height - top) * 0.21f, resume, sessionActive, deploy, continueRun);
+            else
+                DrawPage(x, top, height, jobs, selectJob, online, ownsWeapon, sessionActive, continueRun);
+
+            GUI.matrix = original;
+        }
+
+        internal void DrawPause(bool resume, bool sessionActive, Action deploy, Action continueRun,
+            Action home, CostaJobs jobs, Action<int> selectJob, CostaOnlinePanel online, Func<int, bool> ownsWeapon, CostaTouch touch)
+        {
+            if (editTouch)
+            {
+                if (touch.DrawEditor())
+                    editTouch = false;
+                return;
+            }
+
+            if (headline == null)
+                CreateStyles();
+
+            Fill(new Rect(0, 0, Screen.width, Screen.height), new Color(0.015f, 0.032f, 0.045f, 0.64f));
+            MenuFrame frame = MenuFrame.Current;
+            Matrix4x4 original = GUI.matrix;
+            GUI.matrix = original * Matrix4x4.TRS(new Vector3(frame.Safe.x, Screen.height - frame.Safe.yMax, 0),
+                Quaternion.identity, new Vector3(frame.Scale, frame.Scale, 1));
+
+            float cardWidth = DeployPage ? 440 : 624;
+            float cardHeight = DeployPage ? 361 : 459;
+            float left = (frame.Width - cardWidth) * 0.5f;
+            float top = (frame.Height - cardHeight) * 0.5f;
+            float x = left + 16;
+            Fill(new Rect(left, top, cardWidth, cardHeight), new Color(0.027f, 0.051f, 0.068f, 0.95f));
+            Fill(new Rect(left, top, cardWidth, 2), Copper);
+
+            if (DeployPage)
+            {
+                Text(new Rect(x + 3, top + 18, cardWidth - 35, 64),
+                    sessionActive ? L("Match menu", "Menu da partida") : L("Paused", "Pausa"), pauseHeadline, Paper);
+                Text(new Rect(x + 4, top + 83, cardWidth - 35, 27),
+                    sessionActive ? L("LAN session is still running", "Sessão LAN em andamento") : "Santa Luz", label, Grey);
+                Rect primary = new(x, top + 123, cardWidth - 32, 51);
+                if (MenuButton(primary, resume ? L("Resume", "Continuar") : L("Try again", "Tentar de novo"), true))
+                    (resume ? continueRun : deploy)();
+
+                if (MenuButton(new Rect(x, top + 188, 199, 42), L("Options", "Opções"), false))
+                    page = ScreenPage.Options;
+                if (MenuButton(new Rect(x + 209, top + 188, 199, 42), L("Loadout", "Equipamento"), false))
+                    page = ScreenPage.Loadout;
+                if (!sessionActive && MenuButton(new Rect(x, top + 237, 199, 42), L("Jobs", "Missões"), false))
+                    ShowJobs();
+                if (MenuButton(new Rect(x + 209, top + 237, 199, 42), "Multiplayer", false))
+                    ShowOnline();
+                if (MenuButton(new Rect(x, top + 293, cardWidth - 32, 42), L("Main menu", "Menu principal"), false))
+                    home();
+            }
+            else
+            {
+                if (MenuButton(new Rect(x, top + 12, 150, 35), L("Back to pause", "Voltar à pausa"), false))
+                    ShowDeploy();
+                else
+                    DrawPage(x, top + 50, frame.Height, jobs, selectJob, online, ownsWeapon, sessionActive, continueRun);
+            }
+
+            GUI.matrix = original;
+        }
+
+        private void DrawPage(float x, float top, float height, CostaJobs jobs, Action<int> selectJob,
+            CostaOnlinePanel online, Func<int, bool> ownsWeapon, bool sessionActive, Action continueRun)
+        {
             switch (page)
             {
-                case ScreenPage.Deploy:
-                    DrawDeploy(x, stacked ? top : top + (height - top) * 0.21f,
-                        resume, sessionActive, deploy, continueRun);
-                    break;
                 case ScreenPage.Loadout:
-                    Text(new Rect(x, top, 300, 63), L("Loadout", "Equipamento"), headline, Paper);
+                    Text(new Rect(x, top, 465, 63), L("Loadout", "Equipamento"), headline, Paper);
                     int owned = 0;
                     for (int i = 0; i < HarborArsenal.WeaponNames.Length; i++)
                     {
@@ -206,8 +274,6 @@ namespace CostaLivre
                     online.Draw(x, top, height, continueRun);
                     break;
             }
-
-            GUI.matrix = original;
         }
 
         private void DrawNavigation(MenuFrame frame, bool sessionActive, Action quit)
@@ -599,6 +665,7 @@ namespace CostaLivre
         {
             hero = Style(78, FontStyle.Bold);
             headline = Style(52, FontStyle.Bold);
+            pauseHeadline = Style(43, FontStyle.Bold);
             subhead = Style(18, FontStyle.Bold);
             label = Style(15, FontStyle.Bold);
             button = Style(16, FontStyle.Bold);

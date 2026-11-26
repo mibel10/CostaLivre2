@@ -118,7 +118,9 @@ namespace CostaLivre
         private System.Action deploy;
         private System.Action resume;
         private System.Action quit;
+        private System.Action returnHome;
         private bool inMenu;
+        private bool pauseMenu;
         private bool enteredRun;
         private NavMeshData navMesh;
         private AsyncOperation navigationBuild;
@@ -181,6 +183,7 @@ namespace CostaLivre
             deploy = () => WithWorld(StartRun);
             resume = ResumeRun;
             quit = Application.Quit;
+            returnHome = ReturnToMainMenu;
             selectJob = index => WithWorld(() => SelectJob(index));
             CreateMenuPreview();
             ShowMenu();
@@ -395,13 +398,21 @@ namespace CostaLivre
                 menuWeapons[i]?.gameObject.SetActive(previewSlot == i);
         }
 
-        private void ShowMenu()
+        private void ShowMenu(bool pause = false)
         {
             inMenu = true;
-            menuStage.gameObject.SetActive(true);
-            Time.timeScale = 0;
+            pauseMenu = pause;
+            menuStage.gameObject.SetActive(!pause);
+            Time.timeScale = session?.Online == true ? 1 : 0;
             SetCursor(false);
-            UpdateMenuPreview();
+            if (!pause)
+                UpdateMenuPreview();
+        }
+
+        private void ReturnToMainMenu()
+        {
+            menu.ShowDeploy();
+            ShowMenu();
         }
 
         private void StartRun()
@@ -597,7 +608,7 @@ namespace CostaLivre
                         nextPursuitUpdate = Time.time + 0.45f;
                     }
                     menu.ShowOnline();
-                    ShowMenu();
+                    ShowMenu(pause: soloResumable);
                 }
                 return;
             }
@@ -635,6 +646,8 @@ namespace CostaLivre
                 foreach (Guard guard in guards)
                     guard?.Agent.gameObject.SetActive(false);
                 session.Request("outfit", onlinePanel.Outfit);
+                if (inMenu)
+                    ShowMenu();
             }
 
             CostaSession.Avatar avatar = session.Local;
@@ -721,7 +734,8 @@ namespace CostaLivre
                 if (menu.CapturingKey)
                 {
                     menu.ReadBinding();
-                    UpdateMenuPreview();
+                    if (!pauseMenu)
+                        UpdateMenuPreview();
                     return;
                 }
                 if (menu.DeployPage
@@ -733,14 +747,15 @@ namespace CostaLivre
                     else
                         deploy();
                 }
-                else if ((Pressed(openMenu, TouchControl.Menu) || jobsBoard.WasPressedThisFrame()) && CanResume())
+                else if (Pressed(openMenu, TouchControl.Menu) || jobsBoard.WasPressedThisFrame())
                 {
-                    ResumeRun();
+                    if (pauseMenu && !menu.DeployPage)
+                        menu.ShowDeploy();
+                    else if (CanResume())
+                        ResumeRun();
                 }
-                else
-                {
+                else if (!pauseMenu)
                     UpdateMenuPreview();
-                }
                 return;
             }
 
@@ -770,9 +785,11 @@ namespace CostaLivre
 
             if (Pressed(openMenu, TouchControl.Menu) || (!session.Online && jobsBoard.WasPressedThisFrame()))
             {
-                if (jobsBoard.WasPressedThisFrame())
+                if (jobsBoard.WasPressedThisFrame() && !session.Online)
                     menu.ShowJobs();
-                ShowMenu();
+                else
+                    menu.ShowDeploy();
+                ShowMenu(pause: true);
                 return;
             }
 
@@ -1720,7 +1737,11 @@ namespace CostaLivre
         {
             if (inMenu)
             {
-                menu.Draw(CanResume(), deploy, resume, quit, jobs, selectJob, onlinePanel, OwnsWeapon, session?.Online == true, touch);
+                bool online = session?.Online == true;
+                if (pauseMenu)
+                    menu.DrawPause(CanResume(), online, deploy, resume, returnHome, jobs, selectJob, onlinePanel, OwnsWeapon, touch);
+                else
+                    menu.Draw(CanResume(), deploy, resume, quit, jobs, selectJob, onlinePanel, OwnsWeapon, online, touch);
                 return;
             }
             if (overlay == FieldOverlay.Map)

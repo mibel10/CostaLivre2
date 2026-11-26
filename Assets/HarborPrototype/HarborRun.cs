@@ -350,7 +350,7 @@ namespace CostaLivre
             playerBody.RegisterAttachment(cargoPack.transform, 1f);
             localLook = new CostaLook(harbor, playerBody);
 
-            effects = new CostaEffects(transform);
+            effects = new CostaEffects(transform, followCamera.transform, harbor);
             arsenal = new HarborArsenal(harbor, playerModel, blockoutShader, jobs);
             cargo = harbor.Case();
 
@@ -374,7 +374,7 @@ namespace CostaLivre
                 new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[2].Center - 3), 90, new Color(0.65f, 0.22f, 0.35f), style: CostaVehicle.Style.Super)
             };
 
-            encounter = new CostaEncounter(harbor, transform, jobs, cars);
+            encounter = new CostaEncounter(harbor, transform, jobs, cars, effects);
             session = new CostaSession(cars, harbor.Damage, traffic);
             onlinePanel.AttachSession(session);
             remotes = new CostaRemoteView(harbor, transform, effects);
@@ -1502,6 +1502,7 @@ namespace CostaLivre
                 vehicle.CloseIdleDoors();
             bool driving = !inMenu && overlay == FieldOverlay.None && !pausedForFocus && !vehicleMotion.Active
                 && state != RunState.Caught && state != RunState.Delivered;
+            effects.UpdateWorldAudio(!inMenu || pauseMenu);
             effects.Drive(driving ? car : null, driving && car != null ? engineThrottle : 0);
             harbor.Damage.Animate();
         }
@@ -1683,7 +1684,7 @@ namespace CostaLivre
                 stamina -= 0.75f;
                 sprintRecoveryDelay = 0.75f;
                 ResizeController(1.0f);
-                effects.Play(Cue.Roll);
+                effects.PlayAt(Cue.Roll, player.transform.position + Vector3.up * .25f, .45f);
             }
 
             bool rolling = rollClock > 0;
@@ -1708,7 +1709,7 @@ namespace CostaLivre
                 airbornePeak = player.transform.position.y;
                 if (!rolling && !crouching && Pressed(jump, TouchControl.Jump))
                 {
-                    effects.Play(Cue.Jump, 0.24f);
+                    effects.PlayAt(Cue.Jump, player.transform.position + Vector3.up * .3f, .24f);
                     verticalSpeed = 5.8f;
                     grounded = false;
                     jumpClock = 0;
@@ -1783,7 +1784,7 @@ namespace CostaLivre
                 landingSeverity = HarborCharacter.FallSeverity(fall);
                 landingDuration = Mathf.Lerp(0.14f, 0.43f, landingSeverity);
                 landing = landingDuration;
-                effects.Play(Cue.Land, Mathf.Lerp(0.28f, 0.68f, landingSeverity));
+                effects.PlayAt(Cue.Land, player.transform.position + Vector3.up * .2f, Mathf.Lerp(.28f, .68f, landingSeverity));
                 CameraKick(Mathf.Lerp(0.075f, 0.56f, landingSeverity));
             }
             if ((hit & CollisionFlags.Sides) != 0 && velocity.sqrMagnitude > 8 &&

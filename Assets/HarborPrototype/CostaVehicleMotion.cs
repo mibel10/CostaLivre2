@@ -45,14 +45,14 @@ namespace CostaLivre
                     avatar.doorStep, avatar.doorCenter, avatar.doorYaw, avatar.doorTime);
         }
 
-        internal bool Sample(HarborCharacter body, CostaEffects effects = null, AudioSource source = null)
+        internal bool Sample(HarborCharacter body, CostaEffects effects = null)
         {
             if (!Active)
                 return false;
             float remaining = endsAt - Time.realtimeSinceStartup;
             float progress = Mathf.Clamp01(1f - remaining / (entering ? EnterTime : ExitTime));
             if (effects != null)
-                PlayCues(effects, source, progress);
+                PlayCues(effects, progress);
             previousProgress = progress;
             if (remaining <= 0)
             {
@@ -84,22 +84,23 @@ namespace CostaLivre
             return true;
         }
 
-        private void PlayCues(CostaEffects effects, AudioSource source, float progress)
+        private void PlayCues(CostaEffects effects, float progress)
         {
             if (vehicle.IsBike)
             {
                 if (previousProgress < 0.32f && progress >= 0.32f)
-                    effects.Play(CostaEffects.Cue.Mount, 0.33f, source);
+                    effects.PlayAt(CostaEffects.Cue.Mount, center + Vector3.up * .65f, .33f);
                 return;
             }
 
+            Vector3 emitter = vehicle.DoorHandle(side) ?? step + Vector3.up * .95f;
             if (entering && previousProgress < 0.36f && progress >= 0.36f)
-                effects.Play(CostaEffects.Cue.Lock, 0.59f, source);
+                effects.PlayAt(CostaEffects.Cue.Lock, emitter, .59f);
             float open = entering ? 0.47f : 0.10f;
             if (previousProgress < open && progress >= open)
-                effects.Play(CostaEffects.Cue.DoorOpen, 0.41f, source);
+                effects.PlayAt(CostaEffects.Cue.DoorOpen, emitter, .41f);
             if (previousProgress < 0.98f && progress >= 0.98f)
-                effects.Play(CostaEffects.Cue.DoorShut, 0.53f, source);
+                effects.PlayAt(CostaEffects.Cue.DoorShut, emitter, .53f);
         }
 
         internal void Clear()

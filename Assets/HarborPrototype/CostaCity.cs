@@ -444,6 +444,7 @@ namespace CostaLivre
             float front = entry.z - 2f;
             Footprints.Add(new Rect(entry.x - width * 0.5f, front, width, depth));
             Vector3 center = new(entry.x, 0, front + depth / 2);
+            art.Acoustics.AddRoom(new Bounds(center + Vector3.up * 1.65f, new Vector3(width - .42f, 3.3f, depth)));
             float wing = (width - 2.8f) / 2;
             art.Wear(1, new Vector3(entry.x + width * 0.32f, 0.073f, front - 1.15f),
                 new Vector2(2.8f, 1.7f), Quaternion.Euler(90, 0, 0));

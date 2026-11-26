@@ -73,7 +73,6 @@ namespace CostaLivre
 
         private readonly Weapon[] weapons = System.Array.ConvertAll(weaponRules, rule => rule.Copy());
         private readonly Transform mount;
-        private readonly AudioSource audio;
         private readonly Transform flash;
         private readonly LineRenderer tracer;
         private readonly Material tracerMaterial;
@@ -174,8 +173,6 @@ namespace CostaLivre
             }
 
             flash = harbor.WeaponFlash(mount);
-            audio = mount.gameObject.AddComponent<AudioSource>();
-            audio.playOnAwake = false;
             tracer = new GameObject("Shot tracer").AddComponent<LineRenderer>();
             tracer.transform.SetParent(mount, false);
             tracer.useWorldSpace = true;
@@ -214,7 +211,6 @@ namespace CostaLivre
             nextShot = 0;
             hitUntil = 0;
             SelectDefault();
-            audio.Stop();
         }
 
         internal void Select(int index)
@@ -302,7 +298,7 @@ namespace CostaLivre
             {
                 nextShot = Time.time + weapon.Interval;
                 knifeSwingUntil = Time.time + KnifeSwingTime;
-                audio.PlayOneShot(weapon.Shot, 0.42f);
+                effects.PlayShot(weapon.Shot, mount.position, .42f, melee: true);
                 ShotDirection = mount.parent.forward;
                 Vector3 knifeOrigin = mount.parent.position + Vector3.up * KnifeHitHeight;
                 if (!onlineWeapons.HasValue && Physics.Raycast(knifeOrigin, ShotDirection, out RaycastHit strike, weapon.Range,
@@ -319,10 +315,10 @@ namespace CostaLivre
             if (!onlineWeapons.HasValue)
                 weapon.Loaded--;
             nextShot = Time.time + weapon.Interval;
-            audio.PlayOneShot(weapon.Shot, 0.42f);
 
             Ray view = camera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
             Vector3 muzzle = weapon.Muzzle.position;
+            effects.PlayShot(weapon.Shot, muzzle, .42f);
             // Start collision checks at the shoulder so the visual barrel cannot bypass cover.
             Vector3 origin = mount.parent.position + Vector3.up * (crouching ? 0.90f : 1.22f);
             Vector3 aimPoint = Physics.Raycast(view, out RaycastHit aimHit, weapon.Range,

@@ -17,6 +17,7 @@ namespace CostaLivre
         internal static readonly Vector2[] WarehouseCenters = { new(-11, 8), new(8.5f, 9), new(-10.5f, -7.5f), new(8.5f, -9.5f) };
 
         internal readonly CostaWorldDamage Damage = new();
+        internal readonly CostaAcousticScene Acoustics = new();
         private readonly Transform root;
         private readonly Shader shader;
         private readonly Material surfaceTemplate = Resources.Load<Material>("Harbor/HarborSurface");

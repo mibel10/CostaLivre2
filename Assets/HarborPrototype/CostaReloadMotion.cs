@@ -28,7 +28,7 @@ namespace CostaLivre
             previous = -1;
         }
 
-        internal bool Apply(float progress, HarborCharacter body, Transform mount, CostaEffects effects, AudioSource spatial = null)
+        internal bool Apply(float progress, HarborCharacter body, Transform mount, CostaEffects effects)
         {
             if (progress < 0 || model == null || part == null)
             {
@@ -88,7 +88,7 @@ namespace CostaLivre
             void PlayCrossing(float at, Cue sound)
             {
                 if (previous < at && progress >= at && progress - previous < .28f)
-                    effects.Play(sound, spatial == null ? .52f : .28f, spatial);
+                    effects.PlayAt(sound, mount.position, .46f);
             }
         }
 

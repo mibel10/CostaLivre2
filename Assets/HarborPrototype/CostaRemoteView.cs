@@ -17,7 +17,6 @@ namespace CostaLivre
             internal Mesh[] UniformMeshes;
             internal Transform Mount;
             internal Transform Flash;
-            internal AudioSource Audio;
             internal int Weapon = -1;
             internal readonly CostaReloadMotion Reload = new();
             internal float ReloadProgress = -1;
@@ -101,7 +100,7 @@ namespace CostaLivre
                 model.Pack.SetActive(avatar.carryingLoot && !avatar.police);
                 const float doorAudioRange = 31f;
                 bool nearbyDoor = (avatar.doorCenter - camera.transform.position).sqrMagnitude < doorAudioRange * doorAudioRange;
-                bool transitioning = model.VehicleMotion.Sample(model.Body, nearbyDoor ? effects : null, model.Audio);
+                bool transitioning = model.VehicleMotion.Sample(model.Body, nearbyDoor ? effects : null);
                 if (model.WasTransitioning && !transitioning)
                 {
                     model.BlendPosition = model.Body.Root.position;
@@ -139,11 +138,11 @@ namespace CostaLivre
                         Vector3 moved = position - before;
                         bool onGround = avatar.jumpPose < 0 && avatar.rollPose < 0;
                         model.Footfalls.Update(effects, new Vector2(moved.x, moved.z).magnitude,
-                            onGround && avatar.moving, avatar.running, avatar.crouched, model.Audio);
+                            onGround && avatar.moving, avatar.running, avatar.crouched, model.Body.Root);
                         if (previous.jumpPose is >= 0 and < 0.78f && avatar.jumpPose >= 0.78f)
-                            effects.Play(CostaEffects.Cue.Land, 0.26f, model.Audio);
+                            effects.Play(CostaEffects.Cue.Land, 0.26f, model.Body.Root);
                         if (previous.rollPose < 0 && avatar.rollPose >= 0)
-                            effects.Play(CostaEffects.Cue.Roll, 0.28f, model.Audio);
+                            effects.Play(CostaEffects.Cue.Roll, 0.28f, model.Body.Root);
                     }
                     Vector3 frameMovement = position - before;
                     frameMovement.y = 0;
@@ -196,10 +195,6 @@ namespace CostaLivre
             model.Mount = new GameObject("Remote weapon mount").transform;
             model.Mount.SetParent(body.Root, false);
             model.Flash = art.WeaponFlash(model.Mount);
-            model.Audio = body.Root.gameObject.AddComponent<AudioSource>();
-            model.Audio.spatialBlend = 1f;
-            model.Audio.rolloffMode = AudioRolloffMode.Linear;
-            model.Audio.maxDistance = 75f;
             model.UniformMeshes = body.Root.GetComponentsInChildren<MeshFilter>(true)
                 .Where(filter => filter.name == "Front vest" || filter.name == "Back vest")
                 .Select(filter => filter.sharedMesh).ToArray();
@@ -215,10 +210,11 @@ namespace CostaLivre
             {
                 model.LastShot = avatar.shotNumber;
                 if (avatar.shotWeapon >= 0 && avatar.shotWeapon < HarborArsenal.WeaponNames.Length
-                    && (model.Body.Root.position - listener).sqrMagnitude < 75f * 75f)
+                    && (model.Body.Root.position - listener).sqrMagnitude < 93f * 93f)
                 {
                     EnsureWeaponTemplates();
-                    model.Audio.PlayOneShot(shotClips[avatar.shotWeapon], 0.42f);
+                    effects.PlayShot(shotClips[avatar.shotWeapon], model.Body.Root.position + Vector3.up * 1.22f, .42f,
+                        avatar.shotWeapon == HarborArsenal.Knife);
                     if (avatar.shotWeapon == HarborArsenal.Knife)
                         model.KnifeSwingUntil = Time.unscaledTime + HarborArsenal.KnifeSwingTime;
                     else
@@ -281,7 +277,7 @@ namespace CostaLivre
                     Time.unscaledDeltaTime / HarborArsenal.ShotRules(model.Weapon).reload));
             else
                 model.ReloadProgress = -1;
-            if (!model.Reload.Apply(model.ReloadProgress, model.Body, model.Mount, effects, model.Audio))
+            if (!model.Reload.Apply(model.ReloadProgress, model.Body, model.Mount, effects))
                 model.Mount.SetPositionAndRotation(model.Body.WeaponHand,
                     model.Body.Root.rotation * Quaternion.Euler(knife ? 20f : model.AimPitch, 0, 0));
             model.Flash.gameObject.SetActive(Time.unscaledTime < model.FlashUntil);
@@ -400,8 +396,6 @@ namespace CostaLivre
             model.Flash.gameObject.SetActive(false);
             model.FlashUntil = model.KnifeSwingUntil = 0;
             model.WasTransitioning = false;
-            if (model.Audio.gameObject.activeInHierarchy)
-                model.Audio.Stop();
             model.Body.Root.gameObject.SetActive(false);
             model.State = null;
             parked.Push(model);

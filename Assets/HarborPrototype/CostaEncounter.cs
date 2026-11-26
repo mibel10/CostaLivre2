@@ -12,7 +12,6 @@ namespace CostaLivre
             internal HarborCharacter Character;
             internal CapsuleCollider Hitbox;
             internal GameObject Flash;
-            internal AudioSource Audio;
             internal int Health = 65;
             internal int Fired;
             internal float AimInterval;
@@ -27,6 +26,7 @@ namespace CostaLivre
 
         private readonly HarborBlockout art;
         private readonly CostaJobs jobs;
+        private readonly CostaEffects effects;
         private readonly CostaVehicle[] cars;
         private readonly Transform root;
         private AudioClip enemyShot;
@@ -46,11 +46,12 @@ namespace CostaLivre
         internal bool Combat => Active && jobs.Current.Mode == Action.Fight;
         internal bool CarryingLoot { get; private set; }
 
-        internal CostaEncounter(HarborBlockout art, Transform parent, CostaJobs jobs, CostaVehicle[] cars)
+        internal CostaEncounter(HarborBlockout art, Transform parent, CostaJobs jobs, CostaVehicle[] cars, CostaEffects effects)
         {
             this.art = art;
             this.jobs = jobs;
             this.cars = cars;
+            this.effects = effects;
             root = new GameObject("Solo contract encounter").transform;
             root.SetParent(parent, false);
         }
@@ -367,14 +368,10 @@ namespace CostaLivre
             Transform muzzle = HarborArsenal.BuildModel(art, mount, 0);
             GameObject flash = art.WeaponFlash(muzzle).gameObject;
             flash.SetActive(false);
-            AudioSource audio = character.Root.gameObject.AddComponent<AudioSource>();
-            audio.spatialBlend = 1;
-            audio.minDistance = 4;
-            audio.maxDistance = 27;
             enemyShot ??= HarborArsenal.MakeShot("Contract guard", 0);
             return new Opponent
             {
-                Character = character, Hitbox = hitbox, Flash = flash, Audio = audio, AimInterval = 1.8f + 0.15f * index
+                Character = character, Hitbox = hitbox, Flash = flash, AimInterval = 1.8f + 0.15f * index
             };
         }
 
@@ -406,7 +403,7 @@ namespace CostaLivre
                     continue;
                 opponent.AimTime = 0;
                 opponent.FlashTime = 0.07f;
-                opponent.Audio.PlayOneShot(enemyShot, 0.26f);
+                effects.PlayShot(enemyShot, opponent.Flash.transform.position, .28f);
                 opponent.Fired++;
                 if (invulnerable || (toward.sqrMagnitude > 110f && opponent.Fired % 3 == 0))
                 {

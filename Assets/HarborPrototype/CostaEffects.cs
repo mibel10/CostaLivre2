@@ -17,7 +17,7 @@ namespace CostaLivre
             private int variant;
 
             internal void Update(CostaEffects effects, float meters, bool grounded, bool running, bool crouched,
-                AudioSource spatial = null)
+                Transform spatial = null)
             {
                 if (!grounded || meters > 1.5f)
                 {
@@ -44,12 +44,13 @@ namespace CostaLivre
         private const int Rate = 22050;
         private readonly AudioClip[] bank = new AudioClip[(int)Cue.ReloadDone + 1];
         private readonly AudioSource feedback;
-        private readonly AudioSource engine;
+        private readonly CostaSpatialAudio spatialAudio;
+        private readonly CostaSpatialAudio.Voice engine;
+        private AudioClip engineClip;
+        private float engineGain;
+        private float enginePitch = .75f;
         private float nextBrake;
-        private const int ImpactVoices = 6;
-        private readonly AudioSource[] impacts = new AudioSource[ImpactVoices];
         private readonly CostaImpactParticles particles;
-        private int voice;
         private float nextPressure;
         private float pressureAt = -10;
         private float hurtAt = -10;
@@ -57,28 +58,25 @@ namespace CostaLivre
         private Vector3 sourcePoint;
         private Texture2D edgeFade;
 
-        internal CostaEffects(Transform parent)
+        internal CostaEffects(Transform parent, Transform listener, HarborBlockout art)
         {
             feedback = NewSource("Gameplay cues", parent);
-            engine = NewSource("Local vehicle engine", parent);
-            engine.loop = true;
-            engine.volume = 0;
+            feedback.reverbZoneMix = 0;
+            spatialAudio = new CostaSpatialAudio(parent, listener, art.Acoustics, art.Damage);
+            engine = spatialAudio.LoopVoice("Local vehicle engine");
             particles = new CostaImpactParticles(parent);
-            for (int i = 0; i < impacts.Length; i++)
-            {
-                impacts[i] = NewSource("Spatial impact " + i, parent);
-                impacts[i].spatialBlend = 1;
-                impacts[i].minDistance = 2;
-                impacts[i].maxDistance = 26;
-                impacts[i].rolloffMode = AudioRolloffMode.Linear;
-            }
         }
 
-        internal void Play(Cue cue, float volume = 0.45f, AudioSource spatial = null)
+        internal void UpdateWorldAudio(bool inWorld) => spatialAudio.Update(inWorld);
+
+        internal void Play(Cue cue, float volume = 0.45f, Transform spatial = null)
         {
-            AudioSource source = spatial != null ? spatial : feedback;
-            if (source.isActiveAndEnabled && volume > 0)
-                source.PlayOneShot(Get(cue), volume);
+            if (volume <= 0)
+                return;
+            if (spatial != null)
+                PlayAt(cue, spatial.position, volume);
+            else
+                feedback.PlayOneShot(Get(cue), volume);
         }
 
         internal void SurfaceHit(CostaWorldDamage.Surface surface, Vector3 point, Vector3 normal, bool broken, Vector3 listener)
@@ -95,14 +93,14 @@ namespace CostaLivre
             PlayAt(Cue.Blast, point, .68f);
         }
 
-        private void PlayAt(Cue cue, Vector3 point, float volume)
+        internal void PlayAt(Cue cue, Vector3 point, float volume)
         {
-            AudioSource source = impacts[voice];
-            voice = (voice + 1) % impacts.Length;
-            source.Stop();
-            source.transform.position = point;
-            Play(cue, volume, source);
+            float far = cue == Cue.Blast ? 85 : cue == Cue.Incoming ? 18 : 32;
+            spatialAudio.Play(Get(cue), point, volume, cue == Cue.Blast ? 8 : 2, far, 100);
         }
+
+        internal void PlayShot(AudioClip clip, Vector3 point, float volume, bool melee = false) =>
+            spatialAudio.Play(clip, point, volume, melee ? 2 : 5.5f, melee ? 23 : 93, 68);
 
         internal void CombatFeedback(Vector3 from, int damage)
         {
@@ -181,21 +179,27 @@ namespace CostaLivre
         {
             float speed = vehicle != null ? Mathf.Clamp01(vehicle.Speed / vehicle.TopSpeed) : 0;
             float load = Mathf.Clamp01(Mathf.Abs(throttle));
+            float blend = 1f - Mathf.Exp(-8f * Time.unscaledDeltaTime);
+            float volume = vehicle == null ? 0 : 0.07f + speed * 0.15f + load * 0.09f;
+            engineGain = Mathf.Lerp(engineGain, volume, blend);
+            enginePitch = Mathf.Lerp(enginePitch, 0.75f + speed * 0.85f + load * 0.19f, blend);
             if (vehicle != null)
             {
                 AudioClip clip = Get(vehicle.IsBike ? Cue.BikeEngine : Cue.CarEngine);
-                if (engine.clip != clip)
-                    engine.clip = clip;
-                if (!engine.isPlaying)
-                    engine.Play();
+                Vector3 motor = vehicle.Root.TransformPoint(new Vector3(0, .60f, vehicle.IsBike ? 0 : .72f));
+                if (!engine.Playing || engineClip != clip)
+                    engine.Play(clip, motor, engineGain, 4f, 32f, 84, enginePitch, true, spatialAudio);
+                engineClip = clip;
+                engine.Move(motor, engineGain, enginePitch);
             }
-
-            float blend = 1f - Mathf.Exp(-8f * Time.unscaledDeltaTime);
-            float volume = vehicle == null ? 0 : 0.06f + speed * 0.13f + load * 0.08f;
-            engine.volume = Mathf.Lerp(engine.volume, volume, blend);
-            engine.pitch = Mathf.Lerp(engine.pitch, 0.75f + speed * 0.85f + load * 0.19f, blend);
-            if (vehicle == null && engine.volume < 0.003f && engine.isPlaying)
-                engine.Stop();
+            else if (engine.Playing)
+            {
+                if (engineGain <= .003f)
+                    engine.Stop();
+                else
+                    engine.Move(engine.Position, engineGain, enginePitch);
+            }
+            engine.Update(spatialAudio, blend, .12f);
         }
 
         internal void Brake(float previousSpeed, float speed)
@@ -219,16 +223,10 @@ namespace CostaLivre
         {
             particles.Release();
             Object.Destroy(edgeFade);
-            foreach (AudioSource source in impacts)
-            {
-                source.Stop();
-                Object.Destroy(source.gameObject);
-            }
-            engine.Stop();
+            spatialAudio.Release();
             feedback.Stop();
             foreach (AudioClip clip in bank)
                 Object.Destroy(clip);
-            Object.Destroy(engine.gameObject);
             Object.Destroy(feedback.gameObject);
         }
 

@@ -31,6 +31,7 @@ namespace CostaLivre
                 source.loop = true;
                 source.playOnAwake = false;
                 source.spatialBlend = 0;
+                source.reverbZoneMix = 0;
                 source.volume = 0;
                 source.priority = 56;
                 voices[i] = source;

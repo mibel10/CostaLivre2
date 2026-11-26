@@ -188,6 +188,14 @@ namespace CostaLivre
                 pipeline = Object.Instantiate(authored);
                 pipeline.name = authored.name + " (runtime)";
                 pipeline.hideFlags = HideFlags.DontSave;
+                if (pipeline.gpuResidentDrawerMode != GPUResidentDrawerMode.Disabled
+                    && (Application.isMobilePlatform || !SystemInfo.supportsComputeShaders
+                        || !IGPUResidentRenderPipeline.IsGPUResidentDrawerSupportedByProjectConfiguration()
+                        || !pipeline.IsGPUResidentDrawerSupportedBySRP(out _, out _)))
+                {
+                    pipeline.gpuResidentDrawerMode = GPUResidentDrawerMode.Disabled;
+                    pipeline.gpuResidentDrawerEnableOcclusionCullingInCameras = false;
+                }
             }
             ApplySettings();
             if (pipeline != null)

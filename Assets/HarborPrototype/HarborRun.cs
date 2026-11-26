@@ -248,6 +248,7 @@ namespace CostaLivre
             // Draw one full frame of the loading screen before constructing scene objects.
             yield return null;
             menuStage.gameObject.SetActive(false);
+            yield return harbor.PreloadWorldTextures();
             int culling = followCamera.cullingMask;
             followCamera.cullingMask = 0;
             using (var stages = BuildWorld().GetEnumerator())

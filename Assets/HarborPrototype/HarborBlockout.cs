@@ -39,6 +39,7 @@ namespace CostaLivre
         private float waterDaylight = 1;
         private Material detailTemplate;
         private Material wearMaterial;
+        private Mesh distantCanopy;
         private readonly Mesh[] wearMeshes = new Mesh[4];
         private HarborStreetLights streetLights;
         private bool ultra;
@@ -105,6 +106,74 @@ namespace CostaLivre
                 new Vector3(0.5f, 2.4f, 4), new Color(0.62f, 0.74f, 0.71f), true, "Concrete", new(3, 2));
             Box("Safehouse sign", Safehouse + new Vector3(-1.82f, 1.9f, 0),
                 new Vector3(0.07f, 0.25f, 2.3f), Mint);
+        }
+
+        internal System.Collections.IEnumerator PreloadWorldTextures()
+        {
+            var names = new[] { "Asphalt", "Concrete", "Steel" };
+            var requests = new ResourceRequest[names.Length, 3];
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (maps.ContainsKey(names[i]))
+                    continue;
+                requests[i, 0] = Resources.LoadAsync<Texture2D>($"Harbor/{names[i]}Color");
+                requests[i, 1] = Resources.LoadAsync<Texture2D>($"Harbor/{names[i]}Normal");
+                requests[i, 2] = Resources.LoadAsync<Texture2D>($"Harbor/{names[i]}Response");
+            }
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (requests[i, 0] == null)
+                    continue;
+                for (int j = 0; j < 3; j++)
+                    yield return requests[i, j];
+                maps[names[i]] = (requests[i, 0].asset as Texture2D, requests[i, 1].asset as Texture2D,
+                    requests[i, 2].asset as Texture2D);
+            }
+        }
+
+        internal void TreeDetail(Transform tree, Renderer first, Renderer second, Vector3 center, Color tint)
+        {
+            if (distantCanopy == null)
+            {
+                const int sides = 7;
+                var vertices = new Vector3[sides * 2 + 2];
+                vertices[0] = new Vector3(0, -.56f, 0);
+                vertices[^1] = new Vector3(.08f, .61f, 0);
+                var indices = new int[sides * 12];
+                for (int j = 0; j < sides; j++)
+                {
+                    float angle = 2 * Mathf.PI * j / sides;
+                    vertices[1 + j] = new Vector3(Mathf.Sin(angle) * .50f, -.17f, Mathf.Cos(angle) * .50f);
+                    vertices[1 + sides + j] = new Vector3(Mathf.Sin(angle + .23f) * .44f + .035f, .22f,
+                        Mathf.Cos(angle + .23f) * .44f);
+                    int a = 1 + j, b = 1 + (j + 1) % sides, c = a + sides, d = b + sides;
+                    int at = j * 12;
+                    indices[at] = 0; indices[at + 1] = b; indices[at + 2] = a;
+                    indices[at + 3] = a; indices[at + 4] = b; indices[at + 5] = c;
+                    indices[at + 6] = c; indices[at + 7] = b; indices[at + 8] = d;
+                    indices[at + 9] = c; indices[at + 10] = d; indices[at + 11] = vertices.Length - 1;
+                }
+                distantCanopy = new Mesh { name = "Shared tree canopy LOD", vertices = vertices, triangles = indices };
+                distantCanopy.RecalculateNormals();
+                distantCanopy.RecalculateBounds();
+                distantCanopy.UploadMeshData(true);
+                models.Add(distantCanopy);
+            }
+            var proxy = new GameObject("Tree canopy LOD");
+            proxy.transform.SetParent(tree, false);
+            proxy.transform.localPosition = center;
+            proxy.transform.localScale = new Vector3(3.38f, 2.85f, 2.86f);
+            proxy.AddComponent<MeshFilter>().sharedMesh = distantCanopy;
+            Renderer simple = proxy.AddComponent<MeshRenderer>();
+            simple.sharedMaterial = SolidMaterial(tint, Finish.Standard);
+            var group = tree.gameObject.AddComponent<LODGroup>();
+            group.fadeMode = LODFadeMode.CrossFade;
+            group.animateCrossFading = true;
+            group.SetLODs(new[] {
+                new LOD(.055f, new[] { first, second }),
+                new LOD(.008f, new[] { simple })
+            });
+            group.RecalculateBounds();
         }
 
         internal AsyncOperation BuildNavigation(NavMeshData data)
@@ -558,6 +627,14 @@ namespace CostaLivre
                 var renderer = batch.AddComponent<MeshRenderer>();
                 renderer.sharedMaterial = entry.Key.Material;
                 renderer.shadowCastingMode = ShadowCastingMode.Off;
+                if (entry.Key.Material == wearMaterial)
+                {
+                    var lod = batch.AddComponent<LODGroup>();
+                    lod.fadeMode = LODFadeMode.CrossFade;
+                    lod.animateCrossFading = true;
+                    lod.SetLODs(new[] { new LOD(.075f, new Renderer[] { renderer }) });
+                    lod.RecalculateBounds();
+                }
                 foreach (MeshFilter piece in pieces)
                 {
                     piece.gameObject.SetActive(false);

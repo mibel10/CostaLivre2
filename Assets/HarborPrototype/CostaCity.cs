@@ -108,7 +108,8 @@ namespace CostaLivre
             foreach (float x in Avenues)
             {
                 for (int z = 29; z < 165; z += 6)
-                    Mark(new(x, 0.018f, z), new(0.11f, 0.03f, 2.5f));
+                    if (!NearRoad(z, CrossStreets))
+                        Mark(new(x, 0.018f, z), new(0.11f, 0.03f, 2.5f));
                 for (int z = 35; z < 166; z += 24)
                     Lamp(new(x - 5, 0, z), Vector3.right);
             }
@@ -116,7 +117,8 @@ namespace CostaLivre
             foreach (float z in CrossStreets)
             {
                 for (int x = -147; x < 76; x += 6)
-                    Mark(new(x, 0.018f, z), new(2.5f, 0.03f, 0.11f));
+                    if (!NearRoad(x, Avenues))
+                        Mark(new(x, 0.018f, z), new(2.5f, 0.03f, 0.11f));
             }
 
             yield return 0.15f;
@@ -385,7 +387,7 @@ namespace CostaLivre
             {
                 for (int stripe = -4; stripe <= 4; stripe++)
                 {
-                    art.BatchDecoration("Pedestrian crossing", new Vector3(-30 + stripe * 0.82f, 0.021f, cross + 4.8f),
+                    art.BatchDecoration("Pedestrian crossing", new Vector3(-30 + stripe * 0.82f, 0.022f, cross + 4.8f),
                         new Vector3(0.45f, 0.03f, 2.7f), white);
                 }
             }
@@ -422,6 +424,14 @@ namespace CostaLivre
         {
             art.Box("Perimeter seawall", position, size, Pavement, true, "Concrete",
                 new Vector2(Mathf.Max(size.x, size.z) / 3f, 1.2f));
+        }
+
+        private static bool NearRoad(float position, float[] crossings)
+        {
+            foreach (float crossing in crossings)
+                if (Mathf.Abs(position - crossing) < 3.9f)
+                    return true;
+            return false;
         }
 
         private void Mark(Vector3 position, Vector3 size)
@@ -580,12 +590,19 @@ namespace CostaLivre
 
         private void Tree(Vector3 point)
         {
-            Shape("Tree trunk", PrimitiveType.Cylinder, point + Vector3.up * 1.6f,
-                new Vector3(0.25f, 1.6f, 0.25f), new Color(0.30f, 0.24f, 0.17f));
-            Shape("Tree crown", PrimitiveType.Sphere, point + Vector3.up * 3.7f,
-                new Vector3(3.0f, 3.0f, 2.65f), new Color(0.26f, 0.36f, 0.26f));
-            Shape("Tree crown", PrimitiveType.Sphere, point + new Vector3(0.70f, 3.2f, 0.21f),
-                new Vector3(2.5f, 2.08f, 2.16f), new Color(0.31f, 0.41f, 0.29f));
+            var tree = new GameObject("Street tree").transform;
+            tree.SetParent(root, false);
+            tree.localPosition = point;
+            GameObject trunk = art.Part(tree, PrimitiveType.Cylinder, "Tree trunk", Vector3.up * 1.6f,
+                new Vector3(.25f, 1.6f, .25f), new Color(.30f,.24f,.17f), true);
+            art.Damage.Mark(trunk, CostaWorldDamage.Surface.Wood, 0);
+            Color leaf = new(.26f,.36f,.26f);
+            GameObject crown = art.Part(tree, PrimitiveType.Sphere, "Tree crown", Vector3.up * 3.7f,
+                new Vector3(3,3,2.65f), leaf);
+            GameObject offset = art.Part(tree, PrimitiveType.Sphere, "Tree crown", new Vector3(.70f,3.2f,.21f),
+                new Vector3(2.5f,2.08f,2.16f), new Color(.31f,.41f,.29f));
+            art.TreeDetail(tree, crown.GetComponent<Renderer>(),
+                offset.GetComponent<Renderer>(), new Vector3(.31f,3.58f,.07f), leaf);
         }
 
         private void Fountain(Vector3 point)

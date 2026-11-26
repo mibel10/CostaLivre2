@@ -85,7 +85,6 @@ namespace CostaLivre
             public int credits;
             public int weapons;
             public int notice;
-            public int noticeVersion;
             public bool hasWorldHour;
             public float worldHour;
             public string name;
@@ -121,8 +120,6 @@ namespace CostaLivre
             public int id;
             public int credits;
             public int weapons;
-            public int notice;
-            public int noticeVersion;
             public int[] bag;
             public int equipSequence;
             public int[] loaded = new int[HarborArsenal.WeaponNames.Length];
@@ -138,8 +135,6 @@ namespace CostaLivre
             internal byte[] Challenge;
             internal int Credits = 4500;
             internal int Weapons;
-            internal int Notice;
-            internal int NoticeVersion;
             internal float LastPacket;
             internal float LastPose;
             internal float AirborneSince = -1;
@@ -196,7 +191,7 @@ namespace CostaLivre
         private double worldHourReceivedAt;
         private float receivedWorldHour;
         private bool hasWorldHour;
-        private int seenNotice;
+        private readonly Queue<int> noticeEvents = new();
         private bool requestedHost;
         private float noticeUntil;
         private string playerName = "";
@@ -230,7 +225,7 @@ namespace CostaLivre
         internal bool WorldIsNight => HarborDaylight.IsNight(!Hosting && hasWorldHour ? receivedWorldHour : WorldHour);
         internal string Status => status;
         internal string Notice { get; private set; } = "";
-        internal int NoticeEvent { get; private set; }
+        internal int NoticeEvent => noticeEvents.TryDequeue(out int code) ? code : 0;
         internal string CurrentNotice => Time.realtimeSinceStartup < noticeUntil ? Notice : "";
         internal int PoliceCount
         {
@@ -352,7 +347,6 @@ namespace CostaLivre
 
         private void TickClient(float now, Avatar localPose)
         {
-            NoticeEvent = 0;
             if (connecting != null)
             {
                 if (connecting.Status == TaskStatus.RanToCompletion)
@@ -396,6 +390,13 @@ namespace CostaLivre
                     }
                     continue;
                 }
+                if (frame != null && frame.protocol == Protocol && frame.type == "notice")
+                {
+                    noticeEvents.Enqueue(frame.notice);
+                    Notice = FormatNotice(frame.notice);
+                    noticeUntil = now + 4.2f;
+                    continue;
+                }
                 if (frame == null || frame.type != "state" || frame.protocol != Protocol || frame.players == null
                     || frame.players.Length > MaxPlayers || frame.vehicles == null || frame.vehicles.Length != sceneVehicles.Length
                     || Array.Exists(frame.players, avatar => avatar == null || avatar.vehicle < -1 || avatar.vehicle >= sceneVehicles.Length
@@ -435,13 +436,6 @@ namespace CostaLivre
                 Bag.Replace(frame.bag);
                 nextWatchdog = now + 9f;
                 status = requestedHost ? L("Hosting", "Hospedando") : L("Connected", "Conectado");
-                if (frame.noticeVersion != seenNotice)
-                {
-                    seenNotice = frame.noticeVersion;
-                    NoticeEvent = frame.notice;
-                    Notice = FormatNotice(frame.notice);
-                    noticeUntil = now + 4.2f;
-                }
             }
 
             if (connection.Closed || now >= nextWatchdog)
@@ -656,8 +650,6 @@ namespace CostaLivre
                 snapshot.credits = peer.Credits;
                 snapshot.weapons = WeaponInventory(peer);
                 snapshot.bag = peer.Bag.Amounts;
-                snapshot.notice = peer.Notice;
-                snapshot.noticeVersion = peer.NoticeVersion;
                 for (int i = 0; i < snapshot.loaded.Length; i++)
                 {
                     snapshot.loaded[i] = HarborArsenal.ShotRules(i).magazine - peer.UsedRounds[i];
@@ -1323,8 +1315,7 @@ namespace CostaLivre
 
         private static void SetNotice(Peer peer, int code)
         {
-            peer.Notice = code;
-            peer.NoticeVersion++;
+            peer.Wire.Send(JsonUtility.ToJson(new Frame { type = "notice", protocol = Protocol, notice = code }));
         }
 
         private static string FormatNotice(int code)
@@ -1500,7 +1491,7 @@ namespace CostaLivre
             nextPose = 0;
             nextSnapshot = 0;
             hasWorldHour = false;
-            seenNotice = 0;
+            noticeEvents.Clear();
             noticeUntil = 0;
             status = "";
         }

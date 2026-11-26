@@ -22,6 +22,7 @@ namespace CostaLivre
         private readonly CancellationTokenSource cancel = new();
         private int inCount;
         private int outCount;
+        private byte[] latestState;
         private int closed;
 
         internal bool Closed => Volatile.Read(ref closed) != 0;
@@ -98,13 +99,12 @@ namespace CostaLivre
             Buffer.BlockCopy(shared, 0, frame, 4, shared.Length - 1);
             frame[shared.Length + 3] = (byte)',';
             Encoding.UTF8.GetBytes(personal, 1, personal.Length - 1, frame, shared.Length + 4);
-            if (Interlocked.Increment(ref outCount) > 96)
+            // One queue marker represents the newest state waiting to be sent.
+            if (Interlocked.Exchange(ref latestState, frame) == null)
             {
-                Dispose();
-                return;
+                outgoing.Enqueue(null);
+                pending.Release();
             }
-            outgoing.Enqueue(frame);
-            pending.Release();
         }
 
         internal async Task Reject(string text)
@@ -204,8 +204,12 @@ namespace CostaLivre
                     await pending.WaitAsync(cancel.Token).ConfigureAwait(false);
                     if (outgoing.TryDequeue(out byte[] frame))
                     {
-                        Interlocked.Decrement(ref outCount);
-                        await WriteFrame(frame).ConfigureAwait(false);
+                        if (frame == null)
+                            frame = Interlocked.Exchange(ref latestState, null);
+                        else
+                            Interlocked.Decrement(ref outCount);
+                        if (frame != null)
+                            await WriteFrame(frame).ConfigureAwait(false);
                     }
                 }
             }

@@ -40,8 +40,13 @@ namespace CostaLivre
             public bool moving;
             public bool running;
             public bool aiming;
+            public float aimPitch;
             public float jumpPose = -1;
             public float rollPose = -1;
+            public float landingCompression;
+            public int gesture;
+            public float gestureProgress;
+            public Vector3 gestureTarget;
             public int equipped = HarborArsenal.Knife;
             public int shotNumber;
             public int shotWeapon = -1;
@@ -140,6 +145,11 @@ namespace CostaLivre
             internal float LastPose;
             internal float AirborneSince = -1;
             internal float TakeoffHeight;
+            internal float FallPeak;
+            internal float LandedAt = -1;
+            internal float LandingSeverity;
+            internal float GestureStarted;
+            internal float GestureEnds;
             internal float Stamina = HarborRun.FullStamina;
             internal float RecoverAfter;
             internal float RollUntil;
@@ -629,6 +639,14 @@ namespace CostaLivre
                         peer.UsedRounds[i] = 0;
                     }
                 }
+                float landProgress = peer.LandedAt >= 0
+                    ? (now - peer.LandedAt) / Mathf.Lerp(0.14f, 0.43f, peer.LandingSeverity) : 1;
+                peer.Pose.landingCompression = landProgress < 1
+                    ? Mathf.Sin(Mathf.PI * Mathf.Clamp01(landProgress)) * Mathf.Lerp(0.23f, 1f, peer.LandingSeverity) : 0;
+                if (now >= peer.GestureEnds)
+                    peer.Pose.gesture = 0;
+                else
+                    peer.Pose.gestureProgress = Mathf.InverseLerp(peer.GestureStarted, peer.GestureEnds, now);
                 active.Add(peer.Pose);
             }
             if (active.Count == 0)
@@ -738,6 +756,7 @@ namespace CostaLivre
                         {
                             restock[msg.index] = now + 90;
                             RaiseHeat(peer, now, false);
+                            BeginGesture(peer, HarborCharacter.Gesture.PickUp, now, CostaRobberies.PickupTarget(msg.index));
                             SetNotice(peer, 5);
                         }
                         else
@@ -753,7 +772,10 @@ namespace CostaLivre
                         peer.Credits += amount;
 
                         if (amount > 0)
+                        {
+                            BeginGesture(peer, HarborCharacter.Gesture.Reach, now);
                             SetNotice(peer, 7);
+                        }
                     }
                     break;
                 case "buy":
@@ -878,12 +900,22 @@ namespace CostaLivre
                     peer.SprintExhausted = false;
                 bool supported = Supported(pose.pos);
                 if (supported)
+                {
+                    if (peer.AirborneSince >= 0 && !rolling)
+                    {
+                        peer.LandingSeverity = HarborCharacter.FallSeverity(peer.FallPeak - pose.pos.y);
+                        peer.LandedAt = now;
+                    }
                     peer.AirborneSince = -1;
+                }
                 else if (peer.AirborneSince < 0)
                 {
                     peer.AirborneSince = now - elapsed;
                     peer.TakeoffHeight = avatar.pos.y;
+                    peer.FallPeak = Mathf.Max(avatar.pos.y, pose.pos.y);
                 }
+                else
+                    peer.FallPeak = Mathf.Max(peer.FallPeak, pose.pos.y);
                 if (allowedSprint && supported && planar > 0.02f)
                 {
                     peer.Stamina = Mathf.Max(0, peer.Stamina - elapsed);
@@ -924,6 +956,7 @@ namespace CostaLivre
             avatar.crouched = pose.crouched && avatar.vehicle < 0;
             avatar.moving = pose.moving;
             avatar.aiming = pose.aiming;
+            avatar.aimPitch = Finite(pose.aimPitch) ? Mathf.Clamp(pose.aimPitch, -25f, 55f) : 0;
             avatar.jumpPose = Finite(pose.jumpPose) ? Mathf.Clamp(pose.jumpPose, -1, 1) : -1;
             avatar.rollPose = Finite(pose.rollPose) ? Mathf.Clamp(pose.rollPose, -1, 1) : -1;
             if (avatar.vehicle >= 0)
@@ -940,12 +973,25 @@ namespace CostaLivre
             return true;
         }
 
+        private static void BeginGesture(Peer peer, HarborCharacter.Gesture gesture, float now, Vector3 target = default)
+        {
+            peer.Pose.gesture = (int)gesture;
+            peer.Pose.gestureProgress = 0;
+            peer.Pose.gestureTarget = target;
+            peer.GestureStarted = now;
+            peer.GestureEnds = now + HarborCharacter.GestureDuration(gesture);
+        }
+
         private static void ResetMotion(Peer peer)
         {
             peer.DoorUntil = 0;
             peer.Pose.doorCar = -1;
             peer.Pose.doorTime = 0;
             peer.AirborneSince = -1;
+            peer.LandedAt = -1;
+            peer.Pose.landingCompression = 0;
+            peer.GestureEnds = 0;
+            peer.Pose.gesture = 0;
             peer.RollUntil = 0;
             peer.ReportedRoll = false;
             peer.TravelSlack = 0.55f;
@@ -1061,6 +1107,7 @@ namespace CostaLivre
             if (!shooter.Pose.police)
                 RaiseHeat(shooter, now, true);
             SetNotice(victim, 10);
+            BeginGesture(victim, HarborCharacter.Gesture.Impact, now);
             if (victim.Pose.health <= 0)
             {
                 victim.Pose.health = 100;

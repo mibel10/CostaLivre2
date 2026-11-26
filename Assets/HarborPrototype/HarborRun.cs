@@ -154,12 +154,29 @@ namespace CostaLivre
         private float verticalSpeed;
         private float jumpClock;
         private float landing;
+        private float landingDuration = 0.14f;
+        private float landingSeverity;
+        private float airbornePeak;
+        private Vector3 groundVelocity;
+        private float wallReaction;
+        private float cameraImpulse;
+        private HarborCharacter.Gesture gesture;
+        private Vector3 gestureTarget;
+        private float gestureEnds;
         private float rollClock;
         private float rollCooldown;
         private bool grounded;
         private Vector3 rollDirection;
         private float pitch;
         private float boomDistance;
+        private float shoulder = 1;
+        private float shoulderSide = 1;
+        private float cameraAim;
+        private float cameraHeight;
+        private Vector3 cameraLead;
+        private Vector3 cameraLeadVelocity;
+        private readonly RaycastHit[] cameraHits = new RaycastHit[12];
+        private InputAction shoulderSwap;
         private float stamina;
         private float sprintRecoveryDelay;
         private float nextPursuitUpdate;
@@ -274,6 +291,7 @@ namespace CostaLivre
             loadingPhase = L("Preparing vehicles and contracts", "Preparando veículos e missões");
             yield return 0.69f;
             jobs.AttachDoors(city.HouseDoors);
+            city.UpdateHouseDoors(jobs, false, snap: true);
             robberies = new CostaRobberies(harbor);
             cityMap = new CostaMap(city.Footprints);
             gunShop = new CostaGunShop();
@@ -314,6 +332,7 @@ namespace CostaLivre
             playerBody = harbor.Person("Runner model", runner.transform, HarborBlockout.Spawn, new Color(0.89f, 0.90f, 0.86f));
             playerModel = playerBody.Root;
             cargoPack = harbor.Pack(playerModel, playerBody.Chest);
+            playerBody.RegisterAttachment(cargoPack.transform, 1f);
             localLook = new CostaLook(harbor, playerBody);
 
             effects = new CostaEffects(transform);
@@ -400,7 +419,7 @@ namespace CostaLivre
                     menuWeapons[previewSlot] = model;
                 }
                 if (previewSlot == HarborArsenal.Knife)
-                    menuBody.HoldKnife(false, false, -1);
+                    menuBody.HoldKnife(false, -1);
                 else
                     menuBody.HoldWeapon(false, 12f, false);
                 menuWeaponMount.SetPositionAndRotation(menuBody.WeaponHand,
@@ -476,11 +495,12 @@ namespace CostaLivre
             mapKey = AddButton(map, "City map", "<Keyboard>/m", "<Gamepad>/dpad/right");
             bagKey = AddButton(map, "Backpack", "<Keyboard>/i", "<Gamepad>/dpad/up");
             crouchKey = AddButton(map, "Crouch stance", "<Keyboard>/leftCtrl", "<Gamepad>/dpad/down");
+            shoulderSwap = AddButton(map, "Swap shoulder", "<Keyboard>/v", "<Gamepad>/dpad/left");
             for (int i = 0; i < weaponSlots.Length; i++)
                 weaponSlots[i] = AddButton(map, $"Weapon slot {i + 1}", $"<Keyboard>/{i + 1}");
             bindings = new CostaBindings(sprint, jump, roll, interact, reload);
             padBindings = new CostaPadBindings(sprint, jump, roll, interact, reload, shoot, aim,
-                nextWeapon, previousWeapon, crouchKey, mapKey, bagKey, openMenu, jobsBoard);
+                nextWeapon, previousWeapon, crouchKey, mapKey, bagKey, openMenu, jobsBoard, shoulderSwap);
         }
 
         private static InputAction AddButton(InputActionMap map, string name, string binding, string secondary = null)
@@ -553,10 +573,11 @@ namespace CostaLivre
             pose.revision = netRevision;
             pose.playing = enteredOnlineWorld;
             pose.aiming = aimingPose;
+            pose.aimPitch = pitch;
             pose.standing = grounded && !crouching && rollClock <= 0 && car == null;
             pose.crouched = crouching;
             pose.jumpPose = car == null && (!grounded || landing > 0)
-                    ? grounded ? Mathf.Lerp(0.78f, 1f, 1 - landing / 0.14f) : Mathf.Min(jumpClock / 0.8f, 0.77f)
+                    ? grounded ? Mathf.Lerp(0.78f, 1f, 1 - landing / landingDuration) : Mathf.Min(jumpClock / 0.8f, 0.77f)
                     : -1;
             pose.rollPose = rollClock > 0 ? 1 - rollClock / RollDuration : -1;
             pose.moving = !inMenu && overlay == FieldOverlay.None && walking;
@@ -579,6 +600,7 @@ namespace CostaLivre
                 case 5: effects.Play(Cue.Loot); break;
                 case 7: effects.Play(Cue.Sale); break;
                 case 8: effects.Play(Cue.Purchase); break;
+                case 10: CameraKick(0.38f); break;
             }
             if (session.Online && priorHeat == 0 && session.Local.wantedLevel > 0)
                 effects.Play(Cue.Alert, 0.32f);
@@ -597,6 +619,7 @@ namespace CostaLivre
                     arsenal.SetOnlineWeapons(null);
                     localLook.Apply(0, false);
                     jobs.SetOnlineDoors(false);
+                    city.UpdateHouseDoors(jobs, false, snap: true);
                     jobs.ResumeAfterSession();
                     CloseOverlay();
                     ResetRun(resetJob: false);
@@ -674,6 +697,7 @@ namespace CostaLivre
 
                 wasOnline = true;
                 jobs.SetOnlineDoors(true);
+                city.UpdateHouseDoors(jobs, true, snap: true);
                 pursuit = false;
                 harborJob = false;
                 cargo.SetActive(false);
@@ -717,7 +741,8 @@ namespace CostaLivre
                 crouching = walking = runningPose = false;
                 grounded = true;
                 verticalSpeed = -2.3f;
-                rollClock = landing = 0;
+                rollClock = 0;
+                ResetFootMotion();
                 yaw = avatar.yaw;
                 if (!inMenu && !vehicleMotion.Active)
                     PositionCamera(false, true);
@@ -899,7 +924,10 @@ namespace CostaLivre
             yaw = Mathf.Repeat(yaw + cameraInput.x, 360f);
             pitch = Mathf.Clamp(pitch - cameraInput.y, -25f, 55f);
 
+            if (Pressed(shoulderSwap, TouchControl.Shoulder))
+                shoulderSide = -shoulderSide;
             city.Animate();
+            city.UpdateHouseDoors(jobs, session.Online);
             bool interaction = Pressed(interact, TouchControl.Use);
             bool pendingVehicleSync = false;
             if (!session.Online)
@@ -945,6 +973,8 @@ namespace CostaLivre
                 bool braking = Held(jump, TouchControl.Jump);
                 if (car.Drive(steering, braking) || pendingVehicleSync)
                     Physics.SyncTransforms();
+                if (previousSpeed - car.Speed > Mathf.Max(2.6f, Time.deltaTime * 24f))
+                    CameraKick(Mathf.Clamp01((previousSpeed - car.Speed) / 16f) * 0.62f);
                 effects.Brake(previousSpeed, braking && Pressed(jump, TouchControl.Jump) ? 0 : car.Speed);
                 player.transform.position = car.Root.position;
                 if (car.IsBike)
@@ -1006,6 +1036,7 @@ namespace CostaLivre
                 && IsNear(HarborBlockout.Cargo, InteractionRadius) && interaction;
             if (originalInteraction)
             {
+                GestureAt(HarborCharacter.Gesture.PickUp, cargo.transform.position);
                 state = RunState.Escape;
                 escapeStartedAt = Time.time;
                 cargo.SetActive(false);
@@ -1130,10 +1161,20 @@ namespace CostaLivre
             {
                 bool canUse = car == null && grounded && !crouching && rollClock <= 0;
                 missionInteraction = takeAction && UsingContractObjective();
+                if (missionInteraction && canUse && jobs.Current.Mode != CostaJobs.Action.Seize)
+                    GestureAt(jobs.Current.Mode == CostaJobs.Action.Collect ? HarborCharacter.Gesture.PickUp
+                        : jobs.Current.Mode == CostaJobs.Action.Breach ? HarborCharacter.Gesture.OpenDoor
+                        : HarborCharacter.Gesture.Reach, encounter.Location(player.transform.position));
+                int previousHealth = encounter.Health;
                 CostaVehicle seized = encounter.Advance(player.transform.position, car, takeAction && canUse,
                     canUse && Held(interact, TouchControl.Use), rollClock > 0, Time.deltaTime);
                 if (seized != null && !BeginSoloBoarding(seized))
                     EnterVehicle(seized);
+                if (encounter.Health < previousHealth)
+                {
+                    GestureAt(HarborCharacter.Gesture.Impact);
+                    CameraKick(0.35f);
+                }
                 if (encounter.Health <= 0)
                 {
                     EndRun(RunState.Caught);
@@ -1145,6 +1186,9 @@ namespace CostaLivre
                 bool finishingEscape = jobs.Active == 4 && jobs.StepNumber == 2;
                 missionInteraction = jobs.InProgress && takeAction
                     && CostaJobs.Near(player.transform.position, jobs.Current.Point, jobs.Current.Radius);
+                if (missionInteraction && car == null && jobs.Current.Mode is CostaJobs.Action.Alert or CostaJobs.Action.Inspect)
+                    GestureAt(jobs.Current.Mode == CostaJobs.Action.Alert ? HarborCharacter.Gesture.PickUp
+                        : HarborCharacter.Gesture.Reach, jobs.Current.Point);
                 if (jobs.Advance(player.transform.position, car != null, takeAction))
                 {
                     int previousHeat = wantedLevel;
@@ -1170,7 +1214,11 @@ namespace CostaLivre
                 int property = jobs.NearbyProperty(player.transform.position);
                 if (property >= 0 && !jobs.Owned(property))
                     if (jobs.Buy(property))
+                    {
+                        GestureAt(HarborCharacter.Gesture.OpenDoor, city.HouseDoors[property].transform.position
+                            + new Vector3(0.95f, -0.19f, -0.13f));
                         effects.Play(Cue.Purchase);
+                    }
             }
         }
 
@@ -1191,6 +1239,7 @@ namespace CostaLivre
                 session.Request("loot", site);
             else if (robberies.Take(site, jobs))
             {
+                GestureAt(HarborCharacter.Gesture.PickUp, CostaRobberies.PickupTarget(site));
                 cargoPack.SetActive(true);
                 effects.Play(Cue.Loot);
                 StartPursuit(0.45f);
@@ -1207,7 +1256,10 @@ namespace CostaLivre
                 int previousCash = jobs.Credits;
                 jobs.SellLoot(item);
                 if (jobs.Credits > previousCash)
+                {
+                    GestureAt(HarborCharacter.Gesture.Reach);
                     effects.Play(Cue.Sale);
+                }
             }
         }
 
@@ -1258,6 +1310,7 @@ namespace CostaLivre
                     car = null;
                     player.enabled = false;
                     player.transform.position = exit;
+                    ResetFootMotion();
                     grounded = true;
                     verticalSpeed = -2.3f;
                     vehicleMotion.Begin(leaving, false, side, exit, exit, leaving.Root.position,
@@ -1331,6 +1384,7 @@ namespace CostaLivre
         private void EnterVehicle(CostaVehicle vehicle)
         {
             car = vehicle;
+            ResetFootMotion();
             player.enabled = false;
             playerModel.gameObject.SetActive(car.IsBike);
             arsenal.SetVisible(false);
@@ -1422,25 +1476,49 @@ namespace CostaLivre
 
         private void PositionCamera(bool aiming, bool snap = false)
         {
+            float dt = Mathf.Min(Time.deltaTime, 0.10f);
+            float quick = 1f - Mathf.Exp(-dt * 16f);
             Quaternion rotation = Quaternion.Euler(pitch, yaw, 0);
             Vector3 focus = vehicleMotion.Active ? playerModel.position : player.transform.position;
-            Vector3 pivot = focus + Vector3.up * (car != null ? 2.05f : crouching ? 0.97f : 1.42f);
-            Vector3 cameraOffset = car != null ? new Vector3(0, 0.68f, -6.45f)
-                : aiming ? new Vector3(0.54f, 0.10f, -2.05f) : new Vector3(0.80f, 0.32f, -3.65f);
-            Vector3 offset = rotation * cameraOffset;
+            bool driving = car != null && !vehicleMotion.Active;
+            float height = driving ? 2.05f : crouching ? 0.97f : 1.42f;
+            cameraHeight = snap ? height : Mathf.Lerp(cameraHeight, height, quick);
+            cameraAim = snap ? (aiming ? 1 : 0) : Mathf.Lerp(cameraAim, aiming ? 1 : 0, quick);
+            shoulder = snap ? shoulderSide : Mathf.MoveTowards(shoulder, shoulderSide, dt * 5.5f);
+            Vector3 lead = driving ? car.Root.forward * Mathf.Clamp(car.SignedSpeed * 0.045f, -0.42f, 1.15f)
+                : vehicleMotion.Active ? Vector3.zero : groundVelocity * (aiming ? 0.023f : 0.10f);
+            if (snap)
+                cameraLead = cameraLeadVelocity = Vector3.zero;
+            if (dt > 0)
+                cameraLead = Vector3.SmoothDamp(cameraLead, lead, ref cameraLeadVelocity, 0.115f, 14f, dt);
+            Vector3 pivot = focus + Vector3.up * cameraHeight;
+            Vector3 cameraOffset = driving ? new Vector3(0, 0.68f, -6.45f)
+                : Vector3.Lerp(new Vector3(0.80f * shoulder, 0.32f, -3.65f),
+                    new Vector3(0.54f * shoulder, 0.10f, -2.05f), cameraAim);
+
+            cameraImpulse = snap ? 0 : Mathf.MoveTowards(cameraImpulse, 0, dt * 2.4f);
+            float amplitude = cameraImpulse * cameraImpulse * menu.CameraShake * (aiming ? 0.027f : 0.105f);
+            float clock = Time.unscaledTime;
+            cameraOffset += new Vector3(Mathf.Sin(clock * 59f), Mathf.Sin(clock * 43f + 1f), 0) * amplitude;
+            Vector3 offset = rotation * cameraOffset + cameraLead;
             float distance = offset.magnitude;
-            Vector3 direction = offset / distance;
-            if (Physics.SphereCast(pivot, 0.17f, direction, out RaycastHit obstacle, distance,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+            Vector3 direction = offset / Mathf.Max(distance, 0.001f);
+            int hitCount = Physics.SphereCastNonAlloc(pivot, 0.17f, direction, cameraHits, distance,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < hitCount; i++)
             {
-                distance = Mathf.Max(0.14f, obstacle.distance - 0.07f);
+                RaycastHit obstacle = cameraHits[i];
+                if (obstacle.collider == player || (car != null && car.OwnsCollider(obstacle.collider)))
+                    continue;
+                distance = Mathf.Min(distance, Mathf.Max(0.14f, obstacle.distance - 0.07f));
             }
 
-            float blend = 1f - Mathf.Exp(-Time.deltaTime * 15f);
-            boomDistance = snap || distance < boomDistance ? distance : Mathf.Lerp(boomDistance, distance, blend);
+            boomDistance = snap || distance < boomDistance ? distance : Mathf.Lerp(boomDistance, distance, quick);
             followCamera.transform.SetPositionAndRotation(pivot + direction * boomDistance, rotation);
-            float fov = aiming ? arsenal.AimFov : DefaultFov;
-            followCamera.fieldOfView = snap ? fov : Mathf.Lerp(followCamera.fieldOfView, fov, blend);
+            float speedFov = driving ? Mathf.InverseLerp(2, car.TopSpeed, car.Speed) * 10f
+                : Mathf.InverseLerp(2.6f, 7.3f, groundVelocity.magnitude) * 6.5f;
+            float fov = Mathf.Lerp(DefaultFov + speedFov, arsenal.AimFov, cameraAim);
+            followCamera.fieldOfView = snap ? fov : Mathf.Lerp(followCamera.fieldOfView, fov, quick);
         }
 
         private void MovePlayer(bool aiming)
@@ -1502,6 +1580,7 @@ namespace CostaLivre
             if (grounded)
             {
                 verticalSpeed = -2.3f;
+                airbornePeak = player.transform.position.y;
                 if (!rolling && !crouching && Pressed(jump, TouchControl.Jump))
                 {
                     effects.Play(Cue.Jump, 0.24f);
@@ -1516,11 +1595,12 @@ namespace CostaLivre
                 verticalSpeed += -19f * step;
             }
 
-            walking = direction.sqrMagnitude > 0.015f || rolling;
-            runningPose = running;
             float speed = crouching ? 2f : running ? HarborArsenal.SprintSpeed(arsenal.Slot)
                 : HarborArsenal.WalkSpeed(arsenal.Slot, aiming);
-            Vector3 velocity = direction * speed;
+            float landingRecovery = landing > 0 ? landingSeverity * (landing / landingDuration) : 0;
+            Vector3 desired = direction * (speed * Mathf.Lerp(1f, 0.69f, landingRecovery));
+            Vector3 previousVelocity = groundVelocity;
+            Vector3 velocity;
             if (rolling)
             {
                 float progress = 1 - rollClock / RollDuration;
@@ -1529,8 +1609,29 @@ namespace CostaLivre
             }
             else
             {
-                playerModel.rotation = !aiming && direction.sqrMagnitude > 0.015f
-                    ? Quaternion.LookRotation(direction) : heading;
+                // The server uses this same stance speed as a hard travel ceiling.
+                groundVelocity = Vector3.ClampMagnitude(groundVelocity, speed);
+                bool braking = desired.sqrMagnitude < groundVelocity.sqrMagnitude
+                    || Vector3.Dot(desired, groundVelocity) < 0;
+                float acceleration = grounded ? (braking ? 38f : running ? 29f : 32f) : 13f;
+                if (aiming && grounded)
+                    acceleration = 46f;
+                velocity = Vector3.MoveTowards(groundVelocity, desired, acceleration * step);
+                float turnRate = aiming ? 1350f : running ? 620f : 790f;
+                Quaternion facing = aiming ? heading : direction.sqrMagnitude > 0.015f
+                    ? Quaternion.LookRotation(direction) : playerModel.rotation;
+                if (!aiming && direction.sqrMagnitude <= 0.015f)
+                {
+                    Vector3 target = session.Online && session.Local.gesture is > 0 and < (int)HarborCharacter.Gesture.Impact
+                        ? session.Local.gestureTarget : Time.unscaledTime < gestureEnds ? gestureTarget : default;
+                    if (target != default)
+                    {
+                        Vector3 toward = Vector3.ProjectOnPlane(target - playerModel.position, Vector3.up);
+                        if (toward.sqrMagnitude > 0.12f)
+                            facing = Quaternion.LookRotation(toward);
+                    }
+                }
+                playerModel.rotation = Quaternion.RotateTowards(playerModel.rotation, facing, turnRate * step);
             }
 
             bool wasGrounded = grounded;
@@ -1538,15 +1639,41 @@ namespace CostaLivre
             CollisionFlags hit = player.Move((velocity + Vector3.up * verticalSpeed) * step);
             grounded = (hit & CollisionFlags.Below) != 0;
             if ((hit & CollisionFlags.Above) != 0 && verticalSpeed > 0)
+            {
                 verticalSpeed = 0;
+                wallReaction = Mathf.Max(wallReaction, 0.35f);
+                CameraKick(0.12f);
+            }
+
+            Vector3 moved = player.transform.position - from;
+            Vector3 planarMoved = new Vector3(moved.x, 0, moved.z);
+            groundVelocity = step > 0.0001f && !rolling
+                ? Vector3.ClampMagnitude(planarMoved / step, speed)
+                : Vector3.zero;
+            if (!grounded)
+                airbornePeak = Mathf.Max(airbornePeak, player.transform.position.y);
             if (!wasGrounded && grounded)
             {
-                landing = 0.14f;
-                effects.Play(Cue.Land, Mathf.Lerp(0.28f, 0.65f, Mathf.Clamp01(-verticalSpeed / 14f)));
+                float fall = Mathf.Max(0, airbornePeak - player.transform.position.y);
+                landingSeverity = HarborCharacter.FallSeverity(fall);
+                landingDuration = Mathf.Lerp(0.14f, 0.43f, landingSeverity);
+                landing = landingDuration;
+                effects.Play(Cue.Land, Mathf.Lerp(0.28f, 0.68f, landingSeverity));
+                CameraKick(Mathf.Lerp(0.075f, 0.56f, landingSeverity));
             }
-            Vector3 moved = player.transform.position - from;
-            footfalls.Update(effects, new Vector2(moved.x, moved.z).magnitude, grounded && wasGrounded && !rolling,
-                running, crouching);
+            if ((hit & CollisionFlags.Sides) != 0 && velocity.sqrMagnitude > 8 &&
+                Vector3.Dot(groundVelocity, velocity.normalized) < velocity.magnitude * 0.52f)
+            {
+                float loss = Mathf.Clamp01((previousVelocity - groundVelocity).magnitude / 6);
+                if (loss > 0.24f)
+                {
+                    wallReaction = Mathf.Max(wallReaction, loss);
+                    CameraKick(loss * 0.35f);
+                }
+            }
+            walking = groundVelocity.sqrMagnitude > 0.10f || rolling;
+            runningPose = running && walking;
+            footfalls.Update(effects, planarMoved.magnitude, grounded && wasGrounded && !rolling, runningPose, crouching);
 
             if (rolling)
             {
@@ -1560,24 +1687,64 @@ namespace CostaLivre
             if (!grounded || landing > 0)
             {
                 jumpClock += step;
-                float pose = grounded ? Mathf.Lerp(0.78f, 1f, 1 - landing / 0.14f) : Mathf.Min(jumpClock / 0.80f, 0.77f);
+                float pose = grounded ? Mathf.Lerp(0.78f, 1f, 1 - landing / landingDuration) : Mathf.Min(jumpClock / 0.80f, 0.77f);
                 playerBody.Animate(HarborCharacter.Motion.Jump, progress: pose);
                 landing = Mathf.Max(0, landing - step);
             }
             else
             {
-                HarborCharacter.Motion motion = direction.sqrMagnitude < 0.015f ? HarborCharacter.Motion.Idle
-                    : running ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Walk;
-                playerBody.Animate(motion, HarborArsenal.GaitSpeed(arsenal.Slot, running, aiming, crouching));
+                HarborCharacter.Motion motion = !walking ? HarborCharacter.Motion.Idle
+                    : runningPose ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Walk;
+                float gait = HarborArsenal.GaitSpeed(arsenal.Slot, runningPose, aiming, crouching);
+                playerBody.Animate(motion, gait * Mathf.Lerp(0.55f, 1f, groundVelocity.magnitude / speed));
             }
 
+            wallReaction = Mathf.MoveTowards(wallReaction, 0, step * 3.4f);
+            float compression = grounded && landing > 0
+                ? Mathf.Sin(Mathf.PI * (1f - landing / landingDuration)) * Mathf.Lerp(0.23f, 1f, landingSeverity) : 0;
+            playerBody.BodyMotion(groundVelocity, (groundVelocity - previousVelocity) / Mathf.Max(step, 0.001f),
+                grounded, crouching, compression, wallReaction);
             if (crouching)
                 playerBody.CrouchPose();
+            if (grounded)
+                playerBody.PlantFeet(player);
+
             if (arsenal.KnifeEquipped)
-                playerBody.HoldKnife(running && grounded, crouching, arsenal.KnifeSwing);
+                playerBody.HoldKnife(runningPose && grounded, arsenal.KnifeSwing);
             else if (arsenal.HasFirearm)
                 playerBody.HoldWeapon(aiming, pitch, HarborArsenal.IsHeavy(arsenal.Slot));
+
+            playerBody.BraceLanding(compression);
+            bool freeToReach = !aiming && grounded && groundVelocity.sqrMagnitude < 10;
+            if (session.Online)
+            {
+                var avatar = session.Local;
+                var currentGesture = (HarborCharacter.Gesture)avatar.gesture;
+                if (freeToReach || currentGesture == HarborCharacter.Gesture.Impact)
+                    playerBody.PlayGesture(currentGesture, avatar.gestureProgress, avatar.gestureTarget);
+            }
+            else if ((freeToReach || gesture == HarborCharacter.Gesture.Impact) && Time.unscaledTime < gestureEnds)
+                playerBody.PlayGesture(gesture, 1 - (gestureEnds - Time.unscaledTime)
+                    / HarborCharacter.GestureDuration(gesture), gestureTarget);
         }
+
+        private void GestureAt(HarborCharacter.Gesture kind, Vector3 target = default)
+        {
+            if (car != null || !grounded || rollClock > 0)
+                return;
+            gesture = kind;
+            gestureTarget = target;
+            gestureEnds = Time.unscaledTime + HarborCharacter.GestureDuration(kind);
+        }
+
+        private void ResetFootMotion()
+        {
+            groundVelocity = Vector3.zero;
+            airbornePeak = player.transform.position.y;
+            landing = landingSeverity = wallReaction = cameraImpulse = gestureEnds = 0;
+        }
+
+        private void CameraKick(float strength) => cameraImpulse = Mathf.Max(cameraImpulse, Mathf.Clamp01(strength));
 
         private void ResizeController(float height)
         {
@@ -1745,10 +1912,11 @@ namespace CostaLivre
             verticalSpeed = -2.3f;
             grounded = true;
             jumpClock = 0;
-            landing = 0;
+            ResetFootMotion();
             rollClock = 0;
             rollCooldown = 0;
             player.transform.position = harborJob ? HarborBlockout.Spawn : CostaCity.CitySpawn + Vector3.left * 2.8f;
+            airbornePeak = player.transform.position.y;
             player.enabled = true;
             yaw = harborJob ? 78f : 350f;
             pitch = 5f;

@@ -214,6 +214,12 @@ namespace CostaLivre
             door.localRotation = Quaternion.Euler(0, -side * 62f * open, 0);
         }
 
+        internal Vector3? DoorHandle(int side)
+        {
+            Transform hinge = doors[DoorIndex(side)];
+            return hinge == null ? null : hinge.TransformPoint(new Vector3(side * 0.028f, 0.13f, -0.91f));
+        }
+
         internal void CloseIdleDoors()
         {
             for (int i = 0; i < doors.Length; i++)

@@ -8,6 +8,12 @@ namespace CostaLivre
     internal sealed class HarborCharacter
     {
         internal enum Motion { Idle, Walk, Run, Jump, Roll }
+        internal enum Gesture { None, Reach, PickUp, OpenDoor, Impact }
+        internal static float FallSeverity(float meters) => Mathf.InverseLerp(0.85f, 4.5f, meters);
+        internal static float GestureDuration(Gesture gesture) => gesture switch
+        {
+            Gesture.OpenDoor => 0.64f, Gesture.PickUp => 0.52f, Gesture.Impact => 0.36f, _ => 0.42f
+        };
 
         internal sealed class Art
         {
@@ -62,6 +68,20 @@ namespace CostaLivre
         private float blendDuration;
         private float gaitSpeed = 1;
         private float turnLean;
+        private float aimBlend;
+        private float pitchLean;
+        private float lateralLean;
+        private float crouchDrop;
+        private readonly float breathOffset;
+        private readonly RaycastHit[] footHits = new RaycastHit[8];
+        private readonly float[] footBlend = new float[2];
+        private readonly float[] footHeightCorrection = new float[2];
+        private readonly Vector3[] footNormal = { Vector3.up, Vector3.up };
+        private readonly System.Collections.Generic.List<(Transform Anchor, Quaternion Neutral, float Response)> attachments = new();
+        private float accessoryPitch;
+        private float accessoryRoll;
+        private float accessPitchVelocity;
+        private float accessRollVelocity;
         private float previousYaw;
         private bool hasHeading;
         private float Clock => phases[(int)activeMotion];
@@ -75,6 +95,7 @@ namespace CostaLivre
             Root = new GameObject(name).transform;
             Root.SetParent(parent, false);
             Root.position = position;
+            breathOffset = (Root.GetInstanceID() & 255) * 0.03f;
             mesh = UnityEngine.Object.Instantiate(art.Model, Root);
             mesh.name = "Walker rig";
             skin = mesh.GetComponentInChildren<SkinnedMeshRenderer>();
@@ -147,7 +168,12 @@ namespace CostaLivre
                 blend = snap ? 1 : 0;
             }
 
-            float dt = Time.unscaledDeltaTime;
+            float dt = Mathf.Min(Time.unscaledDeltaTime, 0.10f);
+            if (snap)
+            {
+                aimBlend = crouchDrop = lateralLean = pitchLean = 0;
+                footBlend[0] = footBlend[1] = 0;
+            }
             blend = Mathf.MoveTowards(blend, 1, dt / Mathf.Max(blendDuration, 0.01f));
             float eased = Mathf.SmoothStep(0, 1, blend);
             gaitSpeed = snap ? cycleSpeed : Mathf.MoveTowards(gaitSpeed, cycleSpeed, dt * 6f);
@@ -174,6 +200,17 @@ namespace CostaLivre
             graph.Evaluate(0);
             mesh.transform.localPosition = Vector3.zero;
             UpdateTurnLean(snap, dt);
+            if (activeMotion < Motion.Jump)
+            {
+                float time = Time.unscaledTime + breathOffset;
+                float breath = Mathf.Sin(time * 3.0f) * (activeMotion == Motion.Idle ? 0.7f : 0.37f);
+                Chest.rotation = Quaternion.AngleAxis(breath, Root.right) * Chest.rotation;
+                if (activeMotion == Motion.Idle)
+                {
+                    float glance = Mathf.Pow(Mathf.Max(0, Mathf.Sin(time * 0.47f)), 7) * Mathf.Sin(time * 1.1f);
+                    Head.rotation = Quaternion.AngleAxis(glance * 4f * (1 - aimBlend), Root.up) * Head.rotation;
+                }
+            }
         }
 
         private static bool IsGait(Motion motion) => motion is Motion.Walk or Motion.Run;
@@ -201,23 +238,140 @@ namespace CostaLivre
                 graph.Destroy();
         }
 
-        internal void HoldWeapon(bool aiming, float pitch, bool support)
+        internal void BodyMotion(Vector3 velocity, Vector3 acceleration, bool grounded, bool crouched,
+            float landing, float impact)
         {
-            float phase = Clock * 2 * Mathf.PI;
-            float sway = aiming ? 0.007f : activeMotion == Motion.Run ? 0.049f : 0.025f;
-            Vector3 pivot = new(0.25f + Mathf.Sin(phase) * sway * 0.35f,
-                (aiming ? 1.36f : 1.15f) + mesh.transform.localPosition.y + Mathf.Cos(phase * 2) * sway,
-                (aiming ? 0.34f : 0.28f) + Mathf.Sin(phase) * sway * 0.4f);
-            Vector3 lift = Quaternion.Euler(pitch * 0.65f, 0, 0) * Vector3.forward * 0.14f;
-            AlignArm(rightShoulder, rightElbow, rightHand, Root.TransformPoint(pivot + lift), Root.right);
-            if (aiming && support)
+            float dt = Mathf.Min(0.10f, Time.unscaledDeltaTime);
+            Vector3 localVelocity = Root.InverseTransformDirection(velocity);
+            Vector3 localAccel = Root.InverseTransformDirection(acceleration);
+            float damping = 1 - Mathf.Exp(-dt * 12f);
+            float twist = Mathf.Clamp(-localAccel.x * 0.28f, -9f, 9f);
+            float drive = Mathf.Clamp(localVelocity.z * 0.88f + localAccel.z * 0.13f, -5, 10);
+            lateralLean = Mathf.Lerp(lateralLean, grounded ? twist : twist * 0.42f, damping);
+            pitchLean = Mathf.Lerp(pitchLean, drive, damping);
+            crouchDrop = Mathf.MoveTowards(crouchDrop, crouched ? 0.38f : 0, dt * 2.8f);
+            mesh.transform.localPosition = Vector3.down * (crouchDrop + landing * 0.24f);
+            Chest.rotation = Root.rotation * Quaternion.Euler(pitchLean + landing * 19f - impact * 15f, 0, lateralLean) *
+                Quaternion.Inverse(Root.rotation) * Chest.rotation;
+
+            // Small secondary motion on rigid attachments, with a soft stop as the body settles.
+            accessoryPitch = Mathf.SmoothDamp(accessoryPitch, Mathf.Clamp(-localAccel.z * 0.27f + landing * 10f, -12, 13),
+                ref accessPitchVelocity, 0.115f, 150, dt);
+            accessoryRoll = Mathf.SmoothDamp(accessoryRoll, lateralLean * -0.82f,
+                ref accessRollVelocity, 0.14f, 130, dt);
+            foreach (var item in attachments)
+                item.Anchor.localRotation = item.Neutral * Quaternion.Euler(
+                    accessoryPitch * item.Response, 0, accessoryRoll * item.Response);
+        }
+
+        internal void RegisterAttachment(Transform anchor, float response) =>
+            attachments.Add((anchor, anchor.localRotation, response));
+
+        internal void PlantFeet(Collider ownCollider = null)
+        {
+            PlantFoot(0, leftThigh, leftCalf, leftFoot, ownCollider);
+            PlantFoot(1, rightThigh, rightCalf, rightFoot, ownCollider);
+        }
+
+        private void PlantFoot(int index, Transform thigh, Transform calf, Transform foot, Collider ownCollider)
+        {
+            const float sole = 0.077f;
+            Vector3 animated = foot.position;
+            float best = float.PositiveInfinity;
+            RaycastHit selected = default;
+            int count = Physics.RaycastNonAlloc(animated + Vector3.up * 0.37f, Vector3.down,
+                footHits, 0.72f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < count; i++)
             {
-                Vector3 supportPoint = Root.TransformPoint(new Vector3(pivot.x - 0.12f, pivot.y - 0.025f, pivot.z + 0.27f) + lift);
-                AlignArm(leftShoulder, leftElbow, leftHand, supportPoint, -Root.right);
+                RaycastHit hit = footHits[i];
+                if (hit.collider == ownCollider || hit.normal.y < 0.67f || hit.distance >= best)
+                    continue;
+                selected = hit;
+                best = hit.distance;
+            }
+            float influence = 0;
+            float alpha = 1 - Mathf.Exp(-Time.unscaledDeltaTime * 24f);
+            if (best < float.PositiveInfinity)
+            {
+                Vector3 target = selected.point + selected.normal * sole;
+                float gap = Vector3.Dot(animated - target, Vector3.up);
+                // Only planted or penetrating feet are corrected. Preserve the swing of the other foot.
+                influence = gap < 0 ? 1 : 1 - Mathf.InverseLerp(0.025f, 0.17f, gap);
+                float correction = Mathf.Clamp(target.y - animated.y, -0.18f, 0.27f);
+                footHeightCorrection[index] = footBlend[index] < 0.03f ? correction
+                    : Mathf.Lerp(footHeightCorrection[index], correction, alpha);
+                footNormal[index] = Vector3.Slerp(footNormal[index], selected.normal, alpha);
+            }
+            footBlend[index] = Mathf.Lerp(footBlend[index], influence, alpha);
+            if (footBlend[index] > 0.025f)
+            {
+                Vector3 target = animated + Vector3.up * (footHeightCorrection[index] * footBlend[index]);
+                AlignLimb(thigh, calf, foot, target, Root.forward);
+                foot.rotation = Quaternion.Slerp(Quaternion.identity,
+                    Quaternion.FromToRotation(Vector3.up, footNormal[index]), footBlend[index]) * foot.rotation;
             }
         }
 
-        internal void HoldKnife(bool sprinting, bool crouched, float swing)
+        internal void BraceLanding(float compression)
+        {
+            float weight = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(0.26f, 0.82f, compression));
+            if (weight <= 0.01f)
+                return;
+
+            Vector3 right = Root.TransformPoint(new Vector3(0.39f, 1.06f - compression * 0.24f, 0.44f));
+            Vector3 left = Root.TransformPoint(new Vector3(-0.39f, 1.06f - compression * 0.24f, 0.44f));
+            AlignArm(rightShoulder, rightElbow, rightHand, Vector3.Lerp(rightHand.position, right, weight), Root.right);
+            AlignArm(leftShoulder, leftElbow, leftHand, Vector3.Lerp(leftHand.position, left, weight), -Root.right);
+        }
+
+        internal void PlayGesture(Gesture gesture, float progress, Vector3 target = default)
+        {
+            if (gesture == Gesture.None || progress < 0 || progress > 1)
+                return;
+            float reach = Pulse(progress, 0, 1);
+            bool pickup = gesture == Gesture.PickUp;
+            float pitch = gesture == Gesture.Impact ? -16f : pickup ? 17f : 6f;
+            Chest.rotation = Quaternion.AngleAxis(pitch * reach, Root.right) * Chest.rotation;
+            if (gesture == Gesture.Impact)
+                return;
+
+            Vector3 original = rightHand.position;
+            Vector3 fallback = Root.TransformPoint(pickup ? new Vector3(0.22f, 0.76f, 0.42f)
+                : new Vector3(0.28f, 1.14f, 0.49f));
+            Vector3 handTarget = target == default ? fallback : target;
+            if (pickup && progress > 0.51f)
+                handTarget = Vector3.Lerp(handTarget, Root.TransformPoint(new Vector3(0.25f, 1.04f, 0.19f)),
+                    Ease((progress - 0.51f) / 0.33f));
+            AlignArm(rightShoulder, rightElbow, rightHand, Vector3.Lerp(original, handTarget, reach), Root.right);
+            if (pickup)
+                AlignArm(leftShoulder, leftElbow, leftHand,
+                    Vector3.Lerp(leftHand.position, Root.TransformPoint(new Vector3(-0.21f, 0.93f, 0.27f)), reach * 0.52f),
+                    -Root.right);
+        }
+
+        internal void HoldWeapon(bool aiming, float pitch, bool support)
+        {
+            float dt = Time.unscaledDeltaTime;
+            aimBlend = Mathf.MoveTowards(aimBlend, aiming ? 1 : 0, dt * (aiming ? 8.3f : 6.8f));
+            float weight = Ease(aimBlend);
+            float phase = Clock * 2 * Mathf.PI;
+            float sway = Mathf.Lerp(activeMotion == Motion.Run ? 0.049f : 0.025f, 0.007f, weight);
+            Vector3 pivot = new(0.25f + Mathf.Sin(phase) * sway * 0.35f,
+                Mathf.Lerp(1.15f, 1.36f, weight) + mesh.transform.localPosition.y + Mathf.Cos(phase * 2) * sway,
+                Mathf.Lerp(0.28f, 0.34f, weight) + Mathf.Sin(phase) * sway * 0.4f);
+            Quaternion angle = Quaternion.Euler(Mathf.Clamp(pitch, -45, 55), 0, 0);
+            Vector3 lift = (angle * Vector3.forward - Vector3.forward) * 0.17f * weight;
+            AlignArm(rightShoulder, rightElbow, rightHand, Root.TransformPoint(pivot + lift), Root.right);
+            if (support || weight > 0.025f)
+            {
+                Vector3 grip = support ? new Vector3(-0.074f, -0.07f, 0.29f) : new Vector3(-0.065f, -0.04f, 0.055f);
+                Vector3 supportPoint = rightHand.position + Root.rotation * (angle * grip);
+                AlignArm(leftShoulder, leftElbow, leftHand, Vector3.Lerp(leftHand.position, supportPoint,
+                    support ? Mathf.Lerp(0.66f, 1, weight) : weight), -Root.right);
+            }
+        }
+
+        internal void HoldKnife(bool sprinting, float swing)
         {
             float stride = sprinting ? Mathf.Sin(Clock * 2 * Mathf.PI) : 0;
             Vector3 right = new(0.31f, sprinting ? 1.03f : 1.17f, 0.19f + stride * 0.16f);
@@ -226,8 +380,7 @@ namespace CostaLivre
                 float extension = Mathf.Sin(Mathf.PI * swing);
                 right += new Vector3(Mathf.Lerp(0.15f, -0.45f, swing), 0.14f, 0.41f) * extension;
             }
-            if (crouched)
-                right.y -= 0.44f;
+            right.y -= crouchDrop;
             AlignArm(rightShoulder, rightElbow, rightHand, Root.TransformPoint(right), Root.right);
             if (sprinting)
             {
@@ -243,13 +396,13 @@ namespace CostaLivre
             var properties = new MaterialPropertyBlock();
             skin.GetPropertyBlock(properties);
             properties.SetTexture("_BaseMap", texture);
-            properties.SetFloat("_Smoothness", 0.19f);
+            // The clothing response texture already supplies per-pixel smoothness.
+            properties.SetFloat("_Smoothness", 1f);
             skin.SetPropertyBlock(properties);
         }
 
         internal void CrouchPose()
         {
-            mesh.transform.localPosition = Vector3.down * 0.38f;
             AlignLimb(rightThigh, rightCalf, rightFoot, Root.TransformPoint(new Vector3(0.16f, 0.085f, -0.02f)), Root.forward);
             AlignLimb(leftThigh, leftCalf, leftFoot, Root.TransformPoint(new Vector3(-0.16f, 0.085f, -0.02f)), Root.forward);
         }
@@ -263,7 +416,7 @@ namespace CostaLivre
             AlignLimb(leftThigh, leftCalf, leftFoot, Root.TransformPoint(new Vector3(-0.26f, 0.41f, 0.04f)), Root.forward);
         }
 
-        internal void VehiclePose(bool entering, float progress, float seated, int side, bool bike)
+        internal void VehiclePose(bool entering, float progress, float seated, int side, bool bike, Vector3? handle)
         {
             if (entering && progress < 0.29f)
             {
@@ -288,8 +441,18 @@ namespace CostaLivre
             Vector3 right = side > 0 ? hand : support;
             Vector3 left = side > 0 ? support : hand;
             left.x = -left.x;
-            AlignArm(rightShoulder, rightElbow, rightHand, Root.TransformPoint(right), Root.right);
-            AlignArm(leftShoulder, leftElbow, leftHand, Root.TransformPoint(left), -Root.right);
+            Vector3 rightTarget = Root.TransformPoint(right);
+            Vector3 leftTarget = Root.TransformPoint(left);
+            if (handle.HasValue)
+            {
+                float grip = reach * (1 - seated * 0.7f);
+                if (side > 0)
+                    rightTarget = Vector3.Lerp(rightTarget, handle.Value, grip);
+                else
+                    leftTarget = Vector3.Lerp(leftTarget, handle.Value, grip);
+            }
+            AlignArm(rightShoulder, rightElbow, rightHand, rightTarget, Root.right);
+            AlignArm(leftShoulder, leftElbow, leftHand, leftTarget, -Root.right);
 
             float rightStep = lift * (side > 0 ? 0.24f : 0.09f);
             float leftStep = lift * (side > 0 ? 0.09f : 0.24f);
@@ -314,9 +477,14 @@ namespace CostaLivre
             Vector3 shoulderToTarget = target - shoulder.position;
             float upper = Vector3.Distance(shoulder.position, elbow.position);
             float lower = Vector3.Distance(elbow.position, hand.position);
-            float distance = Mathf.Clamp(shoulderToTarget.magnitude, Mathf.Abs(upper - lower) + 0.01f, upper + lower - 0.01f);
+            if (upper < 0.015f || lower < 0.015f || shoulderToTarget.sqrMagnitude < 0.00001f)
+                return;
+            float distance = Mathf.Clamp(shoulderToTarget.magnitude, Mathf.Abs(upper - lower) + 0.005f, upper + lower - 0.005f);
             Vector3 axis = shoulderToTarget.normalized;
-            Vector3 flex = Vector3.ProjectOnPlane(bendDirection, axis).normalized;
+            Vector3 flex = Vector3.ProjectOnPlane(bendDirection, axis);
+            if (flex.sqrMagnitude < 0.0001f)
+                flex = Vector3.ProjectOnPlane(elbow.position - shoulder.position, axis);
+            flex.Normalize();
             float along = (upper * upper - lower * lower + distance * distance) / (2 * distance);
             float bend = Mathf.Sqrt(Mathf.Max(0, upper * upper - along * along));
             Vector3 elbowPosition = shoulder.position + axis * along + flex * bend;

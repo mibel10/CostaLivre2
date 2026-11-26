@@ -9,6 +9,8 @@ namespace CostaLivre
     {
         private sealed class Rendered
         {
+            internal Vector3 Velocity;
+            internal float AimPitch;
             internal HarborCharacter Body;
             internal CostaLook Look;
             internal GameObject Pack;
@@ -53,6 +55,7 @@ namespace CostaLivre
                 {
                     HarborCharacter body = art.Person("Remote player", root, avatar.pos, Color.white);
                     model = new Rendered { Body = body, Look = new CostaLook(art, body), Pack = art.Pack(body.Root, body.Chest) };
+                    body.RegisterAttachment(model.Pack.transform, 1f);
                     model.Mount = new GameObject("Remote weapon mount").transform;
                     model.Mount.SetParent(body.Root, false);
                     model.Flash = art.WeaponFlash(model.Mount);
@@ -72,6 +75,8 @@ namespace CostaLivre
                 {
                     model.VehicleMotion.Begin(avatar, cars);
                     model.Footfalls = default;
+                    model.Velocity = Vector3.zero;
+                    model.AimPitch = avatar.aimPitch;
                 }
                 model.State = avatar;
                 model.Look.Apply(avatar.outfit, avatar.police);
@@ -115,6 +120,12 @@ namespace CostaLivre
                         if (previous.rollPose < 0 && avatar.rollPose >= 0)
                             effects.Play(CostaEffects.Cue.Roll, 0.28f, model.Audio);
                     }
+                    Vector3 frameMovement = position - before;
+                    frameMovement.y = 0;
+                    float dt = Mathf.Max(0.001f, Time.unscaledDeltaTime);
+                    Vector3 oldVelocity = model.Velocity;
+                    Vector3 measured = continuous ? Vector3.ClampMagnitude(frameMovement / dt, 7.5f) : Vector3.zero;
+                    model.Velocity = Vector3.Lerp(oldVelocity, measured, 1 - Mathf.Exp(-dt * 10f));
                     if (!InView(position))
                         continue;
                     if (avatar.rollPose >= 0)
@@ -124,8 +135,15 @@ namespace CostaLivre
                     else
                         model.Body.Animate(avatar.moving ? (avatar.running ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Walk)
                             : HarborCharacter.Motion.Idle, HarborArsenal.GaitSpeed(avatar.equipped, avatar.running, avatar.aiming, avatar.crouched));
+                    bool grounded = avatar.jumpPose < 0 || avatar.jumpPose >= 0.78f;
+                    grounded = grounded && avatar.rollPose < 0;
+                    if (avatar.rollPose < 0)
+                        model.Body.BodyMotion(model.Velocity, (model.Velocity - oldVelocity) / dt,
+                            grounded, avatar.crouched, avatar.landingCompression, 0);
                     if (avatar.crouched)
                         model.Body.CrouchPose();
+                    if (grounded && (position - camera.transform.position).sqrMagnitude < 26 * 26)
+                        model.Body.PlantFeet();
                     DrawWeapon(model, avatar);
                 }
             }
@@ -190,19 +208,24 @@ namespace CostaLivre
             }
 
             bool knife = model.Weapon == HarborArsenal.Knife;
+            model.AimPitch = Mathf.Lerp(model.AimPitch, avatar.aimPitch, 1 - Mathf.Exp(-Time.unscaledDeltaTime * 17f));
             if (model.Weapon >= 0 && avatar.rollPose < 0)
             {
                 if (knife)
                 {
                     float swing = Time.unscaledTime < model.KnifeSwingUntil
                         ? 1 - (model.KnifeSwingUntil - Time.unscaledTime) / HarborArsenal.KnifeSwingTime : -1;
-                    model.Body.HoldKnife(avatar.running && avatar.jumpPose < 0, avatar.crouched, swing);
+                    model.Body.HoldKnife(avatar.running && avatar.jumpPose < 0, swing);
                 }
                 else
-                    model.Body.HoldWeapon(avatar.aiming, 0, HarborArsenal.IsHeavy(avatar.equipped));
+                    model.Body.HoldWeapon(avatar.aiming, model.AimPitch, HarborArsenal.IsHeavy(avatar.equipped));
             }
+            model.Body.BraceLanding(avatar.rollPose < 0 ? avatar.landingCompression : 0);
+            var gesture = (HarborCharacter.Gesture)avatar.gesture;
+            if (avatar.rollPose < 0 && (gesture == HarborCharacter.Gesture.Impact || !avatar.aiming && avatar.jumpPose < 0))
+                model.Body.PlayGesture(gesture, avatar.gestureProgress, avatar.gestureTarget);
             model.Mount.SetPositionAndRotation(model.Body.WeaponHand,
-                model.Body.Root.rotation * Quaternion.Euler(knife ? 20f : 0f, 0, 0));
+                model.Body.Root.rotation * Quaternion.Euler(knife ? 20f : model.AimPitch, 0, 0));
             model.Flash.gameObject.SetActive(Time.unscaledTime < model.FlashUntil);
         }
 

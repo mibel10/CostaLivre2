@@ -52,6 +52,7 @@ namespace CostaLivre
                 var collar = art.Part(vest, PrimitiveType.Cube, "Collar facing",
                     new(side * 0.055f, 0.164f, 0.007f), new(0.045f, 0.096f, 0.024f), fabric).transform;
                 collar.localRotation = Quaternion.Euler(0, side * 9, side * -25);
+                body.RegisterAttachment(collar, 0.2f);
                 var pocket = art.Part(vest, PrimitiveType.Cube, "Pocket welt",
                     new(side * 0.105f, -0.098f, 0.007f), new(0.078f, 0.016f, 0.018f), seam).transform;
                 pocket.localRotation = Quaternion.Euler(0, side * 11, side * 15);
@@ -86,6 +87,7 @@ namespace CostaLivre
             Transform pouch = Attach(body, body.Chest, "Sling bag", new Vector3(0.17f, 1.20f, 0.12f));
             art.Part(pouch, PrimitiveType.Capsule, "Sling case", new(0, -0.009f, 0.02f),
                 new(0.215f, 0.132f, 0.12f), new Color(0.35f, 0.25f, 0.16f));
+            body.RegisterAttachment(pouch, 0.8f);
             Transform strap = art.Part(pouch, PrimitiveType.Cube, "Sling strap", new(-0.142f, 0.12f, 0),
                 new(0.043f, 0.35f, 0.022f), tint).transform;
             strap.localRotation = Quaternion.Euler(0, 0, 44);

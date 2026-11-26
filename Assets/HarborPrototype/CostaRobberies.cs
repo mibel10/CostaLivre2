@@ -30,6 +30,7 @@ namespace CostaLivre
         };
 
         private const float Cooldown = 90f;
+        internal static Vector3 PickupTarget(int site) => Sites[site].Point + Vector3.up * 0.81f;
         private readonly GameObject[] cases = new GameObject[Sites.Length];
         private readonly float[] available = new float[Sites.Length];
         private float messageUntil;

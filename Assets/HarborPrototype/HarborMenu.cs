@@ -106,6 +106,7 @@ namespace CostaLivre
         internal int SelectedWeapon { get; private set; }
         internal int SelectionVersion { get; private set; }
         internal float Sensitivity { get; private set; } = PlayerPrefs.GetFloat("HarborSensitivity", 1f);
+        internal float CameraShake { get; private set; } = Mathf.Clamp01(PlayerPrefs.GetFloat("CostaCameraShake", 0.65f));
         internal float Volume { get; private set; } = PlayerPrefs.GetFloat("HarborVolume", 0.85f);
 
         internal HarborMenu(CostaBindings bindings, CostaPadBindings padBindings, Camera camera, Light sun, Volume volume)
@@ -445,8 +446,8 @@ namespace CostaLivre
             }
             else if (MenuButton(new Rect(x + 213, y + 204, 127, 26), L("Reset keys", "Restaurar"), false))
                 bindings.Reset();
-            Text(new Rect(x, y + 248, 380, 22), L("M Map   ·   I Backpack   ·   1 / 2 Weapons",
-                "M Mapa   ·   I Mochila   ·   1 / 2 Armas"), label, Grey);
+            Text(new Rect(x, y + 248, 380, 22), L("M Map   ·   I Backpack   ·   V Swap shoulder",
+                "M Mapa   ·   I Mochila   ·   V Trocar ombro"), label, Grey);
             float sensitivity = CostaUi.Slider(new Rect(x, y + 217, 188, 18), Sensitivity, 0.35f, 2.1f);
             Text(new Rect(x, y + 194, 206, 22), L($"Mouse   {sensitivity:0.00}", $"Sensibilidade   {sensitivity:0.00}"), label, Paper);
             if (!Mathf.Approximately(Sensitivity, sensitivity))
@@ -462,7 +463,7 @@ namespace CostaLivre
                 L("Interact / vehicle", "Interagir / veículo"), L("Reload", "Recarregar"), L("Fire", "Atirar"),
                 L("Aim", "Mirar"), L("Next weapon", "Próxima arma"), L("Previous weapon", "Arma anterior"),
                 L("Crouch", "Agachar"), L("Map", "Mapa"), L("Backpack", "Mochila"),
-                "Menu", L("Jobs", "Missões") };
+                "Menu", L("Jobs", "Missões"), L("Swap shoulder", "Trocar ombro") };
             bool old = GUI.enabled;
             GUI.enabled = old && !padBindings.Waiting;
             const int pageSize = 5;
@@ -617,6 +618,15 @@ namespace CostaLivre
                 Volume = volume;
                 AudioListener.volume = Volume;
                 PlayerPrefs.SetFloat("HarborVolume", volume);
+            }
+
+            Text(new Rect(x + 245, frame + 53, 170, 24),
+                L($"Camera shake {CameraShake:P0}", $"Tremor da câmera {CameraShake:P0}"), label, Paper);
+            float shake = GraphicsSlider(new Rect(x + 245, frame + 82, 147, 27), CameraShake, 0f, 1f);
+            if (!Mathf.Approximately(CameraShake, shake))
+            {
+                CameraShake = shake;
+                PlayerPrefs.SetFloat("CostaCameraShake", shake);
             }
         }
 

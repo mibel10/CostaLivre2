@@ -80,7 +80,7 @@ namespace CostaLivre
             float door = entering ? Ease((progress - 0.42f) / 0.19f) * (1f - Ease((progress - 0.85f) / 0.15f))
                 : Ease(progress / 0.22f) * (1f - Ease((progress - 0.65f) / 0.35f));
             vehicle.PoseDoor(side, door);
-            body.VehiclePose(entering, progress, slip, side, vehicle.IsBike);
+            body.VehiclePose(entering, progress, slip, side, vehicle.IsBike, vehicle.DoorHandle(side));
             return true;
         }
 

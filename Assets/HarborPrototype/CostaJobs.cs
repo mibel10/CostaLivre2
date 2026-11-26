@@ -128,7 +128,13 @@ namespace CostaLivre
         internal void SetOnlineDoors(bool online)
         {
             for (int i = 0; i < doors.Length; i++)
-                doors[i].SetActive(online || !Owned(i));
+                SetDoorObstacle(doors[i], online || !Owned(i));
+        }
+
+        private static void SetDoorObstacle(GameObject door, bool solid)
+        {
+            door.GetComponent<Collider>().enabled = solid;
+            door.GetComponent<UnityEngine.AI.NavMeshObstacle>().enabled = solid;
         }
 
         internal bool Completed(int job) => (completed & (1 << job)) != 0;
@@ -235,7 +241,7 @@ namespace CostaLivre
 
             Credits -= Prices[index];
             owned |= 1 << index;
-            doors[index].SetActive(false);
+            SetDoorObstacle(doors[index], false);
             Save();
             Message($"Vila {index + 1:00} purchased", $"Vila {index + 1:00} comprada");
             return true;

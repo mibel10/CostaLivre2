@@ -7,13 +7,13 @@ namespace CostaLivre
 {
     internal sealed class CostaTouch
     {
-        internal enum Control { Move, Sprint, Crouch, Jump, Roll, Use, Aim, Fire, Reload, Swap, Map, Bag, Menu, Retry }
-        private static readonly string[] English = { "Move", "Run", "Crouch", "Jump", "Roll", "Use", "Aim", "Fire", "Reload", "Swap", "Map", "Bag", "Menu", "Retry" };
-        private static readonly string[] PortugueseNames = { "Mover", "Correr", "Agachar", "Pular", "Rolar", "Usar", "Mirar", "Atirar", "Recarregar", "Trocar", "Mapa", "Mochila", "Menu", "Repetir" };
+        internal enum Control { Move, Sprint, Crouch, Jump, Roll, Use, Aim, Fire, Reload, Swap, Map, Bag, Menu, Retry, Shoulder }
+        private static readonly string[] English = { "Move", "Run", "Crouch", "Jump", "Roll", "Use", "Aim", "Fire", "Reload", "Swap", "Map", "Bag", "Menu", "Retry", "Shoulder" };
+        private static readonly string[] PortugueseNames = { "Mover", "Correr", "Agachar", "Pular", "Rolar", "Usar", "Mirar", "Atirar", "Recarregar", "Trocar", "Mapa", "Mochila", "Menu", "Repetir", "Ombro" };
         private static readonly Vector2[] Centers = {
             new(.13f,.76f), new(.24f,.57f), new(.66f,.88f), new(.89f,.77f), new(.77f,.80f),
             new(.91f,.56f), new(.80f,.61f), new(.92f,.39f), new(.72f,.70f), new(.58f,.87f),
-            new(.76f,.13f), new(.85f,.13f), new(.94f,.13f), new(.50f,.77f)
+            new(.76f,.13f), new(.85f,.13f), new(.94f,.13f), new(.50f,.77f), new(.65f,.13f)
         };
         private readonly float[] sizes = new float[Centers.Length];
         private readonly bool[] down = new bool[Centers.Length];
@@ -212,7 +212,7 @@ namespace CostaLivre
             else
             {
                 GUI.color = new Color(0.97f, 0.97f, 0.91f);
-                GUI.DrawTexture(area, icons.Icon(driving && i == (int)Control.Jump ? 14 : i));
+                GUI.DrawTexture(area, icons.Icon(driving && i == (int)Control.Jump ? 15 : i));
             }
             GUI.color = previous;
         }

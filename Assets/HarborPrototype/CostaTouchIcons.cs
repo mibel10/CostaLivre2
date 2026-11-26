@@ -4,7 +4,7 @@ namespace CostaLivre
 {
     internal sealed class CostaTouchIcons
     {
-        private readonly Texture2D[] icons = new Texture2D[15];
+        private readonly Texture2D[] icons = new Texture2D[16];
         private Texture2D round;
         private Texture2D rim;
         private const int Size = 64;
@@ -95,6 +95,10 @@ namespace CostaLivre
                     return Min(Segment(p, -4, -5, -4, 4), Segment(p, 4, -5, 4, 4),
                         Segment(p, -4, 4, 4, 4), Segment(p, -4, -5, 4, -5), Segment(p, -2, 6, 2, 6),
                         Segment(p, -2, -1, 2, -1));
+                case CostaTouch.Control.Shoulder:
+                    return Min(Ring(p, 0, 3, 1.5f), Segment(p, 0, 1.5f, 0, -5),
+                        Segment(p, -6, -1, 6, -1), Segment(p, -6, -1, -3, 2),
+                        Segment(p, 6, -1, 3, 2));
                 case CostaTouch.Control.Menu:
                     return Min(Segment(p, -5, 4, 5, 4), Segment(p, -5, 0, 5, 0), Segment(p, -5, -4, 5, -4));
                 default:

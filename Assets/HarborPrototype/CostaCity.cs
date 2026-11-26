@@ -83,6 +83,8 @@ namespace CostaLivre
 
         internal readonly List<Rect> Footprints = new();
         internal readonly GameObject[] HouseDoors = new GameObject[Estate.Length];
+        private readonly Transform[] houseHinges = new Transform[Estate.Length];
+        private readonly float[] houseDoorOpening = new float[Estate.Length];
 
         internal CostaCity(HarborBlockout art, Transform root)
         {
@@ -155,6 +157,11 @@ namespace CostaLivre
                 Venue(address, Estate[i], 16, 11, 4.3f, i == 1 ? Stone : new Color(0.74f, 0.66f, 0.54f), Glass);
                 HouseDoors[i] = art.Box("Property entrance", Estate[i] + new Vector3(0, 1.27f, -2.03f),
                     new Vector3(2.65f, 2.54f, 0.22f), Glass, true, bake: false);
+                Transform hinge = new GameObject("Property door hinge").transform;
+                hinge.SetParent(root, false);
+                hinge.position = HouseDoors[i].transform.position + Vector3.left * 1.325f;
+                HouseDoors[i].transform.SetParent(hinge, true);
+                houseHinges[i] = hinge;
                 var obstacle = HouseDoors[i].AddComponent<UnityEngine.AI.NavMeshObstacle>();
                 obstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
                 obstacle.size = Vector3.one;
@@ -335,6 +342,21 @@ namespace CostaLivre
                     new Vector3(3.1f, 0.095f, 1.02f), new Color(0.39f, 0.26f, 0.16f));
                 art.BatchDecoration("Plaza brass inlay", point + new Vector3(0, 0.063f, side * 5.8f),
                     new Vector3(22f, 0.014f, 0.10f), accent);
+            }
+        }
+
+        internal void UpdateHouseDoors(CostaJobs jobs, bool online, bool snap = false)
+        {
+            for (int i = 0; i < houseHinges.Length; i++)
+            {
+                float target = !online && jobs.Owned(i) ? 1 : 0;
+                float current = houseDoorOpening[i];
+                float next = snap ? target : Mathf.MoveTowards(current, target, Time.deltaTime * 1.85f);
+                if (!snap && next == current)
+                    continue;
+
+                houseDoorOpening[i] = next;
+                houseHinges[i].localRotation = Quaternion.Euler(0, -98f * Mathf.SmoothStep(0, 1, next), 0);
             }
         }
 

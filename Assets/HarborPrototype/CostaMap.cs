@@ -88,6 +88,9 @@ namespace CostaLivre
         private readonly IReadOnlyList<Rect> buildings;
         private Vector2 mapCenter = Overview;
         private float zoom = 1f;
+        private float miniHeading;
+        private bool headingReady;
+        private readonly Vector3[] route = new Vector3[9];
         private int selected = -1;
         private GUIStyle title;
         private GUIStyle small;
@@ -111,30 +114,62 @@ namespace CostaLivre
 
         internal void DrawMini(Rect rect, Vector3 player, float heading, Vector3? objective)
         {
+            if (Event.current.type != EventType.Repaint)
+                return;
             EnsureStyles();
+            float blend = 1 - Mathf.Exp(-Time.unscaledDeltaTime * 8f);
+            miniHeading = headingReady ? Mathf.LerpAngle(miniHeading, heading, blend) : heading;
+            headingReady = true;
             Fill(new Rect(rect.x - 1, rect.y - 19, rect.width + 2, rect.height + 20), Frame);
             Label(new Rect(rect.x + 5, rect.y - 18, rect.width - 10, 17), CostaCity.RegionName(player), markerText, Text);
             GUI.BeginGroup(rect);
-            var size = rect.size;
-            var projection = new Projection(new Vector2(player.x, player.z), size, Mathf.Min(size.x, size.y) / 74f);
-            DrawBase(size, projection);
+            Vector2 size = rect.size;
+            Vector2 center = size * .5f;
+            var projection = new Projection(new Vector2(player.x, player.z), size, Mathf.Min(size.x, size.y) / 82f);
+            Matrix4x4 before = GUI.matrix;
+            GUIUtility.RotateAroundPivot(-miniHeading, center);
+            DrawBase(size, projection, expanded: true);
+            Vector3? goal = Waypoint ?? objective;
+            if (goal is Vector3 location)
+                DrawRoute(player, location, projection, Waypoint.HasValue ? Route : Accent);
+            GUI.matrix = before;
+
             for (int i = 0; i < Points.Length; i++)
             {
                 Pin pin = Points[i];
-                Vector2 point = projection.Point(pin.Position);
+                Vector2 point = Rotated(projection.Point(pin.Position), center, -miniHeading);
                 if (Inside(point, size, 7))
+                {
                     PinDot(point, ColorFor(pin.Type), pin.Type == Kind.Shop ? 7 : 5);
+                    DrawAltitude(point, pin.Position.y - player.y, ColorFor(pin.Type));
+                }
             }
-            Vector3? goal = Waypoint ?? objective;
-            if (goal is Vector3 location)
+            if (goal is Vector3 target)
             {
-                Vector2 destination = projection.Point(location);
-                Vector2 edge = Constrain(destination, size, 9);
-                DrawGuide(size * 0.5f, edge, Waypoint.HasValue ? Route : Accent);
-                PinDot(edge, Waypoint.HasValue ? Route : Accent, 8);
+                Vector2 destination = Constrain(Rotated(projection.Point(target), center, -miniHeading), size, 9);
+                Color color = Waypoint.HasValue ? Route : Accent;
+                PinDot(destination, color, 8);
+                DrawAltitude(destination, target.y - player.y, color);
             }
-            PlayerArrow(size * 0.5f, heading);
+            Vector2 north = Constrain(Rotated(center + Vector2.up * -size.y, center, -miniHeading), size, 9);
+            Label(new Rect(north.x - 5, north.y - 8, 14, 16), "N", markerText, Text);
+            PlayerArrow(center, 0);
             GUI.EndGroup();
+        }
+
+        private static Vector2 Rotated(Vector2 p, Vector2 center, float degrees)
+        {
+            float angle = degrees * Mathf.Deg2Rad;
+            float s = Mathf.Sin(angle), c = Mathf.Cos(angle);
+            Vector2 d = p - center;
+            return center + new Vector2(d.x * c - d.y * s, d.x * s + d.y * c);
+        }
+
+        private void DrawAltitude(Vector2 p, float relative, Color color)
+        {
+            if (Mathf.Abs(relative) < 1.35f)
+                return;
+            Label(new Rect(p.x + 4, p.y - 11, 15, 15), relative > 0 ? "↑" : "↓", markerText, color);
         }
 
         internal void DrawFull(Vector3 player, float heading, Vector3? objective, System.Action close)
@@ -190,7 +225,7 @@ namespace CostaLivre
                 PinDot(projection.Point(tracked), Accent, 9);
             if (Waypoint is Vector3 pinned)
             {
-                DrawGuide(projection.Point(player), projection.Point(pinned), Route);
+                DrawRoute(player, pinned, projection, Route);
                 PinDot(projection.Point(pinned), Route, 11);
             }
             for (int i = 0; i < Points.Length; i++)
@@ -246,11 +281,11 @@ namespace CostaLivre
                 && position.x <= (position.z >= 22 ? 78 : 25));
         }
 
-        private void DrawBase(Vector2 size, Projection p)
+        private void DrawBase(Vector2 size, Projection p, bool expanded = false)
         {
             if (Event.current.type != EventType.Repaint)
                 return;
-            var viewport = new Rect(Vector2.zero, size);
+            var viewport = expanded ? new Rect(-size.x, -size.y, size.x * 3, size.y * 3) : new Rect(Vector2.zero, size);
             Fill(viewport, Water);
             Fill(p.Area(new Rect(-152, 22, 230, 146)), Land);
             Fill(p.Area(new Rect(-152, -64, 177, 86)), Land);
@@ -301,15 +336,80 @@ namespace CostaLivre
             }
         }
 
-        private static void DrawGuide(Vector2 start, Vector2 end, Color color)
+        private void DrawRoute(Vector3 from, Vector3 to, Projection projection, Color color)
         {
-            float distance = Vector2.Distance(start, end);
-            int dots = Mathf.Clamp(Mathf.FloorToInt(distance / 7), 1, 90);
-            for (int i = 1; i < dots; i++)
+            if (Event.current.type != EventType.Repaint)
+                return;
+            int count = 0;
+            route[count++] = from;
+            bool regionalFrom = from.z >= CostaCity.HighwayStart;
+            bool regionalTo = to.z >= CostaCity.HighwayStart;
+            Vector3 a = regionalFrom ? new Vector3(CostaCity.HighwayX, 0, from.z) : SnapStreet(from);
+            Vector3 b = regionalTo ? new Vector3(CostaCity.HighwayX, 0, to.z) : SnapStreet(to);
+            route[count++] = a;
+            if (regionalFrom && regionalTo)
+                route[count++] = b;
+            else
             {
-                Vector2 point = Vector2.Lerp(start, end, i / (float)dots);
-                Fill(new Rect(point.x - 1, point.y - 1, 2, 2), color);
+                Vector3 junction = new(CostaCity.HighwayX, 0, 123);
+                if (regionalFrom)
+                {
+                    route[count++] = junction;
+                    a = junction;
+                }
+                if (regionalTo)
+                    b = junction;
+                float x = Nearest(a.x, CostaCity.Avenues);
+                float z = Nearest(b.z, CostaCity.CrossStreets);
+                bool aVertical = Mathf.Abs(a.x - x) < .05f;
+                bool bHorizontal = Mathf.Abs(b.z - z) < .05f;
+                if (!aVertical)
+                    route[count++] = new Vector3(x, 0, a.z);
+                route[count++] = new Vector3(x, 0, z);
+                if (!bHorizontal)
+                    route[count++] = new Vector3(b.x, 0, z);
+                route[count++] = b;
+                if (regionalTo)
+                    route[count++] = new Vector3(CostaCity.HighwayX, 0, to.z);
             }
+            route[count++] = to;
+            for (int i = 1; i < count; i++)
+            {
+                Vector2 start = projection.Point(route[i - 1]);
+                Vector2 end = projection.Point(route[i]);
+                RoadLine(start, end, 5, new Color(.05f,.12f,.15f,.9f));
+                RoadLine(start, end, 2.6f, color);
+            }
+        }
+
+        private static Vector3 SnapStreet(Vector3 position)
+        {
+            float x = Nearest(position.x, CostaCity.Avenues);
+            float z = Nearest(position.z, CostaCity.CrossStreets);
+            if (position.z < 23)
+                return new Vector3(x, 0, z);
+            return Mathf.Abs(position.x - x) < Mathf.Abs(position.z - z)
+                ? new Vector3(x, 0, position.z) : new Vector3(position.x, 0, z);
+        }
+
+        private static float Nearest(float value, float[] choices)
+        {
+            float best = choices[0];
+            foreach (float candidate in choices)
+                if (Mathf.Abs(candidate - value) < Mathf.Abs(best - value))
+                    best = candidate;
+            return best;
+        }
+
+        private static void RoadLine(Vector2 from, Vector2 to, float width, Color color)
+        {
+            Vector2 delta = to - from;
+            if (delta.sqrMagnitude < 1)
+                return;
+            Matrix4x4 matrix = GUI.matrix;
+            GUIUtility.RotateAroundPivot(Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg, from);
+            Fill(new Rect(from.x, from.y - width * .5f, delta.magnitude + .35f, width), color);
+            GUI.matrix = matrix;
         }
 
         private void DrawLegend(float x, float y, Color color, string text)

@@ -29,17 +29,10 @@ namespace CostaLivre
         };
 
         private readonly Camera camera;
-        private readonly Light sun;
+        private readonly HarborDaylight daylight;
         private readonly Volume volume;
         private readonly VolumeProfile originalVolume;
-        private readonly Quaternion originalSunRotation;
-        private readonly Color originalSunColor;
-        private readonly float originalSunIntensity;
-        private readonly Color originalFog = RenderSettings.fogColor;
-        private readonly float originalFogDensity = RenderSettings.fogDensity;
-        private readonly Color originalSky = RenderSettings.ambientSkyColor;
-        private readonly Color originalHorizon = RenderSettings.ambientEquatorColor;
-        private readonly Color originalGround = RenderSettings.ambientGroundColor;
+        private float? worldHour;
         private RenderPipelineAsset originalPipeline;
         private UniversalRenderPipelineAsset pipeline;
         private double? saveAt;
@@ -57,15 +50,9 @@ namespace CostaLivre
         internal HarborGraphics(Camera camera, Light sun, Volume volume)
         {
             this.camera = camera;
-            this.sun = sun;
+            daylight = new HarborDaylight(sun);
             this.volume = volume;
             originalVolume = volume != null ? volume.sharedProfile : null;
-            if (sun != null)
-            {
-                originalSunRotation = sun.transform.rotation;
-                originalSunColor = sun.color;
-                originalSunIntensity = sun.intensity;
-            }
             int oldDefault = PlayerPrefs.GetInt("CostaQuality", Application.isMobilePlatform ? 0 : 1) == 0 ? 1 : 3;
             int maxPreset = Mathf.Min(MaxPreset, QualitySettings.names.Length - 1);
             Preset = Mathf.Clamp(PlayerPrefs.GetInt(PresetKey, oldDefault), 0, maxPreset);
@@ -159,10 +146,20 @@ namespace CostaLivre
             saveAt = null;
         }
 
+        internal void SetWorldHour(float? hour)
+        {
+            if (worldHour == hour || (worldHour.HasValue && hour.HasValue && Mathf.Abs(worldHour.Value - hour.Value) < 0.0025f))
+                return;
+            worldHour = hour;
+            daylight.Apply(hour, Preset == MaxPreset);
+        }
+
         internal void Release()
         {
             Flush();
-            ApplyLighting(false);
+            if (volume != null)
+                volume.sharedProfile = originalVolume;
+            daylight.Release();
             RestorePipeline();
         }
 
@@ -197,26 +194,11 @@ namespace CostaLivre
             ApplyShadows();
             ApplyTextures();
             ApplyUpscaling();
-            ApplyLighting(Preset == MaxPreset);
-            camera.farClipPlane = Distance;
-        }
-
-        private void ApplyLighting(bool ultra)
-        {
+            bool ultra = Preset == MaxPreset;
             if (volume != null)
                 volume.sharedProfile = ultra && pipeline?.volumeProfile != null ? pipeline.volumeProfile : originalVolume;
-            if (sun != null)
-            {
-                sun.transform.rotation = ultra ? Quaternion.Euler(34f, -46f, 0) : originalSunRotation;
-                sun.color = ultra ? new Color(1f, 0.94f, 0.83f) : originalSunColor;
-                sun.intensity = ultra ? 1.62f : originalSunIntensity;
-            }
-
-            RenderSettings.fogColor = ultra ? new Color(0.61f, 0.70f, 0.74f) : originalFog;
-            RenderSettings.fogDensity = ultra ? 0.0048f : originalFogDensity;
-            RenderSettings.ambientSkyColor = ultra ? new Color(0.52f, 0.59f, 0.66f) : originalSky;
-            RenderSettings.ambientEquatorColor = ultra ? new Color(0.18f, 0.22f, 0.25f) : originalHorizon;
-            RenderSettings.ambientGroundColor = ultra ? new Color(0.091f, 0.078f, 0.064f) : originalGround;
+            daylight.Apply(worldHour, ultra);
+            camera.farClipPlane = Distance;
         }
 
         private void ApplyShadows()

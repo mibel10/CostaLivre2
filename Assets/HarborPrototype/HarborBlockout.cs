@@ -30,6 +30,7 @@ namespace CostaLivre
         private Renderer bay;
         private Material bayBase;
         private Material water;
+        private float waterDaylight = 1;
         private Material detailTemplate;
         private bool ultra;
         private bool detailedSurfaces;
@@ -489,6 +490,17 @@ namespace CostaLivre
             detailedSurfaces = detail;
             foreach (var entry in surfaces)
                 ApplySurfaceDetail(entry.Key.Item1, entry.Value);
+        }
+
+        internal void SetWaterDaylight(float hour)
+        {
+            if (water == null || !ultra)
+                return;
+            float light = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(-0.25f, 0.40f, HarborDaylight.SolarHeight(hour)));
+            if (Mathf.Abs(waterDaylight - light) < 0.005f)
+                return;
+            waterDaylight = light;
+            water.SetFloat("_Daylight", light);
         }
 
         private void ApplyWater()

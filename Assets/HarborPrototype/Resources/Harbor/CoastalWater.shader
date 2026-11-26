@@ -4,6 +4,7 @@ Shader "CostaLivre/CoastalWater"
     {
         _Deep ("Deep water", Color) = (0.038, 0.15, 0.18, 1)
         _Sky ("Sky reflection", Color) = (0.25, 0.43, 0.48, 1)
+        _Daylight ("Daylight", Range(0, 1)) = 1
     }
 
     SubShader
@@ -24,6 +25,7 @@ Shader "CostaLivre/CoastalWater"
             CBUFFER_START(UnityPerMaterial)
                 half4 _Deep;
                 half4 _Sky;
+                half _Daylight;
             CBUFFER_END
 
             struct Attributes
@@ -67,6 +69,7 @@ Shader "CostaLivre/CoastalWater"
                 half sparkle = 0.28h * pow(alignment, 36.0h) + 0.42h * pow(alignment, 120.0h);
                 half tint = 0.9h + 0.11h * sin(dot(point, float2(0.44, -0.23)) + time * 0.35);
                 half3 color = lerp(_Deep.rgb * tint, _Sky.rgb, fresnel) + sun.color * sparkle;
+                color *= lerp(half3(0.15h, 0.23h, 0.39h), half3(1, 1, 1), _Daylight);
                 return half4(MixFog(color, input.fog), 1.0h);
             }
             ENDHLSL

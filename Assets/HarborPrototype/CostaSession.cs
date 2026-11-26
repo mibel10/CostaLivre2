@@ -85,6 +85,8 @@ namespace CostaLivre
             public int weapons;
             public int notice;
             public int noticeVersion;
+            public bool hasWorldHour;
+            public float worldHour;
             public string name;
             public string challenge;
             public string publicKey;
@@ -104,6 +106,8 @@ namespace CostaLivre
         {
             public string type = "state";
             public int protocol = Protocol;
+            public bool hasWorldHour = true;
+            public float worldHour;
             public Avatar[] players;
             public Vehicle[] vehicles;
             public bool[] sites;
@@ -181,6 +185,10 @@ namespace CostaLivre
         private float nextSnapshot;
         private float nextWatchdog;
         private float lastClock;
+        private double worldStart;
+        private double worldHourReceivedAt;
+        private float receivedWorldHour;
+        private bool hasWorldHour;
         private int seenNotice;
         private bool requestedHost;
         private float noticeUntil;
@@ -199,6 +207,16 @@ namespace CostaLivre
         internal bool Online => Local != null && connection != null && !connection.Closed;
         internal bool Connecting => connecting != null || (connection != null && Local == null);
         internal bool Hosting => listener != null;
+        internal float WorldHour
+        {
+            get
+            {
+                double now = Time.realtimeSinceStartupAsDouble;
+                return !Hosting && hasWorldHour
+                    ? HarborDaylight.Advance(receivedWorldHour, now - worldHourReceivedAt)
+                    : HarborDaylight.Advance(HarborDaylight.StartHour, now - worldStart);
+            }
+        }
         internal string Status => status;
         internal string Notice { get; private set; } = "";
         internal int NoticeEvent { get; private set; }
@@ -247,6 +265,7 @@ namespace CostaLivre
 
             playerName = SafeName(name);
             requestedHost = host;
+            worldStart = Time.realtimeSinceStartupAsDouble;
             try
             {
                 if (host)
@@ -349,6 +368,12 @@ namespace CostaLivre
                 if (Local == null)
                     continue;
 
+                if (frame.hasWorldHour && frame.worldHour >= 0f && frame.worldHour < 24f)
+                {
+                    hasWorldHour = true;
+                    receivedWorldHour = frame.worldHour;
+                    worldHourReceivedAt = Time.realtimeSinceStartupAsDouble;
+                }
                 Cash = frame.credits;
                 WeaponMask = frame.weapons;
                 Loaded = frame.loaded;
@@ -529,6 +554,7 @@ namespace CostaLivre
                 world.players = new Avatar[active.Count];
             active.CopyTo(world.players);
             world.vehicles = hostCars;
+            world.worldHour = WorldHour;
             for (int i = 0; i < world.sites.Length; i++)
                 world.sites[i] = now >= restock[i];
             string shared = JsonUtility.ToJson(world);
@@ -1301,6 +1327,7 @@ namespace CostaLivre
             identity = 0;
             nextPose = 0;
             nextSnapshot = 0;
+            hasWorldHour = false;
             seenNotice = 0;
             noticeUntil = 0;
             status = "";

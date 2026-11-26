@@ -110,6 +110,7 @@ namespace CostaLivre
         private HarborCharacter menuBody;
         private Transform menuStage;
         private bool worldReady;
+        private double soloDaySeconds;
         private bool worldLoading;
         private bool worldLoadFailed;
         private HarborLoadingScreen loadingScreen;
@@ -409,7 +410,10 @@ namespace CostaLivre
             Time.timeScale = session?.Online == true ? 1 : 0;
             SetCursor(false);
             if (!pause)
+            {
+                menu.SetWorldHour(null);
                 UpdateMenuPreview();
+            }
         }
 
         private void ReturnToMainMenu()
@@ -441,6 +445,7 @@ namespace CostaLivre
             menuStage.gameObject.SetActive(false);
             Time.timeScale = 1;
             PositionCamera(false, true);
+            ApplyWorldHour();
             SetCursor(true);
         }
 
@@ -716,6 +721,15 @@ namespace CostaLivre
         private bool Held(InputAction action, TouchControl control) => action.IsPressed() || touch.Down(control);
         private Vector2 MovementInput() => touch.Down(TouchControl.Move) ? touch.Move : move.ReadValue<Vector2>();
 
+        private void ApplyWorldHour()
+        {
+            float? hour = null;
+            if (!inMenu || pauseMenu)
+                hour = session.Online ? session.WorldHour : HarborDaylight.Advance(HarborDaylight.StartHour, soloDaySeconds);
+            menu.SetWorldHour(hour);
+            harbor.SetWaterDaylight(hour ?? HarborDaylight.StartHour);
+        }
+
         private void Update()
         {
             menu.SaveGraphicsIfDue();
@@ -726,7 +740,12 @@ namespace CostaLivre
                 return;
 
             if (worldReady)
+            {
                 TickNetwork();
+                if (!session.Online && !inMenu && overlay == FieldOverlay.None)
+                    soloDaySeconds += Time.deltaTime;
+                ApplyWorldHour();
+            }
             touch.Update(!inMenu && overlay == FieldOverlay.None && !pausedForFocus,
                 car != null, worldReady && !session.Online && (state == RunState.Caught || state == RunState.Delivered));
             if (inMenu || overlay != FieldOverlay.None)

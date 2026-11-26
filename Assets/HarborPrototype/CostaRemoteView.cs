@@ -67,7 +67,7 @@ namespace CostaLivre
                     model.VehicleMotion.Begin(avatar, cars);
                 model.State = avatar;
                 model.Look.Apply(avatar.outfit, avatar.police);
-                model.Pack.SetActive(avatar.wanted && !avatar.police);
+                model.Pack.SetActive(avatar.carryingLoot && !avatar.police);
                 bool transitioning = model.VehicleMotion.Sample(model.Body);
                 model.Mount.gameObject.SetActive(!transitioning && avatar.vehicle < 0);
                 if (transitioning)
@@ -208,7 +208,7 @@ namespace CostaLivre
             foreach (Rendered model in models.Values)
             {
                 CostaSession.Avatar other = model.State;
-                if (other.police || other.vehicle >= 0 || other.held > 0 || other.arrestProtected)
+                if (other.police || other.vehicle >= 0 || other.doorTime > 0 || other.held > 0 || other.arrestProtected)
                     continue;
                 float separation = Vector3.Distance(other.pos, position);
                 if (separation >= range

@@ -142,6 +142,12 @@ namespace CostaLivre
         private bool pursuit;
         private float blockedExitUntil;
         private bool independentAlert;
+        private int wantedLevel;
+        private float heatUntil;
+        private float nextCrime;
+        private float arrestProgress;
+        private Guard arrestingGuard;
+        private const float SoloArrestTime = 1.25f;
 
         private void Awake()
         {
@@ -753,7 +759,7 @@ namespace CostaLivre
                 if (session.Online)
                     session.Fire(arsenal.Slot, arsenal.ShotDirection);
                 else if (!contractCombat)
-                    StartPursuit(0.25f);
+                    StartPursuit(0.25f, combat: true);
             }
 
             bool originalInteraction = harborJob && state == RunState.FindCargo
@@ -936,6 +942,9 @@ namespace CostaLivre
         private void StopPursuit()
         {
             independentAlert = false;
+            wantedLevel = 0;
+            arrestProgress = 0;
+            arrestingGuard = null;
             pursuit = false;
             foreach (Guard guard in guards)
                 if (guard != null && guard.Active)
@@ -1301,11 +1310,19 @@ namespace CostaLivre
             }
         }
 
-        private void StartPursuit(float delay, bool lootOnly = false)
+        private void StartPursuit(float delay, bool lootOnly = false, bool combat = false)
         {
-            if (!session.Online && !lootOnly)
+            if (session.Online || state == RunState.Delivered || state == RunState.Caught)
+                return;
+            if (!lootOnly)
                 independentAlert = true;
-            if (session.Online || pursuit || state == RunState.Delivered || state == RunState.Caught)
+            heatUntil = Time.time + CostaSession.HeatDecayTime;
+            if (!combat || Time.time >= nextCrime)
+            {
+                wantedLevel = Mathf.Min(CostaSession.MaxWanted, wantedLevel + 1);
+                nextCrime = Time.time + 6f;
+            }
+            if (pursuit)
                 return;
 
             pursuit = true;
@@ -1323,6 +1340,9 @@ namespace CostaLivre
                     target = point.position;
             }
 
+            Guard nearby = null;
+            bool spotted = false;
+            Vector3 position = player.transform.position;
             foreach (Guard guard in guards)
             {
                 if (guard == null || !guard.Active)
@@ -1334,14 +1354,39 @@ namespace CostaLivre
                     guard.Agent.SetDestination(target);
                 }
 
-                Vector3 position = guard.Agent.transform.position;
-                if ((car == null || car.Speed < 1.45f) && IsNear(position, 1.02f) && !Physics.Linecast(position + Vector3.up * 0.85f,
-                    player.transform.position + Vector3.up * 0.85f, Physics.DefaultRaycastLayers,
-                    QueryTriggerInteraction.Ignore))
+                Vector3 feet = guard.Agent.transform.position;
+                float range = (feet - position).sqrMagnitude;
+                if (range > 28f * 28f || Physics.Linecast(feet + Vector3.up * 0.85f, position + Vector3.up * 0.85f,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    continue;
+
+                spotted = true;
+                if (range <= 1.75f * 1.75f && (car == null || car.Speed < 1.45f) && rollClock <= 0
+                    && (nearby == null || guard == arrestingGuard))
+                    nearby = guard;
+            }
+
+            if (nearby != arrestingGuard)
+                arrestProgress = 0;
+            arrestingGuard = nearby;
+            if (nearby != null)
+            {
+                arrestProgress += Time.deltaTime / SoloArrestTime;
+                if (arrestProgress >= 1)
                 {
                     EndRun(RunState.Caught);
                     return;
                 }
+            }
+
+            if (spotted)
+                heatUntil = Time.time + CostaSession.HeatDecayTime;
+            else if (Time.time >= heatUntil && wantedLevel > (jobs.Bag.Count > 0 ? 1 : 0))
+            {
+                wantedLevel--;
+                heatUntil = Time.time + CostaSession.HeatDecayTime;
+                if (wantedLevel == 0)
+                    StopPursuit();
             }
         }
 
@@ -1349,6 +1394,10 @@ namespace CostaLivre
         {
             independentAlert = false;
             vehicleMotion.Clear();
+            wantedLevel = 0;
+            nextCrime = 0;
+            arrestProgress = 0;
+            arrestingGuard = null;
             state = RunState.FindCargo;
             pursuit = false;
             if (resetJob)
@@ -1514,7 +1563,8 @@ namespace CostaLivre
             string notice = session.Online ? session.CurrentNotice
                 : robberies.Notice.Length > 0 ? robberies.Notice : jobs.Notice;
             hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? -1 : jobs.Remaining,
-                session.Online ? session.Local.wanted : pursuit, notice, prompt, stamina / FullStamina,
+                session.Online ? session.Local.wantedLevel : wantedLevel, notice, prompt, stamina / FullStamina,
+                session.Online ? session.Local.arrestProgress : arrestProgress,
                 car != null ? car.Speed : -1, session.Online ? session.Local.health : encounter.Active ? encounter.Health : -1,
                 IsPolice ? session.Local.armor : -1, arsenal, CostaTouch.Available, gamepad);
         }

@@ -23,7 +23,7 @@ namespace CostaLivre
         }
 
         internal void DrawRun(Vector3 player, float heading, Vector3? destination, Vector3 viewport, float side,
-            string objective, float timer, bool pursuit, string notice, string prompt, float stamina, float speed,
+            string objective, float timer, int wantedLevel, string notice, string prompt, float stamina, float arrest, float speed,
             int health, int armor, HarborArsenal arsenal, bool touch, bool gamepad)
         {
             Matrix4x4 old = GUI.matrix;
@@ -33,9 +33,10 @@ namespace CostaLivre
 
             float statusX = touch ? 166 : width - 277;
             float statusY = 18;
-            if (pursuit)
+            if (wantedLevel > 0)
             {
-                Chip(statusX, statusY, L("Police alerted", "Polícia alertada"), Danger, 239);
+                string stars = new string('★', wantedLevel) + new string('☆', CostaSession.MaxWanted - wantedLevel);
+                Chip(statusX, statusY, stars + "   " + L("WANTED", "PROCURADO"), Danger, 239);
                 statusY += 29;
             }
             if (objective.Length > 0 || timer >= 0)
@@ -77,6 +78,14 @@ namespace CostaLivre
                 CenterChip(width, touch ? 85 : 20, notice, HarborBlockout.Mint, 410);
             if (prompt.Length > 0)
                 CenterChip(width, touch ? height * 0.60f : height - 38, prompt, Paper, width - 36);
+
+            if (arrest > 0)
+            {
+                float y = height * 0.67f;
+                CenterChip(width, y, L("Arrest in progress", "Prisão em andamento"), Danger, 258);
+                Box(new Rect(width / 2 - 62, y + 25, 124, 3), Edge);
+                Box(new Rect(width / 2 - 62, y + 25, 124 * Mathf.Clamp01(arrest), 3), Danger);
+            }
 
             if (destination is Vector3 target)
             {

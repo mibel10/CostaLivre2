@@ -16,6 +16,9 @@ namespace CostaLivre
         private const int Protocol = 7;
         private const float Interval = 0.083f;
         internal const int PoliceArmor = 50;
+        internal const int MaxWanted = 6;
+        internal const float HeatDecayTime = 27f;
+        private const float ArrestTime = 1.25f;
         private const int PoliceKit = (1 << 0) | (1 << 3);
         internal static readonly Vector3 CriminalSpawn = CostaCity.CitySpawn + Vector3.left * 2.8f;
         internal static readonly Vector3 PoliceSpawn = CostaCity.Station + new Vector3(0, 0, -4.1f);
@@ -42,7 +45,9 @@ namespace CostaLivre
             public int shotWeapon = -1;
             public int health = 100;
             public int armor;
-            public bool wanted;
+            public int wantedLevel;
+            public bool carryingLoot;
+            public float arrestProgress;
             public int outfit;
             public int vehicle = -1;
             public int doorCar = -1;
@@ -140,6 +145,10 @@ namespace CostaLivre
             internal float TravelSlack = 0.55f;
             internal float HeldUntil;
             internal float DoorUntil;
+            internal float HeatUntil;
+            internal float NextCrime;
+            internal int ArrestTarget;
+            internal float ArrestStarted;
             internal float ArrestAfter;
             internal float NextShot;
             internal float RespawnProtection;
@@ -433,6 +442,9 @@ namespace CostaLivre
                             peer.HeldUntil = saved.HeldUntil;
                             peer.ArrestAfter = saved.ArrestAfter;
                             peer.NextShot = saved.NextShot;
+                            peer.HeatUntil = saved.HeatUntil;
+                            peer.NextCrime = saved.NextCrime;
+                            peer.Pose.arrestProgress = 0;
                             peer.RespawnProtection = saved.RespawnProtection;
                             Array.Copy(saved.UsedRounds, peer.UsedRounds, peer.UsedRounds.Length);
                             Array.Copy(saved.ReloadEnds, peer.ReloadEnds, peer.ReloadEnds.Length);
@@ -474,6 +486,10 @@ namespace CostaLivre
                 vehicle.speed = safeTravel < travel ? 0 : Mathf.MoveTowards(vehicle.speed, 0, 4.5f * delta);
             }
 
+            foreach (Peer peer in peers)
+                if (peer.Ready && peer.ArrestTarget != 0)
+                    AdvanceArrest(peer, now);
+
             if (now < nextSnapshot)
                 return;
             nextSnapshot = now + Interval;
@@ -485,6 +501,8 @@ namespace CostaLivre
                 peer.Pose.doorTime = Mathf.Max(0, peer.DoorUntil - now);
                 if (peer.Pose.doorTime == 0)
                     peer.Pose.doorCar = -1;
+                DecayHeat(peer, now);
+                peer.Pose.carryingLoot = peer.Bag.Count > 0;
                 peer.Pose.held = Mathf.CeilToInt(Mathf.Max(0, peer.HeldUntil - now));
                 peer.Pose.arrestProtected = now < peer.ArrestAfter;
                 for (int i = 0; i < peer.ReloadEnds.Length; i++)
@@ -555,7 +573,7 @@ namespace CostaLivre
                     {
                         SetRole(peer, false);
                     }
-                    else if (avatar.wanted || peer.Bag.Count > 0)
+                    else if (avatar.wantedLevel > 0 || peer.Bag.Count > 0)
                     {
                         SetNotice(peer, 12);
                     }
@@ -579,7 +597,7 @@ namespace CostaLivre
                         if (peer.Bag.AddLoot(msg.index))
                         {
                             restock[msg.index] = now + 90;
-                            avatar.wanted = true;
+                            RaiseHeat(peer, now, false);
                             SetNotice(peer, 5);
                         }
                         else
@@ -593,7 +611,7 @@ namespace CostaLivre
                     {
                         int amount = peer.Bag.Sell(msg.index);
                         peer.Credits += amount;
-                        avatar.wanted = peer.Bag.Count > 0;
+
                         if (amount > 0)
                             SetNotice(peer, 7);
                     }
@@ -621,7 +639,7 @@ namespace CostaLivre
                         peer.ReloadEnds[msg.index] = now + HarborArsenal.ShotRules(msg.index).reload;
                     break;
                 case "arrest":
-                    TryArrest(peer, msg.index, now);
+                    BeginArrest(peer, msg.index, now);
                     break;
                 case "enter":
                     if (avatar.vehicle < 0 && msg.index >= 0 && msg.index < hostCars.Length)
@@ -901,6 +919,8 @@ namespace CostaLivre
             int absorbed = Mathf.Min(victim.Pose.armor, (damage + 1) / 2);
             victim.Pose.armor -= absorbed;
             victim.Pose.health -= damage - absorbed;
+            if (!shooter.Pose.police)
+                RaiseHeat(shooter, now, true);
             SetNotice(victim, 10);
             if (victim.Pose.health <= 0)
             {
@@ -927,36 +947,89 @@ namespace CostaLivre
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
         }
 
-        private void TryArrest(Peer officer, int id, float now)
+        private static void RaiseHeat(Peer peer, float now, bool combat)
         {
-            if (!officer.Pose.police || officer.Pose.vehicle >= 0)
+            peer.HeatUntil = now + HeatDecayTime;
+            if (combat && now < peer.NextCrime)
                 return;
+            peer.NextCrime = now + 6f;
+            peer.Pose.wantedLevel = Mathf.Min(MaxWanted, peer.Pose.wantedLevel + 1);
+        }
+
+        private void DecayHeat(Peer peer, float now)
+        {
+            Avatar avatar = peer.Pose;
+            int floor = peer.Bag.Count > 0 ? 1 : 0;
+            if (avatar.wantedLevel <= floor || now < peer.HeatUntil)
+                return;
+            foreach (Peer other in peers)
+                if (other.Ready && other.Pose.playing && other.Pose.police
+                    && Near(avatar.pos, other.Pose.pos, 22f) && ClearArrestLine(avatar.pos, other.Pose.pos))
+                {
+                    peer.HeatUntil = now + 5f;
+                    return;
+                }
+            avatar.wantedLevel--;
+            peer.HeatUntil = now + HeatDecayTime;
+        }
+
+        private static bool ClearArrestLine(Vector3 from, Vector3 to) =>
+            !Physics.Linecast(from + Vector3.up * 0.87f, to + Vector3.up * 0.87f,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+
+        private Peer ArrestTarget(Peer officer, int id, float now)
+        {
+            if (!officer.Pose.police || !officer.Pose.playing || officer.Pose.vehicle >= 0 || now < officer.DoorUntil)
+                return null;
             foreach (Peer target in peers)
             {
-                if (!target.Ready || target.Pose.id != id || !target.Pose.playing || target.Pose.police || target.Pose.vehicle >= 0
-                    || now < target.HeldUntil || now < target.ArrestAfter)
-                    continue;
+                if (target.Ready && target.Pose.id == id && target.Pose.playing && !target.Pose.police
+                    && target.Pose.vehicle < 0 && now >= target.DoorUntil && now >= target.HeldUntil
+                    && now >= target.ArrestAfter && Near(target.Pose.pos, officer.Pose.pos, 2.65f)
+                    && ClearArrestLine(officer.Pose.pos, target.Pose.pos))
+                    return target;
+            }
+            return null;
+        }
 
-                if (!Near(target.Pose.pos, officer.Pose.pos, 2.65f)
-                    || Physics.Linecast(officer.Pose.pos + Vector3.up * 0.87f, target.Pose.pos + Vector3.up * 0.87f,
-                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                    return;
+        private void BeginArrest(Peer officer, int id, float now)
+        {
+            if (officer.ArrestTarget == id || ArrestTarget(officer, id, now) == null)
+                return;
+            officer.ArrestTarget = id;
+            officer.ArrestStarted = now;
+        }
 
-                target.Bag.Clear();
-                target.Pose.wanted = false;
-                target.Pose.pos = Holding;
-                target.Pose.yaw = 180;
-                target.Pose.standing = true;
-                target.Pose.jumpPose = target.Pose.rollPose = -1;
-                target.Pose.crouched = target.Pose.moving = target.Pose.running = false;
-                ResetMotion(target);
-                target.Pose.revision++;
-                target.HeldUntil = now + 7;
-                target.ArrestAfter = now + 18;
-                SetNotice(target, 3);
-                SetNotice(officer, 4);
+        private void AdvanceArrest(Peer officer, float now)
+        {
+            Peer target = ArrestTarget(officer, officer.ArrestTarget, now);
+            if (target == null)
+            {
+                officer.ArrestTarget = 0;
+                officer.Pose.arrestProgress = 0;
                 return;
             }
+
+            float elapsed = now - officer.ArrestStarted;
+            officer.Pose.arrestProgress = Mathf.Clamp01(elapsed / ArrestTime);
+            if (elapsed < ArrestTime)
+                return;
+
+            officer.ArrestTarget = 0;
+            officer.Pose.arrestProgress = 0;
+            target.Bag.Clear();
+            target.Pose.wantedLevel = 0;
+            target.Pose.pos = Holding;
+            target.Pose.yaw = 180;
+            target.Pose.standing = true;
+            target.Pose.jumpPose = target.Pose.rollPose = -1;
+            target.Pose.crouched = target.Pose.moving = target.Pose.running = false;
+            ResetMotion(target);
+            target.Pose.revision++;
+            target.HeldUntil = now + 7;
+            target.ArrestAfter = now + 18;
+            SetNotice(target, 3);
+            SetNotice(officer, 4);
         }
 
         private void SetRole(Peer peer, bool police)
@@ -971,7 +1044,9 @@ namespace CostaLivre
             peer.Pose.standing = true;
             peer.Pose.jumpPose = peer.Pose.rollPose = -1;
             peer.Pose.crouched = peer.Pose.moving = peer.Pose.running = false;
-            peer.Pose.wanted = !police && peer.Bag.Count > 0;
+            peer.Pose.wantedLevel = !police && peer.Bag.Count > 0 ? 1 : 0;
+            peer.ArrestTarget = 0;
+            peer.Pose.arrestProgress = 0;
             peer.Pose.pos = police ? PoliceSpawn + Vector3.right * (peer.Pose.id % 4) : FindCriminalSpawn();
             peer.Pose.yaw = police ? 180 : 350;
             ResetMotion(peer);

@@ -10,12 +10,19 @@ namespace CostaLivre
         private static readonly int SkyTint = Shader.PropertyToID("_SkyTint");
         private static readonly int SkyGround = Shader.PropertyToID("_GroundColor");
         private static readonly int Exposure = Shader.PropertyToID("_Exposure");
+        private static readonly int SunDirection = Shader.PropertyToID("_SunDirection");
+        private static readonly int SunRadiance = Shader.PropertyToID("_SunRadiance");
+        private static readonly int CloudCover = Shader.PropertyToID("_CloudCover");
+        private static readonly int CloudDrift = Shader.PropertyToID("_CloudDrift");
+        private static readonly int MistColor = Shader.PropertyToID("_CostaMistColor");
+        private static readonly int Mist = Shader.PropertyToID("_CostaMist");
         private static readonly int SunSize = Shader.PropertyToID("_SunSize");
 
         private readonly Light sun;
         private readonly Light originalSun = RenderSettings.sun;
         private readonly Material originalSkybox = RenderSettings.skybox;
         private readonly Color originalFog = RenderSettings.fogColor;
+        private readonly bool originalFogEnabled = RenderSettings.fog;
         private readonly float originalFogDensity = RenderSettings.fogDensity;
         private readonly float originalReflections = RenderSettings.reflectionIntensity;
         private readonly Color originalSky = RenderSettings.ambientSkyColor;
@@ -26,6 +33,8 @@ namespace CostaLivre
         private readonly float originalIntensity;
         private readonly bool originalTemperature;
         private readonly LightShadows originalShadows;
+        private readonly float originalBias;
+        private readonly float originalNormalBias;
         private Material skybox;
         private bool worldActive;
 
@@ -39,6 +48,8 @@ namespace CostaLivre
                 originalIntensity = sun.intensity;
                 originalTemperature = sun.useColorTemperature;
                 originalShadows = sun.shadows;
+                originalBias = sun.shadowBias;
+                originalNormalBias = sun.shadowNormalBias;
             }
         }
 
@@ -49,8 +60,9 @@ namespace CostaLivre
 
         internal static float SolarHeight(float hour) => Mathf.Sin((hour - 6f) * (Mathf.PI / 12f));
 
-        internal void Apply(float? hour, bool ultra)
+        internal void Apply(float? hour, int preset, HarborWeather.Conditions weather)
         {
+            bool ultra = preset >= HarborGraphics.MaxPreset;
             if (!hour.HasValue)
             {
                 Restore();
@@ -75,30 +87,47 @@ namespace CostaLivre
                 sun.color = height >= 0f
                     ? Color.Lerp(new Color(1f, 0.98f, 0.92f), new Color(1f, 0.57f, 0.31f), sunset)
                     : new Color(0.48f, 0.65f, 1f);
-                sun.intensity = (ultra ? 1.62f : 1.27f) * SmoothRange(0f, 0.55f, height) + 0.19f * moonlight;
-                LightShadows shadows = height >= 0f ? originalShadows : LightShadows.None;
+                sun.color = Color.Lerp(Color.Lerp(sun.color, new Color(0.77f, 0.85f, 0.94f),
+                    weather.Clouds * 0.66f), new Color(0.79f, 0.87f, 1f), weather.Flash);
+                float direct = 1.45f * SmoothRange(0f, 0.55f, height) + 0.10f * moonlight;
+                sun.intensity = direct * Mathf.Lerp(1, 0.30f, weather.Clouds) + 3.0f * weather.Flash;
+                LightShadows shadows = height >= 0f ? LightShadows.Soft : LightShadows.None;
                 if (sun.shadows != shadows)
                     sun.shadows = shadows;
             }
 
-            Color blueSky = ultra ? new Color(0.52f, 0.59f, 0.66f) : originalSky;
-            Color horizon = ultra ? new Color(0.18f, 0.22f, 0.25f) : originalHorizon;
-            Color ground = ultra ? new Color(0.091f, 0.078f, 0.064f) : originalGround;
-            RenderSettings.ambientSkyColor = Color.Lerp(new Color(0.085f, 0.13f, 0.22f),
-                Color.Lerp(blueSky, new Color(0.56f, 0.37f, 0.31f), sunset * 0.78f), skyLight);
-            RenderSettings.ambientEquatorColor = Color.Lerp(new Color(0.045f, 0.066f, 0.105f), horizon, skyLight);
-            RenderSettings.ambientGroundColor = Color.Lerp(new Color(0.031f, 0.042f, 0.058f), ground, skyLight);
-            RenderSettings.fogColor = Color.Lerp(new Color(0.047f, 0.069f, 0.115f),
-                Color.Lerp(new Color(0.58f, 0.69f, 0.75f), new Color(0.65f, 0.39f, 0.31f), sunset), skyLight);
-            RenderSettings.fogDensity = Mathf.Lerp(0.0061f, ultra ? 0.0048f : originalFogDensity, skyLight);
-            RenderSettings.reflectionIntensity = originalReflections * Mathf.Lerp(0.18f, 1f, skyLight);
+            Color blueSky = Color.Lerp(new Color(0.56f, 0.65f, 0.73f), new Color(0.38f, 0.45f, 0.53f), weather.Clouds);
+            Color horizon = Color.Lerp(new Color(0.30f, 0.34f, 0.37f), new Color(0.25f, 0.30f, 0.34f), weather.Clouds);
+            Color ground = new Color(0.13f, 0.11f, 0.085f);
+            RenderSettings.ambientSkyColor = Color.Lerp(new Color(0.080f, 0.12f, 0.20f),
+                Color.Lerp(blueSky, new Color(0.57f, 0.40f, 0.34f), sunset * (1 - weather.Clouds)), skyLight);
+            RenderSettings.ambientEquatorColor = Color.Lerp(new Color(0.043f, 0.063f, 0.095f), horizon, skyLight);
+            RenderSettings.ambientGroundColor = Color.Lerp(new Color(0.023f, 0.033f, 0.049f), ground, skyLight);
+            Color haze = Color.Lerp(new Color(0.57f, 0.66f, 0.71f), new Color(0.43f, 0.52f, 0.60f), weather.Clouds);
+            haze = Color.Lerp(new Color(0.065f, 0.094f, 0.145f),
+                Color.Lerp(haze, new Color(0.68f, 0.49f, 0.40f), sunset * (1 - weather.Clouds) * 0.7f), skyLight);
+            RenderSettings.fogColor = haze;
+            RenderSettings.fogDensity = 0.0038f + weather.Mist * 0.006f + weather.Rain * 0.0034f;
+            bool volumetric = HarborAtmosphereFeature.Supported && preset >= 2;
+            if (RenderSettings.fog == volumetric)
+                RenderSettings.fog = !volumetric;
+            Shader.SetGlobalColor(MistColor, haze);
+            Shader.SetGlobalVector(Mist, new Vector4(volumetric ? 1 : 0, 0.0016f + 0.015f * weather.Mist +
+                0.005f * weather.Rain, 0.045f, ultra ? 12 : 8));
+            RenderSettings.reflectionIntensity = originalReflections * Mathf.Lerp(0.46f, 1f, skyLight);
 
             if (skybox != null)
             {
                 SetColor(SkyTint, Color.Lerp(new Color(0.28f, 0.48f, 0.85f),
-                    Color.Lerp(new Color(0.48f, 0.59f, 0.75f), new Color(0.91f, 0.57f, 0.44f), sunset), skyLight));
+                    Color.Lerp(Color.Lerp(new Color(0.48f, 0.59f, 0.75f), new Color(0.48f, 0.52f, 0.57f), weather.Clouds),
+                        new Color(0.91f, 0.66f, 0.51f), sunset * (1 - weather.Clouds)), skyLight));
                 SetColor(SkyGround, RenderSettings.fogColor);
-                SetFloat(Exposure, Mathf.Lerp(0.25f, 1.13f, skyLight));
+                SetColor(SunRadiance, sun != null ? sun.color * sun.intensity : Color.black);
+                if (skybox.HasProperty(SunDirection))
+                    skybox.SetVector(SunDirection, (Vector4)sunDirection);
+                SetFloat(CloudCover, weather.Clouds);
+                SetFloat(CloudDrift, time - 12f);
+                SetFloat(Exposure, Mathf.Lerp(0.20f, 1.04f, skyLight) * Mathf.Lerp(1, 0.66f, weather.Clouds));
                 SetFloat(SunSize, Mathf.Lerp(0.014f, 0.041f, skyLight));
             }
         }
@@ -110,13 +139,19 @@ namespace CostaLivre
             {
                 RenderSettings.sun = sun;
                 sun.useColorTemperature = false;
+                sun.shadowBias = 0.035f;
+                sun.shadowNormalBias = 0.23f;
             }
-            if (originalSkybox != null)
+            if (skybox == null)
             {
-                if (skybox == null)
+                Shader shader = Resources.Load<Shader>("Harbor/CoastalSky");
+                if (shader != null && shader.isSupported)
+                    skybox = new Material(shader);
+                else if (originalSkybox != null)
                     skybox = new Material(originalSkybox);
-                RenderSettings.skybox = skybox;
             }
+            if (skybox != null)
+                RenderSettings.skybox = skybox;
         }
 
         private void ApplyUltraMenu()
@@ -139,6 +174,8 @@ namespace CostaLivre
             worldActive = false;
             RenderSettings.sun = originalSun;
             RenderSettings.skybox = originalSkybox;
+            Shader.SetGlobalVector(Mist, Vector4.zero);
+            RenderSettings.fog = originalFogEnabled;
             RenderSettings.fogColor = originalFog;
             RenderSettings.fogDensity = originalFogDensity;
             RenderSettings.reflectionIntensity = originalReflections;
@@ -152,6 +189,8 @@ namespace CostaLivre
                 sun.intensity = originalIntensity;
                 sun.useColorTemperature = originalTemperature;
                 sun.shadows = originalShadows;
+                sun.shadowBias = originalBias;
+                sun.shadowNormalBias = originalNormalBias;
             }
         }
 

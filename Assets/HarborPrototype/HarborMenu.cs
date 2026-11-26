@@ -78,7 +78,8 @@ namespace CostaLivre
 
         internal void SaveGraphicsIfDue() => graphics.SaveIfDue();
         internal void FlushGraphics() => graphics.Flush();
-        internal void SetWorldHour(float? hour) => graphics.SetWorldHour(hour);
+        internal void SetWorldHour(float? hour, HarborWeather.Conditions weather) => graphics.SetWorldHour(hour, weather);
+        internal int GraphicsPreset => graphics.Preset;
         internal int StreetLightBudget => graphics.StreetLightBudget;
         internal bool Ultra => graphics.Preset == HarborGraphics.MaxPreset;
         internal bool FullTextures => graphics.TextureQuality == 3;

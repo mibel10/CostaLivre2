@@ -6,6 +6,14 @@ namespace CostaLivre
     internal sealed class HarborStreetLights
     {
         private const int MaxLights = 10;
+        private const int ScatteringLights = 2;
+        private const float Range = 13f;
+        private const float Intensity = 8.5f;
+        private const float OuterCone = 110;
+        private const float InnerCone = 60;
+        private static readonly int FogLightCount = Shader.PropertyToID("_CostaFogLightCount");
+        private static readonly int FogLights = Shader.PropertyToID("_CostaFogLights");
+        private static readonly int FogLightColor = Shader.PropertyToID("_CostaFogLightColor");
         private const float ScanRangeSquared = 66f * 66f;
         private static readonly int Emission = Shader.PropertyToID("_EmissionColor");
         private static readonly Color Warm = new(1f, 0.68f, 0.34f);
@@ -15,6 +23,7 @@ namespace CostaLivre
         private readonly Light[] lights = new Light[MaxLights];
         private readonly Vector3[] nearest = new Vector3[MaxLights];
         private readonly float[] distances = new float[MaxLights];
+        private readonly Vector4[] fogLights = new Vector4[ScatteringLights];
         private int activeLights;
         private int previousBudget;
         private double nextScan;
@@ -66,6 +75,17 @@ namespace CostaLivre
                     light.enabled = true;
             }
             TurnOffFrom(count);
+            int fogCount = Mathf.Min(count, ScatteringLights);
+            for (int i = 0; i < fogCount; i++)
+                fogLights[i] = new Vector4(nearest[i].x, nearest[i].y, nearest[i].z, Range);
+            if (fogCount > 0)
+            {
+                Color color = Warm.linear * Intensity;
+                Shader.SetGlobalVector(FogLightColor, new Vector4(color.r, color.g, color.b,
+                    Mathf.Cos(OuterCone * Mathf.Deg2Rad * 0.5f)));
+                Shader.SetGlobalVectorArray(FogLights, fogLights);
+            }
+            Shader.SetGlobalFloat(FogLightCount, fogCount);
         }
 
         private int SelectNearest(Vector3 view, int budget)
@@ -99,10 +119,10 @@ namespace CostaLivre
             Light light = obj.AddComponent<Light>();
             light.type = LightType.Spot;
             light.color = Warm;
-            light.intensity = 8.5f;
-            light.range = 13f;
-            light.spotAngle = 110f;
-            light.innerSpotAngle = 60f;
+            light.intensity = Intensity;
+            light.range = Range;
+            light.spotAngle = OuterCone;
+            light.innerSpotAngle = InnerCone;
             light.shadows = LightShadows.None;
             return light;
         }
@@ -111,11 +131,14 @@ namespace CostaLivre
         {
             for (int i = count; i < activeLights; i++)
                 lights[i].enabled = false;
+            if (count == 0 && activeLights != 0)
+                Shader.SetGlobalFloat(FogLightCount, 0);
             activeLights = count;
         }
 
         internal void Release()
         {
+            TurnOffFrom(0);
             foreach (Light light in lights)
                 if (light != null)
                     Object.Destroy(light.gameObject);

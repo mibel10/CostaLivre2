@@ -30,10 +30,15 @@ namespace CostaLivre
         };
 
         private readonly Camera camera;
+        private readonly UniversalAdditionalCameraData cameraData;
+        private readonly AntialiasingMode originalAA;
+        private readonly AntialiasingQuality originalAAQuality;
+        private readonly bool originalMsaa;
         private readonly HarborDaylight daylight;
         private readonly Volume volume;
         private readonly VolumeProfile originalVolume;
         private float? worldHour;
+        private HarborWeather.Conditions weather;
         private RenderPipelineAsset originalPipeline;
         private UniversalRenderPipelineAsset pipeline;
         private double? saveAt;
@@ -52,6 +57,10 @@ namespace CostaLivre
         internal HarborGraphics(Camera camera, Light sun, Volume volume)
         {
             this.camera = camera;
+            cameraData = camera.GetUniversalAdditionalCameraData();
+            originalAA = cameraData.antialiasing;
+            originalAAQuality = cameraData.antialiasingQuality;
+            originalMsaa = camera.allowMSAA;
             daylight = new HarborDaylight(sun);
             this.volume = volume;
             originalVolume = volume != null ? volume.sharedProfile : null;
@@ -148,12 +157,13 @@ namespace CostaLivre
             saveAt = null;
         }
 
-        internal void SetWorldHour(float? hour)
+        internal void SetWorldHour(float? hour, HarborWeather.Conditions conditions)
         {
             if (worldHour == hour || (worldHour.HasValue && hour.HasValue && Mathf.Abs(worldHour.Value - hour.Value) < 0.0025f))
                 return;
             worldHour = hour;
-            daylight.Apply(hour, Preset == MaxPreset);
+            weather = conditions;
+            daylight.Apply(hour, Preset, weather);
         }
 
         internal void Release()
@@ -161,6 +171,9 @@ namespace CostaLivre
             Flush();
             if (volume != null)
                 volume.sharedProfile = originalVolume;
+            cameraData.antialiasing = originalAA;
+            cameraData.antialiasingQuality = originalAAQuality;
+            camera.allowMSAA = originalMsaa;
             daylight.Release();
             RestorePipeline();
         }
@@ -199,8 +212,12 @@ namespace CostaLivre
             bool ultra = Preset == MaxPreset;
             if (volume != null)
                 volume.sharedProfile = ultra && pipeline?.volumeProfile != null ? pipeline.volumeProfile : originalVolume;
-            daylight.Apply(worldHour, ultra);
+            daylight.Apply(worldHour, Preset, weather);
             camera.farClipPlane = Distance;
+            camera.allowMSAA = Preset < 2 && originalMsaa;
+            cameraData.antialiasing = Preset >= 2 ? AntialiasingMode.SubpixelMorphologicalAntiAliasing :
+                Preset == 1 ? AntialiasingMode.FastApproximateAntialiasing : AntialiasingMode.None;
+            cameraData.antialiasingQuality = Preset >= 3 ? AntialiasingQuality.High : AntialiasingQuality.Medium;
         }
 
         private void ApplyShadows()

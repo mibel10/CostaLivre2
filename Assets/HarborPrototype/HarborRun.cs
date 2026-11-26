@@ -43,6 +43,7 @@ namespace CostaLivre
         private readonly Guard[] guards = new Guard[GuardPosts.Length];
         private readonly InputAction[] weaponSlots = new InputAction[3];
         private HarborBlockout harbor;
+        private HarborWeather atmosphere;
         private CostaCity city;
         private CostaJobs jobs;
         private CostaEncounter encounter;
@@ -187,6 +188,7 @@ namespace CostaLivre
             menu = new HarborMenu(bindings, padBindings, followCamera, sun, volume);
             jobs = new CostaJobs();
             harbor = new HarborBlockout(transform, blockoutShader);
+            atmosphere = new HarborWeather(transform);
             onlinePanel = new CostaOnlinePanel(Connect);
             loadingScreen = new HarborLoadingScreen();
             closeOverlay = CloseOverlay;
@@ -519,6 +521,7 @@ namespace CostaLivre
             arsenal?.Dispose();
             effects?.Release();
             encounter?.Dispose();
+            atmosphere?.Release();
             harbor?.ReleaseMaterials();
         }
 
@@ -760,7 +763,9 @@ namespace CostaLivre
             float? hour = null;
             if (!inMenu || pauseMenu)
                 hour = session.Online ? session.WorldHour : HarborDaylight.Advance(HarborDaylight.StartHour, soloDaySeconds);
-            menu.SetWorldHour(hour);
+            var weather = hour.HasValue ? HarborWeather.Conditions.At(hour.Value) : default;
+            menu.SetWorldHour(hour, weather);
+            atmosphere.Apply(hour, weather, followCamera, menu.GraphicsPreset, harbor);
             harbor.SetWaterDaylight(hour ?? HarborDaylight.StartHour);
             bool night = hour.HasValue && (session.Online ? session.WorldIsNight : HarborDaylight.IsNight(hour.Value));
             harbor.UpdateStreetLights(night, followCamera.transform.position, menu.StreetLightBudget);

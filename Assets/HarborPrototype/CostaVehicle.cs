@@ -21,7 +21,25 @@ namespace CostaLivre
         private readonly Transform[] wheels;
         private readonly Transform[] doors = new Transform[2];
         private readonly float[] doorUpdated = new float[2];
+        private readonly Vector3[] wheelRest;
+        private readonly float[] springTravel;
+        private readonly float[] springSpeed;
+        private readonly RaycastHit[] contacts = new RaycastHit[6];
+        private readonly Transform frontPanel;
+        private readonly Transform rearPanel;
+        private readonly Vector3 frontRest, rearRest;
         private float speed;
+        private float slip;
+        private float chassisPitch, chassisRoll;
+        private float frontDamage, rearDamage;
+        private float nextGroundSample;
+        private readonly float[] groundHeights;
+        private readonly Renderer[] runningLights;
+        private readonly MaterialPropertyBlock lampProperties = new();
+        private int lampsLevel = -1;
+        internal float Grip { get; set; } = 1;
+        internal float Slip => Mathf.Abs(slip);
+        internal Vector2 Damage => new(frontDamage, rearDamage);
         internal float Speed => Mathf.Abs(speed);
         internal float SignedSpeed => speed;
         internal bool IsBike => style == Style.StreetBike || style == Style.Cruiser;
@@ -29,7 +47,7 @@ namespace CostaLivre
         internal float RiderLean => Mathf.DeltaAngle(0, shell.localEulerAngles.z);
 
         internal CostaVehicle(HarborBlockout art, Transform parent, Vector3 position, float yaw, Color paint,
-            bool service = false, Style style = Style.Sedan)
+            bool service = false, Style style = Style.Sedan, bool traffic = false)
         {
             this.style = style;
             Root = new GameObject(service ? "Police cruiser" : style.ToString()).transform;
@@ -65,17 +83,41 @@ namespace CostaLivre
                 collisionSize = Vector3.Scale(new Vector3(2.06f, 1.40f, 4.44f), scale);
             }
 
+            wheelRest = new Vector3[wheels.Length];
+            springTravel = new float[wheels.Length];
+            springSpeed = new float[wheels.Length];
+            groundHeights = new float[wheels.Length];
+            for (int i = 0; i < wheels.Length; i++)
+                wheelRest[i] = wheels[i].localPosition;
+            float width = IsBike ? .26f : 1.48f;
+            float nose = IsBike ? 1.02f : 2.18f;
+            frontPanel = art.Part(shell, PrimitiveType.Cube, "Deformable front trim",
+                new(0, IsBike ? .54f : .38f, nose), new(width,.14f,.13f), paint,
+                finish: HarborBlockout.Finish.Paint).transform;
+            rearPanel = art.Part(shell, PrimitiveType.Cube, "Deformable rear trim",
+                new(0, IsBike ? .55f : .39f, -nose), new(width,.14f,.13f), paint,
+                finish: HarborBlockout.Finish.Paint).transform;
+            frontRest = frontPanel.localPosition;
+            rearRest = rearPanel.localPosition;
+            Renderer[] renderers = shell.GetComponentsInChildren<Renderer>();
+            runningLights = System.Array.FindAll(renderers, renderer => renderer.name is "Headlight" or "Headlamp" or "Tail light" or "Tail lamp");
+            foreach (Renderer renderer in runningLights)
+                renderer.sharedMaterial = art.RunningLightMaterial(renderer.sharedMaterial);
+
             var collision = new GameObject("Vehicle collision").transform;
             collision.SetParent(Root, false);
             body = collision.gameObject.AddComponent<BoxCollider>();
             art.Damage.Mark(collision.gameObject, CostaWorldDamage.Surface.Metal, 0);
             body.center = Vector3.up * (collisionSize.y / 2 + 0.01f);
             body.size = collisionSize;
-            var obstacle = Root.gameObject.AddComponent<UnityEngine.AI.NavMeshObstacle>();
-            obstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
-            obstacle.size = body.size;
-            obstacle.center = body.center;
-            obstacle.carving = true;
+            if (!traffic)
+            {
+                var obstacle = Root.gameObject.AddComponent<UnityEngine.AI.NavMeshObstacle>();
+                obstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
+                obstacle.size = body.size;
+                obstacle.center = body.center;
+                obstacle.carving = true;
+            }
             Reset();
         }
 
@@ -328,7 +370,14 @@ namespace CostaLivre
 
         internal void Reset()
         {
-            speed = 0;
+            speed = slip = chassisPitch = chassisRoll = 0;
+            SetDamage(Vector2.zero);
+            System.Array.Clear(springTravel, 0, springTravel.Length);
+            System.Array.Clear(springSpeed, 0, springSpeed.Length);
+            System.Array.Clear(groundHeights, 0, groundHeights.Length);
+            nextGroundSample = 0;
+            for (int i = 0; i < wheels.Length; i++)
+                wheels[i].localPosition = wheelRest[i];
             Root.SetPositionAndRotation(Home, Quaternion.Euler(0, homeYaw, 0));
             shell.localRotation = Quaternion.identity;
             foreach (Transform door in doors)
@@ -380,58 +429,163 @@ namespace CostaLivre
             if (changed)
             {
                 Root.SetPositionAndRotation(next, rotation);
-                if (!snap && !previous.Equals(next))
+                if ((next - previous).sqrMagnitude < 4 && !previous.Equals(next))
                     SpinWheels(Vector3.Dot(next - previous, Root.forward));
             }
-            if (IsBike)
-                shell.localRotation = Quaternion.Slerp(shell.localRotation, Quaternion.Euler(0, 0, lean), blend);
+            float dt = Mathf.Max(Time.unscaledDeltaTime, .012f);
+            float turnRate = Mathf.DeltaAngle(previousRotation.eulerAngles.y, rotation.eulerAngles.y) / dt;
+            float acceleration = Mathf.Clamp((velocity - speed) / dt, -28, 15);
             speed = velocity;
+            AnimateChassis(dt, turnRate, acceleration, IsBike ? lean : null, sample: changed);
             return changed;
         }
 
         internal bool Drive(Vector2 input, bool braking)
         {
             float dt = Time.deltaTime;
-            float target = braking ? 0 : input.y >= 0 ? topSpeed * input.y : ReverseSpeed * input.y;
-            float acceleration = braking || Mathf.Sign(target) != Mathf.Sign(speed) ? BrakeAcceleration
-                : Mathf.Abs(input.y) > 0.03f ? engine : 4.4f;
-            speed = Mathf.MoveTowards(speed, target, acceleration * dt);
-            if (IsBike)
-            {
-                float lean = -input.x * Mathf.Clamp01(Mathf.Abs(speed) / 7f) * 24f;
-                shell.localRotation = Quaternion.Slerp(shell.localRotation, Quaternion.Euler(0, 0, lean), dt * 9f);
-            }
-            if (Mathf.Abs(speed) < 0.04f)
+            if (dt <= 0)
                 return false;
+            float before = speed;
+            float target = braking ? 0 : input.y >= 0 ? topSpeed * input.y : ReverseSpeed * input.y;
+            float acceleration = braking || Mathf.Sign(target) != Mathf.Sign(speed) ? BrakeAcceleration * Grip
+                : Mathf.Abs(input.y) > 0.03f ? engine * Mathf.Lerp(.64f, 1, Grip) : 4.4f;
+            speed = Mathf.MoveTowards(speed, target, acceleration * dt);
+            float y = Root.eulerAngles.y;
+            float steer = input.x * Mathf.Sign(speed) * Mathf.Lerp(92, 48, Speed / topSpeed) * steeringStrength;
+            float cornerLoad = Mathf.Abs(steer) * Speed * Mathf.Deg2Rad;
+            float available = Mathf.Lerp(3.1f, IsBike ? 10.5f : 8.2f, Grip) * (braking ? .69f : 1);
+            float excess = Mathf.Clamp01((cornerLoad - available) / 10f);
+            float slipLimit = IsBike ? 8 : 13;
+            float targetSlip = -Mathf.Sign(steer) * excess * slipLimit;
+            if (Speed < 3)
+                targetSlip = 0;
+            slip = Mathf.Lerp(slip, targetSlip, 1 - Mathf.Exp(-dt * Mathf.Lerp(3.5f, 11f, Grip)));
+            steer *= 1 - .26f * excess;
+            if (Speed < .04f)
+            {
+                AnimateChassis(dt, 0, (speed - before) / dt, null, false);
+                return false;
+            }
 
             body.enabled = false;
             try
             {
-                Quaternion steering = Root.rotation * Quaternion.Euler(0, input.x * Mathf.Sign(speed)
-                    * Mathf.Lerp(92f, 48f, Mathf.Abs(speed) / topSpeed) * steeringStrength * dt, 0);
+                Quaternion steering = Root.rotation * Quaternion.Euler(0, steer * dt, 0);
                 Vector3 center = Root.position + Vector3.up * body.center.y;
                 Vector3 halves = body.size * 0.5f - Vector3.one * 0.075f;
                 bool turned = !steering.Equals(Root.rotation)
                     && !Physics.CheckBox(center, halves, steering, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
                 if (turned)
                     Root.rotation = steering;
-                Vector3 direction = Root.forward * Mathf.Sign(speed);
-                float distance = Mathf.Abs(speed) * dt;
+
+                Quaternion bearing = Quaternion.Euler(0, slip, 0) * Root.rotation;
+                Vector3 direction = bearing * Vector3.forward * Mathf.Sign(speed);
+                float distance = Speed * dt;
                 if (Physics.BoxCast(center, halves, direction, out RaycastHit hit, Root.rotation,
                     distance + 0.07f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                 {
                     distance = Mathf.Max(0, hit.distance - 0.07f);
-                    speed = 0;
+                    if (Speed > 4)
+                        RegisterDamage(speed > 0, Speed);
+                    speed = slip = 0;
                 }
 
                 Root.position += direction * distance;
                 if (distance > 0)
                     SpinWheels(Vector3.Dot(direction, Root.forward) * distance);
+                AnimateChassis(dt, Mathf.DeltaAngle(y, Root.eulerAngles.y) / dt,
+                    Mathf.Clamp((speed - before) / dt, -34, 16), null, sample: distance > 0);
                 return turned || distance > 0;
             }
             finally
             {
                 body.enabled = true;
+            }
+        }
+
+        private void AnimateChassis(float dt, float turn, float acceleration, float? bikeLean, bool sample)
+        {
+            if (sample && Time.unscaledTime >= nextGroundSample)
+            {
+                nextGroundSample = Time.unscaledTime + .07f;
+                for (int i = 0; i < wheels.Length; i++)
+                {
+                    Vector3 wheel = Root.TransformPoint(Vector3.Scale(wheelRest[i], shell.localScale));
+                    int n = Physics.RaycastNonAlloc(wheel + Vector3.up * .38f, Vector3.down, contacts, 1.02f,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                    float offset = -.095f;
+                    for (int j = 0; j < n; j++)
+                    {
+                        RaycastHit hit = contacts[j];
+                        if (OwnsCollider(hit.collider) || hit.normal.y < .65f)
+                            continue;
+                        offset = Mathf.Max(offset, hit.point.y - Root.position.y);
+                    }
+                    groundHeights[i] = Mathf.Clamp(offset, -.095f, .17f);
+                }
+            }
+
+            float lateral = Mathf.Clamp(turn * Speed * Mathf.Deg2Rad, -14, 14);
+            float front = 0, rear = 0, left = 0, right = 0, mean = 0;
+            int slices = Mathf.Clamp(Mathf.CeilToInt(dt / .016f), 1, 6);
+            float step = Mathf.Min(dt, .096f) / slices;
+            for (int i = 0; i < wheels.Length; i++)
+            {
+                Vector3 rest = wheelRest[i];
+                float load = -Mathf.Sign(rest.z) * acceleration * .0037f + Mathf.Sign(rest.x) * lateral * .003f;
+                float target = groundHeights[i] + load;
+                for (int j = 0; j < slices; j++)
+                {
+                    springSpeed[i] += ((target - springTravel[i]) * 115f - springSpeed[i] * 15f) * step;
+                    springTravel[i] += springSpeed[i] * step;
+                }
+                wheels[i].localPosition = rest + Vector3.up * springTravel[i] * .72f;
+                mean += springTravel[i];
+                if (rest.z > 0) front += springTravel[i]; else rear += springTravel[i];
+                if (rest.x > 0) right += springTravel[i]; else left += springTravel[i];
+            }
+            float alpha = 1 - Mathf.Exp(-dt * 9f);
+            chassisPitch = Mathf.Lerp(chassisPitch, Mathf.Clamp((rear - front) * 11 + acceleration * -.16f, -8, 8), alpha);
+            float roll = IsBike ? bikeLean ?? Mathf.Clamp(-lateral * 1.85f, -24, 24)
+                : Mathf.Clamp((left - right) * 13 + lateral * .25f, -8, 8);
+            chassisRoll = Mathf.Lerp(chassisRoll, roll, alpha);
+            shell.localPosition = Vector3.up * (mean / wheels.Length * .25f);
+            shell.localRotation = Quaternion.Euler(chassisPitch, 0, chassisRoll);
+        }
+
+        internal void RegisterDamage(bool front, float impact)
+        {
+            Vector2 amount = Damage;
+            float increase = Mathf.InverseLerp(3.5f, 27, impact) * .66f;
+            if (front) amount.x += increase; else amount.y += increase;
+            SetDamage(amount);
+        }
+
+        internal void SetDamage(Vector2 amount)
+        {
+            Vector2 limit = new(Mathf.Clamp01(amount.x), Mathf.Clamp01(amount.y));
+            if (Damage == limit)
+                return;
+            frontDamage = limit.x;
+            rearDamage = limit.y;
+            frontPanel.SetLocalPositionAndRotation(frontRest + new Vector3(.065f,.10f,-.18f) * frontDamage,
+                Quaternion.Euler(18f * frontDamage, -10f * frontDamage, -9f * frontDamage));
+            rearPanel.SetLocalPositionAndRotation(rearRest + new Vector3(-.07f,.07f,.16f) * rearDamage,
+                Quaternion.Euler(-17f * rearDamage, 9f * rearDamage, 8f * rearDamage));
+        }
+
+        internal void SetRunningLights(float night)
+        {
+            int level = Mathf.RoundToInt(night * 16);
+            if (level == lampsLevel)
+                return;
+            lampsLevel = level;
+            foreach (Renderer renderer in runningLights)
+            {
+                Color color = renderer.name.StartsWith("Tail", System.StringComparison.Ordinal)
+                    ? new Color(.90f,.06f,.025f) : new Color(.91f,.79f,.58f);
+                lampProperties.SetColor("_EmissionColor", color * (level / 16f * 1.8f));
+                renderer.SetPropertyBlock(lampProperties);
             }
         }
 

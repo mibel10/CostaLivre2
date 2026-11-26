@@ -207,6 +207,14 @@ namespace CostaLivre
             nextBrake = now + 0.33f;
         }
 
+        internal void Skid(float slip, float speed)
+        {
+            if (slip < 5 || speed < 5.5f || Time.unscaledTime < nextBrake)
+                return;
+            Play(Cue.Brake, Mathf.Lerp(.12f, .36f, Mathf.InverseLerp(5, 13, slip)));
+            nextBrake = Time.unscaledTime + .45f;
+        }
+
         internal void Release()
         {
             particles.Release();

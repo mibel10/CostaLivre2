@@ -735,6 +735,7 @@ namespace CostaLivre
                 CostaSession.Vehicle vehicle = session.Cars[i];
                 if (i != avatar.vehicle || netRevision != avatar.revision)
                     syncCars |= cars[i].ApplyNetwork(vehicle.pos, vehicle.yaw, vehicle.speed, joined || i == avatar.vehicle, vehicle.lean);
+                cars[i].SetDamage(new Vector2(vehicle.frontDamage, vehicle.rearDamage));
             }
 
             if (syncCars)
@@ -807,6 +808,14 @@ namespace CostaLivre
             harbor.SetWaterDaylight(hour ?? HarborDaylight.StartHour);
             bool night = hour.HasValue && (session.Online ? session.WorldIsNight : HarborDaylight.IsNight(hour.Value));
             harbor.UpdateStreetLights(night, followCamera.transform.position, menu.StreetLightBudget);
+            float grip = Mathf.Lerp(1, .64f, weather.Wet);
+            float lamps = hour.HasValue ? HarborDaylight.CityNight(hour.Value) : 0;
+            if (cars != null)
+                foreach (CostaVehicle vehicle in cars)
+                {
+                    vehicle.Grip = grip;
+                    vehicle.SetRunningLights(lamps);
+                }
             if (hour.HasValue)
                 venues?.Update(hour.Value, followCamera.transform.position);
         }
@@ -998,6 +1007,7 @@ namespace CostaLivre
                 if (previousSpeed - car.Speed > Mathf.Max(2.6f, Time.deltaTime * 24f))
                     CameraKick(Mathf.Clamp01((previousSpeed - car.Speed) / 16f) * 0.62f);
                 effects.Brake(previousSpeed, braking && Pressed(jump, TouchControl.Jump) ? 0 : car.Speed);
+                effects.Skid(car.Slip, car.Speed);
                 player.transform.position = car.Root.position;
                 if (car.IsBike)
                 {

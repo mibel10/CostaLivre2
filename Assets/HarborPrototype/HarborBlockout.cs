@@ -23,6 +23,7 @@ namespace CostaLivre
         private readonly Material responseTemplate = Resources.Load<Material>("Harbor/HarborSurfaceResponse");
         private readonly Dictionary<(Color, Finish), Material> palette = new();
         private readonly Dictionary<(string, Color, Vector2), Material> surfaces = new();
+        private readonly Dictionary<Material, Material> runningLightMaterials = new();
         private readonly Dictionary<string, (Texture2D Color, Texture2D Normal, Texture2D Response)> maps = new();
         private readonly List<(Color Color, Material Material)> asphalt = new();
         private float wetness;
@@ -253,6 +254,21 @@ namespace CostaLivre
                 Object.Destroy(mesh);
         }
 
+        internal Material RunningLightMaterial(Material source)
+        {
+            if (!runningLightMaterials.TryGetValue(source, out Material material))
+            {
+                // Use the existing emissive asset so the variant is present in player builds.
+                var template = Resources.Load<Material>("Harbor/StreetLamp");
+                material = new Material(template != null ? template : source);
+                material.color = source.color;
+                material.EnableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor", Color.black);
+                runningLightMaterials.Add(source, material);
+            }
+            return material;
+        }
+
         internal void ReleaseMaterials()
         {
             Object.Destroy(water);
@@ -263,6 +279,8 @@ namespace CostaLivre
                 Font.textureRebuilt -= RefreshSignAtlas;
                 Object.Destroy(signMaterial);
             }
+            foreach (Material material in runningLightMaterials.Values)
+                Object.Destroy(material);
             foreach (Material material in palette.Values)
                 Object.Destroy(material);
             foreach (Material material in surfaces.Values)

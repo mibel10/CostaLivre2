@@ -81,6 +81,8 @@ namespace CostaLivre
             public float speed;
             public int driver;
             public float lean;
+            public float frontDamage;
+            public float rearDamage;
         }
 
         [Serializable]
@@ -667,6 +669,8 @@ namespace CostaLivre
                 if (sceneVehicles[i].SetAuthoritativePose(vehicle.pos, vehicle.yaw))
                     Physics.SyncTransforms();
                 vehicle.lean = Mathf.MoveTowards(vehicle.lean, 0, 80 * delta);
+                if (safeTravel + .045f < travel)
+                    DamageCar(vehicle, vehicle.speed);
                 vehicle.speed = safeTravel < travel ? 0 : Mathf.MoveTowards(vehicle.speed, 0, 4.5f * delta);
             }
 
@@ -1029,6 +1033,16 @@ namespace CostaLivre
             if (avatar.vehicle >= 0)
             {
                 Vehicle car = hostCars[avatar.vehicle];
+                float proposed = pose.held / 10f;
+                float oldSpeed = car.speed;
+                if (Mathf.Abs(oldSpeed) > 5 && Mathf.Abs(proposed) < 1.15f)
+                {
+                    Quaternion facing = Quaternion.Euler(0, pose.yaw, 0);
+                    float reach = .28f + Mathf.Min(elapsed * Mathf.Abs(oldSpeed), .65f);
+                    Vector3 approach = facing * Vector3.forward * Mathf.Sign(oldSpeed);
+                    if (sceneVehicles[avatar.vehicle].SimulatedTravel(pose.pos, facing, approach, reach) + .025f < reach)
+                        DamageCar(car, oldSpeed);
+                }
                 car.pos = new Vector3(pose.pos.x, 0, pose.pos.z);
                 car.yaw = avatar.yaw;
                 if (sceneVehicles[avatar.vehicle].SetAuthoritativePose(car.pos, car.yaw))
@@ -1038,6 +1052,15 @@ namespace CostaLivre
                     ? Mathf.Clamp(pose.bikeLean, -24, 24) : 0;
             }
             return true;
+        }
+
+        private static void DamageCar(Vehicle car, float speed)
+        {
+            float amount = Mathf.InverseLerp(3.5f, 27f, Mathf.Abs(speed)) * .66f;
+            if (speed > 0)
+                car.frontDamage = Mathf.Min(1, car.frontDamage + amount);
+            else
+                car.rearDamage = Mathf.Min(1, car.rearDamage + amount);
         }
 
         private static void BeginGesture(Peer peer, HarborCharacter.Gesture gesture, float now, Vector3 target = default)

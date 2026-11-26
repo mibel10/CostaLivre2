@@ -29,7 +29,7 @@ namespace CostaLivre
             for (int i = 0; i < Count; i++)
             {
                 string path = PlayerPrefs.GetString(Key(i));
-                if (path.StartsWith("<Gamepad>/", StringComparison.Ordinal))
+                if (path.StartsWith("<Gamepad>/", StringComparison.Ordinal) && path != "<Gamepad>/start")
                     actions[i].ApplyBindingOverride(indices[i], path);
             }
         }
@@ -91,6 +91,11 @@ namespace CostaLivre
                     suffix = "dpad/" + button.name;
                 else
                     continue;
+                if (button == pad.startButton)
+                {
+                    Error = L("Start is reserved for restarting the run.", "Start está reservado para reiniciar a partida.");
+                    return;
+                }
                 string path = "<Gamepad>/" + suffix;
                 string previous = actions[pending].bindings[indices[pending]].effectivePath;
                 for (int i = 0; i < Count; i++)

@@ -230,6 +230,8 @@ namespace CostaLivre
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
         }
 
+        internal void StopForBoarding() => speed = 0;
+
         internal float TopSpeed => topSpeed;
         internal float Acceleration => engine;
         internal float ReverseSpeed => IsBike ? 3f : 7f;

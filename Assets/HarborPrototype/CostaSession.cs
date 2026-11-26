@@ -48,6 +48,7 @@ namespace CostaLivre
             public int wantedLevel;
             public bool carryingLoot;
             public float arrestProgress;
+            public float arrestThreat;
             public int outfit;
             public int vehicle = -1;
             public int doorCar = -1;
@@ -324,7 +325,8 @@ namespace CostaLivre
                 if (frame == null || frame.type != "state" || frame.protocol != Protocol || frame.players == null
                     || frame.players.Length > MaxPlayers || frame.vehicles == null || frame.vehicles.Length != sceneVehicles.Length
                     || Array.Exists(frame.players, avatar => avatar == null || avatar.vehicle < -1 || avatar.vehicle >= sceneVehicles.Length
-                        || avatar.doorCar < -1 || avatar.doorCar >= sceneVehicles.Length)
+                        || avatar.doorCar < -1 || avatar.doorCar >= sceneVehicles.Length
+                        || avatar.wantedLevel < 0 || avatar.wantedLevel > MaxWanted)
                     || Array.Exists(frame.vehicles, vehicle => vehicle == null)
                     || frame.loaded?.Length != HarborArsenal.WeaponNames.Length
                     || frame.reloading?.Length != HarborArsenal.WeaponNames.Length)
@@ -486,6 +488,9 @@ namespace CostaLivre
                 vehicle.speed = safeTravel < travel ? 0 : Mathf.MoveTowards(vehicle.speed, 0, 4.5f * delta);
             }
 
+            foreach (Peer peer in peers)
+                if (peer.Ready)
+                    peer.Pose.arrestThreat = 0;
             foreach (Peer peer in peers)
                 if (peer.Ready && peer.ArrestTarget != 0)
                     AdvanceArrest(peer, now);
@@ -984,7 +989,7 @@ namespace CostaLivre
             foreach (Peer target in peers)
             {
                 if (target.Ready && target.Pose.id == id && target.Pose.playing && !target.Pose.police
-                    && target.Pose.vehicle < 0 && now >= target.DoorUntil && now >= target.HeldUntil
+                    && target.Pose.vehicle < 0 && target.Pose.rollPose < 0 && now >= target.DoorUntil && now >= target.HeldUntil
                     && now >= target.ArrestAfter && Near(target.Pose.pos, officer.Pose.pos, 2.65f)
                     && ClearArrestLine(officer.Pose.pos, target.Pose.pos))
                     return target;
@@ -1013,12 +1018,16 @@ namespace CostaLivre
             float elapsed = now - officer.ArrestStarted;
             officer.Pose.arrestProgress = Mathf.Clamp01(elapsed / ArrestTime);
             if (elapsed < ArrestTime)
+            {
+                target.Pose.arrestThreat = Mathf.Max(target.Pose.arrestThreat, officer.Pose.arrestProgress);
                 return;
+            }
 
             officer.ArrestTarget = 0;
             officer.Pose.arrestProgress = 0;
             target.Bag.Clear();
             target.Pose.wantedLevel = 0;
+            target.Pose.arrestThreat = 0;
             target.Pose.pos = Holding;
             target.Pose.yaw = 180;
             target.Pose.standing = true;

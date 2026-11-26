@@ -608,8 +608,12 @@ namespace CostaLivre
                 if (vehicleMotion.Sample(playerBody))
                 {
                     PositionCamera(false);
-                    if (!session.Online && pursuit)
-                        UpdatePursuit();
+                    if (!session.Online)
+                    {
+                        CoastIdleVehicles();
+                        if (pursuit)
+                            UpdatePursuit();
+                    }
                     return;
                 }
                 ApplyVehiclePresentation();
@@ -669,12 +673,7 @@ namespace CostaLivre
             if (!session.Online)
             {
                 robberies.Refresh();
-                bool moved = false;
-                foreach (CostaVehicle vehicle in cars)
-                    if (vehicle != car && vehicle.Speed > 0.05f)
-                        moved |= vehicle.Drive(Vector2.zero, false);
-                if (moved)
-                    Physics.SyncTransforms();
+                CoastIdleVehicles();
             }
             cargoPack.SetActive(CurrentBag.Count > 0 || state == RunState.Escape
                 || !session.Online && encounter.CarryingLoot);
@@ -778,6 +777,16 @@ namespace CostaLivre
             if (pursuit)
                 UpdatePursuit();
             AnimatePolice();
+        }
+
+        private void CoastIdleVehicles()
+        {
+            bool moved = false;
+            foreach (CostaVehicle vehicle in cars)
+                if (vehicle != car && vehicle.Speed > 0.05f)
+                    moved |= vehicle.Drive(Vector2.zero, false);
+            if (moved)
+                Physics.SyncTransforms();
         }
 
         private void OpenOverlay(FieldOverlay screen)
@@ -1012,6 +1021,7 @@ namespace CostaLivre
             if (!vehicle.TryBoard(start, vehicle.Root.position, vehicle.Root.rotation, out int side, out Vector3 step))
                 return false;
 
+            vehicle.StopForBoarding();
             EnterVehicle(vehicle);
             player.transform.position = vehicle.Root.position;
             vehicleMotion.Begin(vehicle, true, side, start, step, vehicle.Root.position,
@@ -1352,6 +1362,8 @@ namespace CostaLivre
                 if (refreshPaths)
                 {
                     guard.Agent.isStopped = false;
+                    guard.Agent.speed = Mathf.Lerp(5.1f, 7.2f,
+                        Mathf.Clamp01((wantedLevel - 1f) / (CostaSession.MaxWanted - 1)));
                     guard.Agent.SetDestination(target);
                 }
 
@@ -1565,7 +1577,7 @@ namespace CostaLivre
                 : robberies.Notice.Length > 0 ? robberies.Notice : jobs.Notice;
             hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? -1 : jobs.Remaining,
                 session.Online ? session.Local.wantedLevel : wantedLevel, notice, prompt, stamina / FullStamina,
-                session.Online ? session.Local.arrestProgress : arrestProgress,
+                session.Online ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat) : arrestProgress,
                 car != null ? car.Speed : -1, session.Online ? session.Local.health : encounter.Active ? encounter.Health : -1,
                 IsPolice ? session.Local.armor : -1, arsenal, CostaTouch.Available, gamepad);
         }

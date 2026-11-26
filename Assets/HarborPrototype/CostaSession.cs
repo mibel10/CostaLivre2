@@ -14,7 +14,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 7;
+        private const int Protocol = 8;
         private const float Interval = 0.083f;
         internal const int PoliceArmor = 50;
         internal const int MaxWanted = 6;
@@ -727,7 +727,9 @@ namespace CostaLivre
                     }
                     break;
                 case "fire":
-                    Fire(peer, msg.index, msg.direction, now);
+                    if (CanEquip(peer, msg.index) && avatar.equipped == msg.index
+                        && now + 0.025f >= peer.NextShot && UpdatePose(peer, msg.pose, now, forShot: true))
+                        Fire(peer, msg.index, msg.direction, now);
                     break;
                 case "reload":
                     if (msg.index != HarborArsenal.Knife && CanEquip(peer, msg.index)
@@ -791,14 +793,14 @@ namespace CostaLivre
             avatar.revision++;
         }
 
-        private void UpdatePose(Peer peer, Avatar pose, float now)
+        private bool UpdatePose(Peer peer, Avatar pose, float now, bool forShot = false)
         {
             if (pose == null || pose.revision != peer.Pose.revision || !ValidPoint(pose.pos)
-                || !Finite(pose.yaw) || now - peer.LastPose < 0.035f)
-                return;
+                || !Finite(pose.yaw) || (!forShot && now - peer.LastPose < 0.035f))
+                return false;
 
             Avatar avatar = peer.Pose;
-            float elapsed = Mathf.Clamp(now - peer.LastPose, 0.035f, 0.5f);
+            float elapsed = Mathf.Clamp(now - peer.LastPose, 0f, 0.5f);
             Vector3 movement = pose.pos - avatar.pos;
             float distance = movement.magnitude;
             bool moving = distance > 0.002f;
@@ -820,7 +822,7 @@ namespace CostaLivre
                     || moving && MovementBlocked(avatar, pose, movement / distance, distance))
                 {
                     CorrectPose(peer, now);
-                    return;
+                    return false;
                 }
 
                 peer.TravelSlack = slack;
@@ -870,7 +872,7 @@ namespace CostaLivre
                     || slack < 0 || (moving || turn > 0.02f) && !rules.ValidNetworkTravel(car.pos, car.yaw, pose.pos, pose.yaw, car.speed, speed))
                 {
                     CorrectPose(peer, now);
-                    return;
+                    return false;
                 }
                 peer.TravelSlack = slack;
                 avatar.running = avatar.standing = false;
@@ -893,6 +895,7 @@ namespace CostaLivre
                 car.lean = sceneVehicles[avatar.vehicle].IsBike && Finite(pose.bikeLean)
                     ? Mathf.Clamp(pose.bikeLean, -24, 24) : 0;
             }
+            return true;
         }
 
         private static void ResetMotion(Peer peer)
@@ -1358,8 +1361,8 @@ namespace CostaLivre
         internal void Equip(int weapon, int sequence) =>
             Send(new Frame { type = "equip", index = weapon, equipSequence = sequence });
 
-        internal void Fire(int weapon, Vector3 direction) =>
-            Send(new Frame { type = "fire", index = weapon, direction = direction });
+        internal void Fire(int weapon, Vector3 direction, Avatar pose) =>
+            Send(new Frame { type = "fire", index = weapon, direction = direction, pose = pose });
 
         internal void ExitVehicle(int side) => Request("exit", side);
 

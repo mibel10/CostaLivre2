@@ -536,31 +536,36 @@ namespace CostaLivre
             }
         }
 
+        private readonly CostaSession.Avatar networkPose = new();
+
+        private CostaSession.Avatar CaptureNetworkPose()
+        {
+            CostaSession.Avatar pose = networkPose;
+            pose.pos = player.transform.position;
+            pose.yaw = car != null ? car.Root.eulerAngles.y : playerModel.eulerAngles.y;
+            pose.revision = netRevision;
+            pose.playing = enteredOnlineWorld;
+            pose.aiming = aimingPose;
+            pose.standing = grounded && !crouching && rollClock <= 0 && car == null;
+            pose.crouched = crouching;
+            pose.jumpPose = car == null && (!grounded || landing > 0)
+                    ? grounded ? Mathf.Lerp(0.78f, 1f, 1 - landing / 0.14f) : Mathf.Min(jumpClock / 0.8f, 0.77f)
+                    : -1;
+            pose.rollPose = rollClock > 0 ? 1 - rollClock / RollDuration : -1;
+            pose.moving = !inMenu && overlay == FieldOverlay.None && walking;
+            pose.running = !inMenu && overlay == FieldOverlay.None && runningPose;
+            pose.bikeLean = car != null ? car.RiderLean : 0;
+            pose.held = car != null ? Mathf.RoundToInt(car.SignedSpeed * 10f) : 0;
+            return pose;
+        }
+
         private void TickNetwork()
         {
             if (!session.Online && !session.Connecting && !session.Hosting && !wasOnline)
                 return;
 
-            var pose = new CostaSession.Avatar
-            {
-                pos = player.transform.position,
-                yaw = car != null ? car.Root.eulerAngles.y : playerModel.eulerAngles.y,
-                revision = netRevision,
-                playing = enteredOnlineWorld,
-                aiming = aimingPose,
-                standing = grounded && !crouching && rollClock <= 0 && car == null,
-                crouched = crouching,
-                jumpPose = car == null && (!grounded || landing > 0)
-                    ? grounded ? Mathf.Lerp(0.78f, 1f, 1 - landing / 0.14f) : Mathf.Min(jumpClock / 0.8f, 0.77f)
-                    : -1,
-                rollPose = rollClock > 0 ? 1 - rollClock / RollDuration : -1,
-                moving = !inMenu && overlay == FieldOverlay.None && walking,
-                running = !inMenu && overlay == FieldOverlay.None && runningPose,
-                bikeLean = car != null ? car.RiderLean : 0,
-                held = car != null ? Mathf.RoundToInt(car.SignedSpeed * 10f) : 0
-            };
             int priorHeat = session.Local?.wantedLevel ?? 0;
-            session.Tick(pose);
+            session.Tick(CaptureNetworkPose());
             switch (session.NoticeEvent)
             {
                 case 3: case 4: effects.Play(Cue.Cuffs); break;
@@ -967,7 +972,7 @@ namespace CostaLivre
                 fireHeld, aiming, crouching, HitGuard))
             {
                 if (session.Online)
-                    session.Fire(arsenal.Slot, arsenal.ShotDirection);
+                    session.Fire(arsenal.Slot, arsenal.ShotDirection, CaptureNetworkPose());
                 else if (!contractCombat)
                     StartPursuit(0.25f, combat: true);
             }

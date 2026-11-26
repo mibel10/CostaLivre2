@@ -106,4 +106,4 @@ const heartbeat = setInterval(() => {
     }
 }, 25000);
 heartbeat.unref();
-server.listen(Number(process.env.PORT || 8080), process.env.BIND || '127.0.0.1');
+server.listen(Number(process.env.PORT || 8080), process.env.BIND || '0.0.0.0');

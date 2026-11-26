@@ -77,7 +77,11 @@ Referências dos modelos e chips. [Snapdragon 778G](https://www.qualcomm.com/sma
 
 No menu **Multiplayer → Internet**, o anfitrião preenche **Endereço do servidor** com o endereço HTTPS do relay e clica em **Criar sala**. Depois, usa **Copiar convite** e manda o convite aos amigos. Os convidados colam o texto em **Código ou convite da sala** e clicam em **Entrar na sala**. Todos usam a mesma versão da build. A sessão dura enquanto o anfitrião estiver conectado.
 
-O relay está em `Server/relay`. Para rodar uma instância com Node.js, execute:
+O relay oficial do projeto pode rodar gratuitamente no Render, sem depender do seu computador. Crie um Blueprint no Render apontando para o repositório `mibel10/CostaLivre2` e selecione o arquivo `render.yaml`. Após o primeiro deploy, use o endereço HTTPS gerado pelo Render no campo **Endereço do servidor**. Seus amigos entram com o convite copiado pelo anfitrião.
+
+No plano gratuito, o Render suspende o serviço após 15 minutos sem tráfego. A próxima conexão pode precisar aguardar o serviço acordar. Para manter a conexão disponível continuamente, o relay precisa de hospedagem paga. [Limites do plano gratuito do Render](https://render.com/docs/free)
+
+Para desenvolvimento local, o relay está em `Server/relay`. Execute:
 
 ```bash
 cd Server/relay
@@ -85,7 +89,7 @@ npm ci
 npm start
 ```
 
-O relay escuta na porta `8080` da máquina local por padrão. Para disponibilizá-lo pela internet, publique-o atrás de HTTPS com suporte a WebSocket. Para um teste temporário, execute `cloudflared tunnel --url http://127.0.0.1:8080` e use a URL HTTPS gerada no jogo. O endereço temporário depende do processo do túnel. [Documentação do Quick Tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+O relay local escuta na porta `8080`. Para partidas públicas, configure HTTPS com suporte a WebSocket no serviço hospedado.
 
 ### Jogar na rede local
 

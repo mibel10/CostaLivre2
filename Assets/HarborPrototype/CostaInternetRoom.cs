@@ -18,6 +18,8 @@ namespace CostaLivre
         private bool disposed;
         private int ended;
 
+        private readonly SemaphoreSlim guestSlots = new(CostaSession.MaxPlayers - 1);
+
         internal string Code { get; private set; } = "";
         internal bool Ended => Volatile.Read(ref ended) != 0;
 
@@ -105,23 +107,8 @@ namespace CostaLivre
                     if (!message.StartsWith("peer ", StringComparison.Ordinal) || !ValidCode(message.Substring(5), 32, LowerHex))
                         throw new WebSocketException("Invalid relay guest response.");
 
-                    try
-                    {
-                        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(close.Token);
-                        timeout.CancelAfter(TimeSpan.FromSeconds(5));
-                        var wire = new CostaWire(await Connect(new Uri(relay, "peer/" + message.Substring(5)), timeout.Token).ConfigureAwait(false));
-                        lock (gate)
-                        {
-                            if (disposed || incoming.Count >= CostaSession.MaxPlayers)
-                                wire.Dispose();
-                            else
-                                incoming.Enqueue(wire);
-                        }
-                    }
-                    catch (Exception exception) when (CostaWire.NetworkException(exception))
-                    {
-                        // A guest can close its connection while the host is opening its side.
-                    }
+                    if (guestSlots.Wait(0))
+                        _ = ConnectGuest(message.Substring(5));
                 }
             }
             catch (Exception exception) when (CostaWire.NetworkException(exception))
@@ -130,6 +117,31 @@ namespace CostaLivre
             finally
             {
                 Volatile.Write(ref ended, 1);
+            }
+        }
+
+        private async Task ConnectGuest(string ticket)
+        {
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(close.Token);
+                timeout.CancelAfter(TimeSpan.FromSeconds(5));
+                var wire = new CostaWire(await Connect(new Uri(relay, "peer/" + ticket), timeout.Token).ConfigureAwait(false));
+                lock (gate)
+                {
+                    if (disposed || incoming.Count >= CostaSession.MaxPlayers)
+                        wire.Dispose();
+                    else
+                        incoming.Enqueue(wire);
+                }
+            }
+            catch (Exception exception) when (CostaWire.NetworkException(exception))
+            {
+                // A guest can close before the host opens its side.
+            }
+            finally
+            {
+                guestSlots.Release();
             }
         }
 

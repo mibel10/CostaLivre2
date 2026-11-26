@@ -933,7 +933,8 @@ namespace CostaLivre
             }
 
             if (!grounded || crouching || rollClock > 0
-                || (!session.Online && jobs.NearbyProperty(player.transform.position) >= 0)
+                || (!session.Online && jobs.NearbyProperty(player.transform.position) is int property
+                    && property >= 0 && !jobs.Owned(property))
                 || (!IsPolice && state != RunState.Escape && robberies.Nearby(player.transform.position) >= 0)
                 || (harborJob && state == RunState.FindCargo && IsNear(HarborBlockout.Cargo, InteractionRadius))
                 || UsingContractObjective()

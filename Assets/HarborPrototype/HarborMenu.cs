@@ -63,6 +63,7 @@ namespace CostaLivre
 
         private readonly Texture2D gradient;
         private ScreenPage page;
+        private float pageChanged = -2f;
         private SettingsPage settings;
         private bool editTouch;
         private readonly HarborGraphics graphics;
@@ -91,9 +92,9 @@ namespace CostaLivre
             else
                 bindings.Tick();
         }
-        internal void ShowDeploy() => page = ScreenPage.Deploy;
-        internal void ShowJobs() => page = ScreenPage.Jobs;
-        internal void ShowOnline() => page = ScreenPage.Online;
+        internal void ShowDeploy() => OpenPage(ScreenPage.Deploy);
+        internal void ShowJobs() => OpenPage(ScreenPage.Jobs);
+        internal void ShowOnline() => OpenPage(ScreenPage.Online);
         internal bool DeployPage => page == ScreenPage.Deploy;
         internal bool OnlinePage => page == ScreenPage.Online;
         private GUIStyle headline;
@@ -182,6 +183,7 @@ namespace CostaLivre
                 Quaternion.identity, new Vector3(frame.Scale, frame.Scale, 1));
             DrawNavigation(frame, sessionActive, quit);
 
+            top += PageOffset();
             if (DeployPage)
                 DrawDeploy(x, stacked ? top : top + (height - top) * 0.21f, resume, sessionActive, deploy, continueRun);
             else
@@ -212,7 +214,7 @@ namespace CostaLivre
             float cardWidth = DeployPage ? 440 : 624;
             float cardHeight = DeployPage ? 361 : 459;
             float left = (frame.Width - cardWidth) * 0.5f;
-            float top = (frame.Height - cardHeight) * 0.5f;
+            float top = (frame.Height - cardHeight) * 0.5f + PageOffset();
             float x = left + 16;
             Fill(new Rect(left, top, cardWidth, cardHeight), new Color(0.027f, 0.051f, 0.068f, 0.95f));
             Fill(new Rect(left, top, cardWidth, 2), Copper);
@@ -228,9 +230,9 @@ namespace CostaLivre
                     (resume ? continueRun : deploy)();
 
                 if (MenuButton(new Rect(x, top + 188, 199, 42), L("Options", "Opções"), false))
-                    page = ScreenPage.Options;
+                    OpenPage(ScreenPage.Options);
                 if (MenuButton(new Rect(x + 209, top + 188, 199, 42), L("Loadout", "Equipamento"), false))
-                    page = ScreenPage.Loadout;
+                    OpenPage(ScreenPage.Loadout);
                 if (!sessionActive && MenuButton(new Rect(x, top + 237, 199, 42), L("Jobs", "Missões"), false))
                     ShowJobs();
                 if (MenuButton(new Rect(x + 209, top + 237, 199, 42), "Multiplayer", false))
@@ -663,8 +665,18 @@ namespace CostaLivre
         private void Tab(Rect bounds, ScreenPage id, string name)
         {
             if (MenuButton(bounds, name, page == id))
-                page = id;
+                OpenPage(id);
         }
+
+        private void OpenPage(ScreenPage target)
+        {
+            if (page == target)
+                return;
+            page = target;
+            pageChanged = Time.unscaledTime;
+        }
+
+        private float PageOffset() => 7 * (1 - Mathf.SmoothStep(0, 1, (Time.unscaledTime - pageChanged) / .17f));
 
         private bool MenuButton(Rect bounds, string name, bool selected, bool centered = false)
         {

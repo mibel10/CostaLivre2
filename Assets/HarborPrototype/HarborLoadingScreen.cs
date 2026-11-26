@@ -14,8 +14,13 @@ namespace CostaLivre
         private Texture2D fade;
         private GUIStyle title, label, percent, button;
         private float displayed;
+        private float started;
 
-        internal void Begin() => imageRequest = Resources.LoadAsync<Texture2D>("Harbor/SantaLuzLoading");
+        internal void Begin()
+        {
+            started = Time.unscaledTime;
+            imageRequest = Resources.LoadAsync<Texture2D>("Harbor/SantaLuzLoading");
+        }
 
         internal void Draw(string phase, float progress, bool failed, Action retry)
         {
@@ -25,7 +30,15 @@ namespace CostaLivre
             Rect screen = new(0, 0, Screen.width, Screen.height);
             Paint(screen, Night);
             if (imageRequest is { isDone: true, asset: Texture2D artwork })
-                GUI.DrawTexture(screen, artwork, ScaleMode.ScaleAndCrop);
+            {
+                float travel = Mathf.SmoothStep(0, 1, (Time.unscaledTime - started) / 18);
+                float overscan = .035f * travel * Screen.width;
+                Color previous = GUI.color;
+                GUI.color = new Color(1,1,1,Mathf.Clamp01((Time.unscaledTime - started) * 2));
+                GUI.DrawTexture(new Rect(-overscan, -overscan*.5f, screen.width + overscan*2, screen.height + overscan), artwork,
+                    ScaleMode.ScaleAndCrop);
+                GUI.color = previous;
+            }
             Paint(screen, new Color(0.012f, 0.033f, 0.047f, 0.24f));
             GUI.DrawTexture(new Rect(0, Screen.height * 0.31f, Screen.width, Screen.height * 0.69f), fade);
 

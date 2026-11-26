@@ -196,6 +196,8 @@ namespace CostaLivre
             return step.Mode == Action.Alert;
         }
 
+        internal int CompletionSerial { get; private set; }
+
         internal void CompleteStep()
         {
             Job job = List[Active];
@@ -205,6 +207,7 @@ namespace CostaLivre
             stage++;
             if (stage == job.Steps.Length)
             {
+                CompletionSerial++;
                 if (!Completed(Active))
                 {
                     completed |= 1 << Active;

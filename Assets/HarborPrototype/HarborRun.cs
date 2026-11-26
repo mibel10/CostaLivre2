@@ -108,6 +108,9 @@ namespace CostaLivre
         private HarborArsenal arsenal;
         private CostaEffects effects;
         private CostaScore score;
+        private readonly CostaTransitions transitions = new();
+        private int shownCompletion;
+        private Light menuKey, menuFill;
         private CostaEffects.Footfalls footfalls;
         private float engineThrottle;
         private GameObject cargo;
@@ -391,6 +394,15 @@ namespace CostaLivre
             harbor.Part(menuStage, PrimitiveType.Cube, "Warehouse safety band", new(0, 0.57f, 4.75f),
                 new(21, 0.13f, 0.18f), new Color(0.63f, 0.43f, 0.25f));
 
+            menuKey = MenuLight("Warm dock key", new(-3,3.1f,-2), new Color(1,.72f,.49f), 6f, true);
+            menuFill = MenuLight("Blue quay rim", new(2.8f,2.7f,3.6f), new Color(.36f,.74f,1), 3.4f, false);
+            for (int i = 0; i < 4; i++)
+            {
+                var crate = harbor.Part(menuStage, PrimitiveType.Cube, "Cargo stack", new(3.6f + i*1.12f,.58f,2.9f),
+                    new(1.02f,1.16f,.94f), Color.Lerp(steel, new Color(.52f,.32f,.22f), i*.19f));
+                crate.transform.localRotation = Quaternion.Euler(0, i*4f - 8, 0);
+            }
+
             menuBody = harbor.Person("Loadout preview", menuStage, MenuActorPosition, new Color(0.94f, 0.93f, 0.87f));
             menuLook = new CostaLook(harbor, menuBody);
             menuBody.Root.rotation = Quaternion.Euler(0, 215f, 0);
@@ -399,13 +411,38 @@ namespace CostaLivre
             menuWeapons = new Transform[HarborArsenal.WeaponNames.Length];
         }
 
+        private Light MenuLight(string name, Vector3 position, Color color, float intensity, bool focused)
+        {
+            Light lamp = new GameObject(name).AddComponent<Light>();
+            lamp.transform.SetParent(menuStage, false);
+            lamp.transform.localPosition = position;
+            lamp.type = focused ? LightType.Spot : LightType.Point;
+            lamp.range = focused ? 12 : 9;
+            lamp.color = color;
+            lamp.intensity = intensity;
+            if (focused)
+            {
+                lamp.spotAngle = 69;
+                lamp.innerSpotAngle = 44;
+            }
+            lamp.shadows = LightShadows.None;
+            return lamp;
+        }
+
         private bool OwnsWeapon(int slot) => arsenal?.Owned(slot) ?? (slot == HarborArsenal.Knife || jobs.OwnsWeapon(slot));
 
         private void UpdateMenuPreview()
         {
-            float angle = Mathf.Sin(Time.unscaledTime * 0.38f) * 0.26f;
-            Vector3 cameraPosition = MenuActorPosition + new Vector3(-2.85f + angle, 1.57f, -3.45f);
-            const float fieldOfView = 35f;
+            float time = Time.unscaledTime;
+            float arc = -37 + Mathf.Sin(time * .23f) * 8f;
+            Vector3 dolly = Quaternion.Euler(0, arc, 0) * Vector3.back * (4.66f + Mathf.Sin(time * .17f) * .24f);
+            dolly.x *= -1;
+            Vector3 cameraPosition = MenuActorPosition + dolly + Vector3.up * (1.58f + .1f * Mathf.Sin(time * .21f));
+            float fieldOfView = 34.8f + .65f * Mathf.Sin(time * .22f);
+            menuKey.intensity = 5.9f + Mathf.Sin(time * .49f) * .38f;
+            menuKey.transform.localPosition = new Vector3(-3 + .58f * Mathf.Sin(time * .28f), 3.1f, -2);
+            menuKey.transform.rotation = Quaternion.LookRotation(menuBody.Chest.position - menuKey.transform.position);
+            menuFill.intensity = 3.4f + Mathf.Sin(time * .31f + 1.1f) * .56f;
             Vector3 center = MenuActorPosition + Vector3.up * 1.05f;
             Vector3 forward = center - cameraPosition;
             Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
@@ -469,8 +506,11 @@ namespace CostaLivre
 
         private void ResumeRun()
         {
+            bool deployFromMenu = !pauseMenu;
             if (session.Online)
                 enteredRun = enteredOnlineWorld = true;
+            if (deployFromMenu)
+                transitions.Begin(session.Online ? L("Entering session", "Entrando na partida") : "Santa Luz", 1.5f, .98f);
             if (menu.SelectionVersion != appliedSelection)
             {
                 appliedSelection = menu.SelectionVersion;
@@ -629,6 +669,7 @@ namespace CostaLivre
                 case 5: effects.Play(Cue.Loot); break;
                 case 7: effects.Play(Cue.Sale); break;
                 case 8: effects.Play(Cue.Purchase); break;
+                case 11: transitions.Begin(L("Back in Santa Luz", "De volta a Santa Luz"), 1.45f, .91f); break;
             }
             if (session.Online && priorHeat == 0 && session.Local.wantedLevel > 0)
                 effects.Play(Cue.Alert, 0.32f);
@@ -930,6 +971,7 @@ namespace CostaLivre
             {
                 gamepad = restart.activeControl?.device is Gamepad;
                 ResetRun();
+                transitions.Begin(L("Back in Santa Luz", "De volta a Santa Luz"), 1.45f, .91f);
                 return;
             }
 
@@ -1441,6 +1483,11 @@ namespace CostaLivre
 
         private void LateUpdate()
         {
+            if (worldReady && !inMenu && shownCompletion != jobs.CompletionSerial)
+            {
+                shownCompletion = jobs.CompletionSerial;
+                transitions.Begin(L("Mission complete", "Missão concluída"), 2.2f, .27f);
+            }
             bool quiet = !worldReady || inMenu || worldLoading || pausedForFocus ||
                 overlay != FieldOverlay.None || state == RunState.Delivered || state == RunState.Caught;
             int heat = session?.Online == true ? session.Local.wantedLevel : wantedLevel;
@@ -2057,6 +2104,7 @@ namespace CostaLivre
         private void EndRun(RunState result)
         {
             state = result;
+            transitions.Begin("", .59f, .76f);
             if (result == RunState.Caught && jobs.Bag.Count > 0)
                 jobs.ConfiscateLoot();
             SetCursor(false);
@@ -2091,6 +2139,8 @@ namespace CostaLivre
             }
 
             DrawInterface();
+            if (!inMenu && overlay == FieldOverlay.None)
+                transitions.Draw();
             if (inMenu || overlay != FieldOverlay.None)
                 CostaUi.DrawPointer();
             else if (CostaTouch.Available)

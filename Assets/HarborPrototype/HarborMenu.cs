@@ -106,6 +106,7 @@ namespace CostaLivre
         internal int SelectedWeapon { get; private set; }
         internal int SelectionVersion { get; private set; }
         internal float Sensitivity { get; private set; } = PlayerPrefs.GetFloat("HarborSensitivity", 1f);
+        internal float MusicVolume { get; private set; } = Mathf.Clamp01(PlayerPrefs.GetFloat("CostaMusicVolume", .58f));
         internal float CameraShake { get; private set; } = Mathf.Clamp01(PlayerPrefs.GetFloat("CostaCameraShake", 0.65f));
         internal float Volume { get; private set; } = PlayerPrefs.GetFloat("HarborVolume", 0.85f);
 
@@ -627,6 +628,14 @@ namespace CostaLivre
             {
                 CameraShake = shake;
                 PlayerPrefs.SetFloat("CostaCameraShake", shake);
+            }
+
+            Text(new Rect(x, frame + 113, 215, 20), L($"Music  {MusicVolume:P0}", $"Música  {MusicVolume:P0}"), label, Paper);
+            float music = GraphicsSlider(new Rect(x, frame + 135, 229, 23), MusicVolume, 0, 1);
+            if (!Mathf.Approximately(MusicVolume, music))
+            {
+                MusicVolume = music;
+                PlayerPrefs.SetFloat("CostaMusicVolume", music);
             }
         }
 

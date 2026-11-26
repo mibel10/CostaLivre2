@@ -107,6 +107,7 @@ namespace CostaLivre
         private bool harborJob;
         private HarborArsenal arsenal;
         private CostaEffects effects;
+        private CostaScore score;
         private CostaEffects.Footfalls footfalls;
         private float engineThrottle;
         private GameObject cargo;
@@ -212,6 +213,8 @@ namespace CostaLivre
             atmosphere = new HarborWeather(transform);
             onlinePanel = new CostaOnlinePanel(Connect);
             loadingScreen = new HarborLoadingScreen();
+            score = new CostaScore(transform);
+            StartCoroutine(score.Load());
             closeOverlay = CloseOverlay;
             deploy = () => WithWorld(StartRun);
             resume = ResumeRun;
@@ -610,10 +613,14 @@ namespace CostaLivre
             if (harm.Amount > 0)
             {
                 effects.CombatFeedback(harm.Source, harm.Amount);
+                score.Combat();
                 CameraKick(Mathf.Lerp(.15f, .68f, Mathf.Clamp01(harm.Amount / 60f)));
             }
             if (session.Pressure.HasValue && harm.Amount == 0)
+            {
                 effects.CombatFeedback(session.Pressure.Value, 0);
+                score.Combat(2.8f);
+            }
             switch (session.NoticeEvent)
             {
                 case 3: case 4: effects.Play(Cue.Cuffs); break;
@@ -1071,6 +1078,8 @@ namespace CostaLivre
             if (arsenal.Update(followCamera, playerBody, pitch, firePressed,
                 fireHeld, aiming, crouching, ResolveSoloHit, effects, displayedReload, rollClock <= 0))
             {
+                if (arsenal.HasFirearm)
+                    score.Combat();
                 if (session.Online)
                     session.Fire(arsenal.Slot, arsenal.ShotDirection, CaptureNetworkPose());
                 else if (!contractCombat)
@@ -1427,6 +1436,12 @@ namespace CostaLivre
 
         private void LateUpdate()
         {
+            bool quiet = !worldReady || inMenu || worldLoading || pausedForFocus ||
+                overlay != FieldOverlay.None || state == RunState.Delivered || state == RunState.Caught;
+            int heat = session?.Online == true ? session.Local.wantedLevel : wantedLevel;
+            float danger = session?.Online == true ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat)
+                : Mathf.Max(arrestProgress, pursuit ? .30f : 0);
+            score.Update(menu.MusicVolume, quiet, heat, danger, !quiet && encounter?.Combat == true);
             if (!worldReady)
                 return;
             foreach (CostaVehicle vehicle in cars)
@@ -1957,6 +1972,7 @@ namespace CostaLivre
             if (!session.Online)
                 harbor.Damage.Reset();
             effects.ResetCombat();
+            score.Reset();
             vehicleMotion.Clear();
             footfalls = default;
             engineThrottle = 0;

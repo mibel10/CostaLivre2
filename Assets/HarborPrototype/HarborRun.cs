@@ -78,7 +78,9 @@ namespace CostaLivre
         private CostaVehicle soloContractCar;
         private Vector3 soloContractCarPosition;
         private float soloContractCarYaw;
-        private bool soloDrivingContractCar;
+        private CostaVehicle soloDrivenCar;
+        private Vector3 soloDrivenPosition;
+        private float soloDrivenYaw;
         private bool pausedForFocus;
         private bool wasPolice;
         private bool crouching;
@@ -605,10 +607,15 @@ namespace CostaLivre
                         yaw = soloYaw;
                         pitch = soloPitch;
                         playerModel.rotation = Quaternion.Euler(0, yaw, 0);
-                        if (soloDrivingContractCar)
-                            EnterVehicle(soloContractCar);
+                        if (soloDrivenCar != null)
+                        {
+                            soloDrivenCar.ApplyNetwork(soloDrivenPosition, soloDrivenYaw, 0, true);
+                            player.transform.position = soloDrivenPosition;
+                            EnterVehicle(soloDrivenCar);
+                        }
+                        Physics.SyncTransforms();
                     }
-                    soloContractCar = null;
+                    soloContractCar = soloDrivenCar = null;
                     harborJob = soloHarborJob;
                     enteredRun = soloResumable;
                     state = soloState;
@@ -643,7 +650,12 @@ namespace CostaLivre
                 soloCrimeRemaining = Mathf.Max(0, nextCrime - Time.time);
                 soloContractCar = encounter.Active && (jobs.Current.Mode is CostaJobs.Action.Seize or CostaJobs.Action.DeliverVehicle)
                     ? cars[jobs.Current.Vehicle] : null;
-                soloDrivingContractCar = soloContractCar != null && car == soloContractCar;
+                soloDrivenCar = car;
+                if (soloDrivenCar != null)
+                {
+                    soloDrivenPosition = soloDrivenCar.Root.position;
+                    soloDrivenYaw = soloDrivenCar.Root.eulerAngles.y;
+                }
                 if (soloContractCar != null)
                 {
                     soloContractCarPosition = soloContractCar.Root.position;

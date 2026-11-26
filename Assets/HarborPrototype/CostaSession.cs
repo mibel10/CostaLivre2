@@ -101,7 +101,6 @@ namespace CostaLivre
             public bool[] reloading;
             public bool[] sites;
             public Vector3 direction;
-            public int equipSequence;
         }
 
         [Serializable]

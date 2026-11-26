@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Floor = CostaLivre.CostaAcousticScene.Floor;
 
 namespace CostaLivre
 {
@@ -164,7 +165,7 @@ namespace CostaLivre
             for (int i = 0; i < Estate.Length; i++)
             {
                 string address = $"VILA {i + 1:00}";
-                Venue(address, Estate[i], 16, 11, 4.3f, i == 1 ? Stone : new Color(0.74f, 0.66f, 0.54f), Glass);
+                Venue(address, Estate[i], 16, 11, 4.3f, i == 1 ? Stone : new Color(0.74f, 0.66f, 0.54f), Glass, Floor.Wood);
                 HouseDoors[i] = art.Box("Property entrance", Estate[i] + new Vector3(0, 1.27f, -2.03f),
                     new Vector3(2.65f, 2.54f, 0.22f), Glass, true, bake: false);
                 Transform hinge = new GameObject("Property door hinge").transform;
@@ -333,8 +334,9 @@ namespace CostaLivre
         private void Sidewalk(float left, float right, float z, Color accent)
         {
             float x = (left + right) * 0.5f;
-            art.BatchDecoration("Stone pedestrian strip", new Vector3(x, 0.027f, z),
-                new Vector3(right - left, 0.05f, 2.6f), Pavement);
+            Vector3 center = new(x, .027f, z), size = new(right - left, .05f, 2.6f);
+            art.BatchDecoration("Stone pedestrian strip", center, size, Pavement);
+            art.Acoustics.AddFloor(new Bounds(center, size), Floor.Stone);
             for (int side = -1; side <= 1; side += 2)
                 art.BatchDecoration("Colored paving edge", new Vector3(x, 0.054f, z + side * 1.02f),
                     new Vector3(right - left, 0.012f, 0.055f), accent);
@@ -342,7 +344,7 @@ namespace CostaLivre
 
         private void Plaza(Vector3 point, Color accent)
         {
-            art.Box("Plaza paving", point + Vector3.up * 0.03f, new Vector3(26, 0.06f, 15), Pavement);
+            art.MarkFootFloor(art.Box("Plaza paving", point + Vector3.up * .03f, new(26, .06f, 15), Pavement), Floor.Stone);
             Fountain(point);
             for (int side = -1; side <= 1; side += 2)
             {
@@ -397,8 +399,9 @@ namespace CostaLivre
                 {
                     float z = 52.5f + block * 47;
                     float x = -30 + side * 6;
-                    art.Box("Boulevard sidewalk", new Vector3(x, 0.05f, z), new Vector3(2.7f, 0.10f, 32), paving,
+                    GameObject sidewalk = art.Box("Boulevard sidewalk", new Vector3(x, .05f, z), new(2.7f, .10f, 32), paving,
                         false, "Concrete", new Vector2(2, 14));
+                    art.MarkFootFloor(sidewalk, Floor.Stone);
                     art.Box("Road curb", new Vector3(x - side * 1.30f, 0.065f, z), new Vector3(0.12f, 0.13f, 32),
                         new Color(0.47f, 0.48f, 0.44f));
                     for (int planter = -1; planter <= 1; planter += 2)
@@ -439,7 +442,7 @@ namespace CostaLivre
             art.BatchDecoration("Road paint", position, size, new Color(0.55f, 0.51f, 0.41f));
         }
 
-        private void Venue(string name, Vector3 entry, float width, float depth, float height, Color color, Color trim)
+        private void Venue(string name, Vector3 entry, float width, float depth, float height, Color color, Color trim, Floor floor = Floor.Stone)
         {
             float front = entry.z - 2f;
             Footprints.Add(new Rect(entry.x - width * 0.5f, front, width, depth));
@@ -448,10 +451,11 @@ namespace CostaLivre
             float wing = (width - 2.8f) / 2;
             art.Wear(1, new Vector3(entry.x + width * 0.32f, 0.073f, front - 1.15f),
                 new Vector2(2.8f, 1.7f), Quaternion.Euler(90, 0, 0));
-            art.Box("Entrance paving", new Vector3(entry.x, 0.035f, front - 1.4f),
-                new Vector3(width + 2.5f, 0.07f, 3.2f), Pavement, false, "Concrete", new Vector2(width / 2, 2));
-            art.Box("Lobby floor", center + Vector3.up * 0.016f, new Vector3(width - 0.6f, 0.03f, depth - 0.6f),
-                new Color(0.70f, 0.67f, 0.59f), false, "Concrete", new Vector2(width / 3, depth / 3));
+            art.MarkFootFloor(art.Box("Entrance paving", new(entry.x, .035f, front - 1.4f),
+                new(width + 2.5f, .07f, 3.2f), Pavement, false, "Concrete", new Vector2(width / 2, 2)), Floor.Stone);
+            Color floorColor = floor == Floor.Wood ? new(.44f,.30f,.21f) : new(.70f,.67f,.59f);
+            art.MarkFootFloor(art.Box("Lobby floor", center + Vector3.up * .016f, new(width - .6f,.03f,depth - .6f),
+                floorColor, false, floor == Floor.Wood ? null : "Concrete", new Vector2(width / 3, depth / 3)), floor);
 
             for (int side = -1; side <= 1; side += 2)
             {
@@ -529,7 +533,13 @@ namespace CostaLivre
 
         private void BuildPark()
         {
-            art.Box("Park promenade", new Vector3(47, 0.023f, 118), new Vector3(36, 0.045f, 53), Pavement);
+            art.MarkFootFloor(art.Box("Park promenade", new(47,.023f,118), new(36,.045f,53), Pavement), Floor.Stone);
+            for (int side = -1; side <= 1; side += 2)
+            {
+                float x = 47 + side * 15;
+                art.MarkFootFloor(art.Box("Park soil bed", new(x,.031f,118), new(4.6f,.052f,46),
+                    new Color(.34f,.29f,.20f)), Floor.Earth);
+            }
             art.Box("Entry canopy", ParkGate + new Vector3(0, 3.4f, 0), new Vector3(11, 0.30f, 1.9f), Brass);
             art.Sign("PARQUE MIRANTE", ParkGate + new Vector3(0, 3.29f, -1f), 0.18f, Stone);
             for (int side = -1; side <= 1; side += 2)

@@ -77,6 +77,10 @@ namespace CostaLivre
                 new(.30f, .28f, .55f), new Color(.53f, .51f, .46f), true, "Concrete", Vector2.one, bake: false);
             Damage.Mark(cap, CostaWorldDamage.Surface.Concrete, 80);
             Box("Quay edge", new(23.7f, 0.04f, 0), new(2.6f, 0.08f, 44), concrete, false, "Concrete", new(3, 28));
+            MarkFootFloor(Box("Quay maintenance plate", new(22.85f, .084f, 3.18f), new(1.28f,.016f, 2.08f),
+                new Color(.39f,.42f,.41f), finish: Finish.Metal), CostaAcousticScene.Floor.Metal);
+            MarkFootFloor(Box("Utility cover", new(-4.4f, .010f, -2.04f), new(.95f,.014f,.94f),
+                new Color(.29f,.32f,.32f), finish: Finish.Metal), CostaAcousticScene.Floor.Metal);
             Box("Quay parapet", new(24.7f, 0.68f, 0), new(0.35f, 1.36f, 44), concrete, true, "Concrete", new(24, 1));
 
             for (int i = -4; i <= 4; i++)
@@ -513,6 +517,8 @@ namespace CostaLivre
                 if (surface == "Asphalt" || surface == "Steel")
                     renderer.reflectionProbeUsage = ReflectionProbeUsage.BlendProbesAndSkybox;
             }
+            if (solid && surface == "Asphalt")
+                Acoustics.AddAsphalt(box.GetComponent<Collider>());
             if (solid && (surface == "Steel" || surface == "Asphalt"))
                 Damage.Mark(box, surface == "Steel" ? CostaWorldDamage.Surface.Metal : CostaWorldDamage.Surface.Concrete, 0);
             if (solid && bake)
@@ -527,6 +533,9 @@ namespace CostaLivre
             }
             return box;
         }
+
+        internal void MarkFootFloor(GameObject part, CostaAcousticScene.Floor floor) =>
+            Acoustics.AddFloor(part.GetComponent<Renderer>().bounds, floor);
 
         internal void BatchDecoration(string name, Vector3 position, Vector3 size, Color color, Finish finish = Finish.Standard) =>
             BatchDecoration(Box(name, position, size, color, finish: finish), position);

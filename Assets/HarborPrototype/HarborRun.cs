@@ -315,6 +315,11 @@ namespace CostaLivre
             yield return 0.74f;
 
             CreateWorldActors();
+            for (int floor = 0; floor < CostaFootstepBank.Floors; floor++)
+            {
+                effects.WarmSteps(floor);
+                yield return Mathf.Lerp(.75f, .81f, (floor + 1f) / CostaFootstepBank.Floors);
+            }
             loadingPhase = L("Preparing city navigation", "Preparando a navegação da cidade");
             yield return 0.82f;
 
@@ -1799,7 +1804,7 @@ namespace CostaLivre
             }
             walking = groundVelocity.sqrMagnitude > 0.10f || rolling;
             runningPose = running && walking;
-            footfalls.Update(effects, planarMoved.magnitude, grounded && wasGrounded && !rolling, runningPose, crouching);
+            footfalls.Update(effects, playerModel, planarMoved.magnitude, grounded && wasGrounded && !rolling, runningPose, crouching);
 
             if (rolling)
             {

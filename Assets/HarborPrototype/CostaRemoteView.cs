@@ -137,12 +137,12 @@ namespace CostaLivre
                     {
                         Vector3 moved = position - before;
                         bool onGround = avatar.jumpPose < 0 && avatar.rollPose < 0;
-                        model.Footfalls.Update(effects, new Vector2(moved.x, moved.z).magnitude,
-                            onGround && avatar.moving, avatar.running, avatar.crouched, model.Body.Root);
+                        model.Footfalls.Update(effects, body, new Vector2(moved.x, moved.z).magnitude,
+                            onGround && avatar.moving, avatar.running, avatar.crouched);
                         if (previous.jumpPose is >= 0 and < 0.78f && avatar.jumpPose >= 0.78f)
-                            effects.Play(CostaEffects.Cue.Land, 0.26f, model.Body.Root);
+                            effects.PlayAt(CostaEffects.Cue.Land, position + Vector3.up * .20f, .26f);
                         if (previous.rollPose < 0 && avatar.rollPose >= 0)
-                            effects.Play(CostaEffects.Cue.Roll, 0.28f, model.Body.Root);
+                            effects.PlayAt(CostaEffects.Cue.Roll, position + Vector3.up * .24f, .28f);
                     }
                     Vector3 frameMovement = position - before;
                     frameMovement.y = 0;

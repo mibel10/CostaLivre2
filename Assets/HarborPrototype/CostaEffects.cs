@@ -6,7 +6,7 @@ namespace CostaLivre
     {
         internal enum Cue
         {
-            StepA, StepB, StepC, Jump, Land, Roll, Lock, DoorOpen, DoorShut, Mount, Brake,
+            Jump = 3, Land, Roll, Lock, DoorOpen, DoorShut, Mount, Brake,
             Equip, PanelOpen, PanelClose, Loot, Sale, Purchase, Alert, Cuffs, Reward, CarEngine, BikeEngine,
             Concrete, MetalHit, Wood, Glass, Earth, Blast, Incoming, Hurt, ReloadOut, ReloadIn, ReloadDone
         }
@@ -15,9 +15,9 @@ namespace CostaLivre
         {
             private float distance;
             private int variant;
+            private bool left;
 
-            internal void Update(CostaEffects effects, float meters, bool grounded, bool running, bool crouched,
-                Transform spatial = null)
+            internal void Update(CostaEffects effects, Transform character, float meters, bool grounded, bool running, bool crouched)
             {
                 if (!grounded || meters > 1.5f)
                 {
@@ -36,8 +36,9 @@ namespace CostaLivre
                     return;
 
                 distance %= stride;
-                effects.Play((Cue)variant, crouched ? 0.19f : running ? 0.56f : 0.38f, spatial);
-                variant = (variant + 1) % 3;
+                left = !left;
+                Vector3 foot = character.position + character.right * (left ? -.13f : .13f);
+                effects.Step(foot, crouched ? .24f : running ? .54f : .39f, ref variant);
             }
         }
 
@@ -45,6 +46,9 @@ namespace CostaLivre
         private readonly AudioClip[] bank = new AudioClip[(int)Cue.ReloadDone + 1];
         private readonly AudioSource feedback;
         private readonly CostaSpatialAudio spatialAudio;
+        private readonly CostaAcousticScene acousticScene;
+        private readonly CostaWorldDamage surfaces;
+        private readonly CostaFootstepBank footsteps = new();
         private readonly CostaSpatialAudio.Voice engine;
         private AudioClip engineClip;
         private float engineGain;
@@ -62,20 +66,29 @@ namespace CostaLivre
         {
             feedback = NewSource("Gameplay cues", parent);
             feedback.reverbZoneMix = 0;
-            spatialAudio = new CostaSpatialAudio(parent, listener, art.Acoustics, art.Damage);
+            acousticScene = art.Acoustics;
+            surfaces = art.Damage;
+            spatialAudio = new CostaSpatialAudio(parent, listener, acousticScene, surfaces);
             engine = spatialAudio.LoopVoice("Local vehicle engine");
             particles = new CostaImpactParticles(parent);
         }
 
         internal void UpdateWorldAudio(bool inWorld) => spatialAudio.Update(inWorld);
 
-        internal void Play(Cue cue, float volume = 0.45f, Transform spatial = null)
+        internal void WarmSteps(int surface) => footsteps.Warm(surface);
+
+        private void Step(Vector3 foot, float volume, ref int variant)
         {
-            if (volume <= 0)
+            const float far = 23f;
+            if ((foot - spatialAudio.Listener).sqrMagnitude >= far * far)
                 return;
-            if (spatial != null)
-                PlayAt(cue, spatial.position, volume);
-            else
+            var floor = acousticScene.FloorAt(foot, surfaces);
+            spatialAudio.Play(footsteps.Pick(floor, ref variant), foot + Vector3.up * .17f, volume, 3.3f, far, 117);
+        }
+
+        internal void Play(Cue cue, float volume = 0.45f)
+        {
+            if (volume > 0)
                 feedback.PlayOneShot(Get(cue), volume);
         }
 
@@ -224,6 +237,7 @@ namespace CostaLivre
             particles.Release();
             Object.Destroy(edgeFade);
             spatialAudio.Release();
+            footsteps.Release();
             feedback.Stop();
             foreach (AudioClip clip in bank)
                 Object.Destroy(clip);
@@ -245,7 +259,6 @@ namespace CostaLivre
         {
             float length = cue switch
             {
-                Cue.StepA or Cue.StepB or Cue.StepC => 0.15f,
                 Cue.Jump or Cue.Mount or Cue.Equip or Cue.PanelOpen or Cue.PanelClose => 0.19f,
                 Cue.Lock or Cue.DoorShut or Cue.Cuffs => 0.24f,
                 Cue.DoorOpen or Cue.Land or Cue.Roll => 0.34f,
@@ -278,9 +291,6 @@ namespace CostaLivre
 
                 float sample = cue switch
                 {
-                    Cue.StepA or Cue.StepB or Cue.StepC => (0.56f * low + 0.32f * high
-                        + Wave(time, 68 + 8 * (int)cue) * 0.27f) * Fade(time, 35)
-                        + 0.24f * high * Fade(time - 0.048f, 63),
                     Cue.Jump => (0.43f * low + 0.34f * high) * Fade(time, 21),
                     Cue.Land => (0.65f * low + 0.32f * Wave(time, 54)) * Fade(time, 17)
                         + 0.30f * high * Fade(time - 0.041f, 32),

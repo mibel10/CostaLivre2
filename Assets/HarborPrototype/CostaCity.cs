@@ -196,6 +196,7 @@ namespace CostaLivre
             BuildHighway();
             for (int i = 0; i < Districts.Length; i++)
                 BuildDistrict(Districts[i], i);
+            art.FinishDecoration();
         }
 
         private void Edge(float xMin, float xMax, float z)
@@ -314,7 +315,7 @@ namespace CostaLivre
             {
                 for (int stripe = -4; stripe <= 4; stripe++)
                 {
-                    art.Box("Pedestrian crossing", new Vector3(-30 + stripe * 0.82f, 0.021f, cross + 4.8f),
+                    art.BatchDecoration("Pedestrian crossing", new Vector3(-30 + stripe * 0.82f, 0.021f, cross + 4.8f),
                         new Vector3(0.45f, 0.03f, 2.7f), white);
                 }
             }
@@ -354,7 +355,7 @@ namespace CostaLivre
 
         private void Mark(Vector3 position, Vector3 size)
         {
-            art.Box("Road paint", position, size, new Color(0.55f, 0.51f, 0.41f));
+            art.BatchDecoration("Road paint", position, size, new Color(0.55f, 0.51f, 0.41f));
         }
 
         private void Venue(string name, Vector3 entry, float width, float depth, float height, Color color, Color trim)
@@ -418,9 +419,9 @@ namespace CostaLivre
                 for (float x = -width / 2 + 2; x < width / 2 - 0.7f; x += 2.75f)
                 {
                     float facade = center.z - depth / 2;
-                    art.Box("Setback window", new Vector3(center.x + x, y, facade - 0.024f),
+                    art.BatchDecoration("Setback window", new Vector3(center.x + x, y, facade - 0.024f),
                         new Vector3(1.54f, 1.32f, 0.049f), Glass);
-                    art.Box("Window sill", new Vector3(center.x + x, y - 0.65f, facade - 0.09f),
+                    art.BatchDecoration("Window sill", new Vector3(center.x + x, y - 0.65f, facade - 0.09f),
                         new Vector3(1.68f, 0.11f, 0.23f), Pavement);
                 }
             }

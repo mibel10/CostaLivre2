@@ -22,6 +22,7 @@ namespace CostaLivre
         private readonly Dictionary<(string, Color, Vector2), Material> surfaces = new();
         private readonly Dictionary<string, (Texture2D Color, Texture2D Normal)> maps = new();
         private readonly List<Mesh> models = new();
+        private readonly Dictionary<(Vector2Int Cell, Material Material), List<MeshFilter>> decoration = new();
         private readonly List<NavMeshBuildSource> walkableGeometry = new();
         private readonly HarborCharacter.Art characterArt = new();
         private Font signFont;
@@ -386,6 +387,56 @@ namespace CostaLivre
                 });
             }
             return box;
+        }
+
+        internal void BatchDecoration(string name, Vector3 position, Vector3 size, Color color)
+        {
+            GameObject part = Box(name, position, size, color);
+            var cell = new Vector2Int(Mathf.FloorToInt(position.x / 32f), Mathf.FloorToInt(position.z / 32f));
+            var key = (cell, part.GetComponent<MeshRenderer>().sharedMaterial);
+            if (!decoration.TryGetValue(key, out List<MeshFilter> pieces))
+                decoration.Add(key, pieces = new List<MeshFilter>());
+            pieces.Add(part.GetComponent<MeshFilter>());
+        }
+
+        internal void FinishDecoration()
+        {
+            foreach (var entry in decoration)
+            {
+                List<MeshFilter> pieces = entry.Value;
+                if (pieces.Count < 2)
+                    continue;
+
+                GameObject batch = new GameObject("Static city detail");
+                batch.transform.SetParent(root, false);
+                batch.transform.localPosition = new Vector3(entry.Key.Cell.x * 32f, 0, entry.Key.Cell.y * 32f);
+                Matrix4x4 inverse = batch.transform.worldToLocalMatrix;
+                var sources = new CombineInstance[pieces.Count];
+                for (int i = 0; i < pieces.Count; i++)
+                {
+                    MeshFilter piece = pieces[i];
+                    sources[i] = new CombineInstance
+                    {
+                        mesh = piece.sharedMesh,
+                        transform = inverse * piece.transform.localToWorldMatrix
+                    };
+                }
+
+                var mesh = new Mesh { name = "Static city detail" };
+                mesh.CombineMeshes(sources);
+                mesh.UploadMeshData(true);
+                models.Add(mesh);
+                batch.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var renderer = batch.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = entry.Key.Material;
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                foreach (MeshFilter piece in pieces)
+                {
+                    piece.gameObject.SetActive(false);
+                    Object.Destroy(piece.gameObject);
+                }
+            }
+            decoration.Clear();
         }
 
         private Material Surface(string surface, Color color, Vector2 tiling)

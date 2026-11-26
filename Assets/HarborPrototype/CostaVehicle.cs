@@ -187,6 +187,68 @@ namespace CostaLivre
                 new(0.22f, 0.076f, 0.085f), new Color(0.48f, 0.065f, 0.060f));
         }
 
+        internal float TopSpeed => topSpeed;
+        internal float ReverseSpeed => IsBike ? 3f : 7f;
+        internal float MaximumTurnRate => 92f * steeringStrength;
+
+        internal bool TryExit(Vector3 position, Quaternion rotation, int side, out Vector3 exit)
+        {
+            exit = position;
+            if (side != -1 && side != 1)
+                return false;
+
+            Vector3 offset = rotation * Vector3.right * (side * ExitOffset);
+            exit += offset;
+            int layers = Physics.DefaultRaycastLayers;
+            const QueryTriggerInteraction triggers = QueryTriggerInteraction.Ignore;
+            bool wasEnabled = body.enabled;
+            body.enabled = false;
+            try
+            {
+                if (Physics.CapsuleCast(position + Vector3.up * 0.38f, position + Vector3.up * 1.46f,
+                        0.34f, offset.normalized, offset.magnitude, layers, triggers)
+                    || !Physics.Raycast(exit + Vector3.up, Vector3.down, out RaycastHit ground, 1.45f, layers, triggers)
+                    || ground.normal.y < 0.65f)
+                    return false;
+
+                exit.y = ground.point.y + 0.03f;
+                return !Physics.CheckCapsule(exit + Vector3.up * 0.38f, exit + Vector3.up * 1.46f,
+                    0.34f, layers, triggers);
+            }
+            finally
+            {
+                body.enabled = wasEnabled;
+            }
+        }
+
+        internal bool ValidNetworkTravel(Vector3 from, float fromYaw, Vector3 to, float toYaw, float currentSpeed, float proposedSpeed)
+        {
+            Quaternion rotation = Quaternion.Euler(0, toYaw, 0);
+            Vector3 movement = to - from;
+            float distance = movement.magnitude;
+            if (distance > 0.02f)
+            {
+                Vector3 direction = movement / distance;
+                Vector3 heading = Quaternion.Euler(0, Mathf.LerpAngle(fromYaw, toYaw, 0.5f), 0) * Vector3.forward;
+                float speed = Mathf.Abs(currentSpeed) > Mathf.Abs(proposedSpeed) ? currentSpeed : proposedSpeed;
+                if (Mathf.Abs(Vector3.Dot(direction, heading * Mathf.Sign(speed)) - 1f) * distance > 0.22f
+                    || SimulatedTravel(from, rotation, direction, distance) + 0.12f < distance)
+                    return false;
+            }
+
+            bool wasEnabled = body.enabled;
+            body.enabled = false;
+            try
+            {
+                return !Physics.CheckBox(to + rotation * body.center, body.size * 0.5f - Vector3.one * 0.075f,
+                    rotation, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            }
+            finally
+            {
+                body.enabled = wasEnabled;
+            }
+        }
+
         internal void Reset()
         {
             speed = 0;
@@ -240,7 +302,7 @@ namespace CostaLivre
         internal void Drive(Vector2 input, bool braking)
         {
             float dt = Time.deltaTime;
-            float target = braking ? 0 : input.y >= 0 ? topSpeed * input.y : (IsBike ? 3f : 7f) * input.y;
+            float target = braking ? 0 : input.y >= 0 ? topSpeed * input.y : ReverseSpeed * input.y;
             float acceleration = braking || Mathf.Sign(target) != Mathf.Sign(speed) ? 20f
                 : Mathf.Abs(input.y) > 0.03f ? engine : 4.4f;
             speed = Mathf.MoveTowards(speed, target, acceleration * dt);

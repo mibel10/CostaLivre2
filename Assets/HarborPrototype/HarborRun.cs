@@ -28,7 +28,7 @@ namespace CostaLivre
 
         private static readonly Vector3[] GuardPosts = { new(18, 0, 18), new(7, 0, 0), new(-47, 0, 96), new(-63, 0, 95), new(-30, 0, 73), new(-81, 0, 94) };
         private const float InteractionRadius = 1.8f;
-        private const float FullStamina = 3.8f;
+        internal const float FullStamina = 3.8f;
         private const float DefaultFov = 66f;
         private const float RollDuration = 0.69f;
         private static readonly Vector3 MenuActorPosition = new(18.9f, 0, -10.8f);
@@ -910,23 +910,11 @@ namespace CostaLivre
             {
                 for (int side = -1; side <= 1; side += 2)
                 {
-                    Vector3 exit = car.Root.position + car.Root.right * side * car.ExitOffset;
-                    if (Physics.CheckCapsule(exit + Vector3.up * 0.38f, exit + Vector3.up * 1.46f, 0.34f,
-                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                    {
+                    if (!car.TryExit(car.Root.position, car.Root.rotation, side, out Vector3 exit))
                         continue;
-                    }
-
-                    if (!Physics.Raycast(exit + Vector3.up, Vector3.down, out RaycastHit ground, 1.45f,
-                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                    {
-                        continue;
-                    }
-
-                    exit.y = ground.point.y + 0.03f;
                     if (session.Online)
                     {
-                        session.ExitVehicle(exit);
+                        session.ExitVehicle(side);
                         return true;
                     }
 

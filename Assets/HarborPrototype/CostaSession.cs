@@ -93,6 +93,12 @@ namespace CostaLivre
             internal int NoticeVersion;
             internal float LastPacket;
             internal float LastPose;
+            internal float AirborneSince = -1;
+            internal float TakeoffHeight;
+            internal float Stamina = HarborRun.FullStamina;
+            internal float RecoverAfter;
+            internal bool SprintExhausted;
+            internal float TravelSlack = 0.55f;
             internal float HeldUntil;
             internal float ArrestAfter;
             internal float NextShot;
@@ -537,21 +543,23 @@ namespace CostaLivre
                         {
                             car.driver = avatar.id;
                             avatar.vehicle = msg.index;
+                            ResetMotion(peer);
                             avatar.pos = car.pos;
                             avatar.revision++;
                         }
                     }
                     break;
                 case "exit":
-                    if (avatar.vehicle >= 0 && msg.pose != null && ValidPoint(msg.pose.pos)
-                        && !Physics.CheckCapsule(msg.pose.pos + Vector3.up * 0.38f, msg.pose.pos + Vector3.up * 1.46f, 0.32f,
-                            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    if (avatar.vehicle >= 0)
                     {
                         Vehicle car = hostCars[avatar.vehicle];
-                        if (Near(car.pos, msg.pose.pos, 4.6f))
+                        CostaVehicle vehicle = sceneVehicles[avatar.vehicle];
+                        if (vehicle.TryExit(car.pos, Quaternion.Euler(0, car.yaw, 0), msg.index, out Vector3 exit)
+                            && ValidPoint(exit))
                         {
                             ReleaseVehicle(peer);
-                            avatar.pos = msg.pose.pos;
+                            avatar.pos = exit;
+                            ResetMotion(peer);
                             avatar.yaw = car.yaw;
                             avatar.revision++;
                         }
@@ -567,33 +575,72 @@ namespace CostaLivre
                 return;
 
             Avatar avatar = peer.Pose;
-            float speedLimit = avatar.vehicle >= 0 ? 48 : 13;
-            float elapsed = Mathf.Clamp(now - peer.LastPose, 0.03f, 1.25f);
-            if (Vector3.Distance(avatar.pos, pose.pos) > elapsed * speedLimit + 0.9f)
-                return;
-
-            int equipped = avatar.equipped;
+            float elapsed = Mathf.Clamp(now - peer.LastPose, 0.035f, 0.5f);
             Vector3 movement = pose.pos - avatar.pos;
-            float allowedTravel = elapsed * Mathf.Max(FootSpeed(avatar, avatar.equipped), FootSpeed(pose, equipped)) + 0.55f;
-            if (avatar.vehicle < 0 && movement.x * movement.x + movement.z * movement.z >
-                allowedTravel * allowedTravel)
-                return;
             float distance = movement.magnitude;
-            if (distance > 0.02f && MovementBlocked(avatar, pose, movement / distance, distance))
+            bool moving = distance > 0.002f;
+            if (avatar.vehicle < 0)
             {
-                avatar.revision++;
-                if (avatar.vehicle >= 0)
-                    hostCars[avatar.vehicle].speed = 0;
-                return;
+                float planar = new Vector2(movement.x, movement.z).magnitude;
+                bool allowedSprint = pose.running && !peer.SprintExhausted;
+                float speed = Mathf.Max(FootSpeed(avatar, avatar.running && !peer.SprintExhausted, avatar.equipped),
+                    FootSpeed(pose, allowedSprint, avatar.equipped));
+                float slack = Mathf.Min(0.55f, peer.TravelSlack + elapsed * speed - planar);
+                if (slack < 0 || !ValidFootHeight(peer, pose.pos, now, elapsed)
+                    || moving && MovementBlocked(avatar, pose, movement / distance, distance))
+                {
+                    CorrectPose(peer, now);
+                    return;
+                }
+
+                peer.TravelSlack = slack;
+                if (!pose.running)
+                    peer.SprintExhausted = false;
+                bool supported = Supported(pose.pos);
+                if (supported)
+                    peer.AirborneSince = -1;
+                else if (peer.AirborneSince < 0)
+                {
+                    peer.AirborneSince = now - elapsed;
+                    peer.TakeoffHeight = avatar.pos.y;
+                }
+                if (allowedSprint && supported && planar > 0.02f)
+                {
+                    peer.Stamina = Mathf.Max(0, peer.Stamina - elapsed);
+                    peer.SprintExhausted = peer.Stamina == 0;
+                    peer.RecoverAfter = now + 0.75f;
+                }
+                else if (now >= peer.RecoverAfter)
+                    peer.Stamina = Mathf.Min(HarborRun.FullStamina, peer.Stamina + elapsed * 0.85f);
+
+                avatar.running = allowedSprint;
+                avatar.standing = supported && !pose.crouched && pose.rollPose < 0;
+            }
+            else
+            {
+                Vehicle car = hostCars[avatar.vehicle];
+                CostaVehicle rules = sceneVehicles[avatar.vehicle];
+                float speed = pose.held / 10f;
+                float speedLimit = Mathf.Min(rules.TopSpeed, Mathf.Abs(car.speed) + 20f * elapsed + 0.45f);
+                float turn = Mathf.Abs(Mathf.DeltaAngle(car.yaw, pose.yaw));
+                float travel = Mathf.Max(Mathf.Abs(car.speed), Mathf.Abs(speed)) * elapsed;
+                float slack = Mathf.Min(0.65f, peer.TravelSlack + travel - distance);
+                if (Mathf.Abs(pose.pos.y) > 0.03f || speed < -rules.ReverseSpeed - 0.05f
+                    || Mathf.Abs(speed) > speedLimit || turn > rules.MaximumTurnRate * elapsed + 3f
+                    || slack < 0 || !rules.ValidNetworkTravel(car.pos, car.yaw, pose.pos, pose.yaw, car.speed, speed))
+                {
+                    CorrectPose(peer, now);
+                    return;
+                }
+                peer.TravelSlack = slack;
+                avatar.running = avatar.standing = false;
             }
 
             peer.LastPose = now;
             avatar.pos = pose.pos;
             avatar.yaw = Mathf.Repeat(pose.yaw, 360);
             avatar.crouched = pose.crouched && avatar.vehicle < 0;
-            avatar.standing = pose.standing && !avatar.crouched && avatar.vehicle < 0;
             avatar.moving = pose.moving;
-            avatar.running = pose.running;
             avatar.aiming = pose.aiming;
             avatar.jumpPose = Finite(pose.jumpPose) ? Mathf.Clamp(pose.jumpPose, -1, 1) : -1;
             avatar.rollPose = Finite(pose.rollPose) ? Mathf.Clamp(pose.rollPose, -1, 1) : -1;
@@ -602,15 +649,49 @@ namespace CostaLivre
                 Vehicle car = hostCars[avatar.vehicle];
                 car.pos = new Vector3(pose.pos.x, 0, pose.pos.z);
                 car.yaw = avatar.yaw;
-                car.speed = Mathf.Clamp(pose.held / 10f, -8, 42);
+                car.speed = pose.held / 10f;
                 car.lean = sceneVehicles[avatar.vehicle].IsBike && Finite(pose.bikeLean)
                     ? Mathf.Clamp(pose.bikeLean, -24, 24) : 0;
             }
         }
 
-        private static float FootSpeed(Avatar pose, int equipped) =>
-            pose.rollPose >= 0 ? 7.3f : pose.crouched ? 2f : pose.running
-                ? HarborArsenal.SprintSpeed(equipped) : HarborArsenal.WalkSpeed(equipped, false);
+        private static void ResetMotion(Peer peer)
+        {
+            peer.AirborneSince = -1;
+            peer.TravelSlack = 0.55f;
+        }
+
+        private void CorrectPose(Peer peer, float now)
+        {
+            peer.Pose.revision++;
+            peer.LastPose = now;
+            peer.TravelSlack = 0.55f;
+            if (peer.Pose.vehicle >= 0)
+                hostCars[peer.Pose.vehicle].speed = 0;
+        }
+
+        private static bool Supported(Vector3 feet) =>
+            Physics.Raycast(feet + Vector3.up * 0.16f, Vector3.down, out RaycastHit floor, 0.27f,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) && floor.normal.y > 0.65f;
+
+        private static bool ValidFootHeight(Peer peer, Vector3 point, float now, float elapsed)
+        {
+            float rise = point.y - peer.Pose.pos.y;
+            if (rise > 5.8f * elapsed + 0.16f)
+                return false;
+            if (peer.AirborneSince < 0)
+                return true;
+
+            float age = now - peer.AirborneSince;
+            if (point.y > peer.TakeoffHeight + 1.14f)
+                return false;
+            return Supported(point) || age < 0.66f || rise < -elapsed * 1.4f;
+        }
+
+        private static float FootSpeed(Avatar pose, bool running, int equipped) =>
+            pose.rollPose >= 0 ? 7.3f : pose.crouched ? 2f : running
+                ? HarborArsenal.SprintSpeed(equipped)
+                : HarborArsenal.WalkSpeed(equipped, false);
 
         private static int WeaponInventory(Peer peer) =>
             HarborArsenal.KnifeMask | (peer.Pose.police ? PoliceKit : peer.Weapons);
@@ -692,6 +773,7 @@ namespace CostaLivre
             {
                 victim.Pose.health = 100;
                 victim.Pose.pos = victim.Pose.police ? PoliceSpawn : FindCriminalSpawn();
+                ResetMotion(victim);
                 victim.Pose.revision++;
                 victim.RespawnProtection = now + 3;
                 SetNotice(victim, 11);
@@ -700,13 +782,6 @@ namespace CostaLivre
 
         private bool MovementBlocked(Avatar avatar, Avatar pose, Vector3 direction, float distance)
         {
-            if (avatar.vehicle >= 0)
-            {
-                var car = hostCars[avatar.vehicle];
-                Quaternion orientation = Quaternion.Euler(0, car.yaw, 0);
-                return sceneVehicles[avatar.vehicle].SimulatedTravel(car.pos, orientation, direction, distance) + 0.12f < distance;
-            }
-
             float height = pose.rollPose >= 0 ? 1.0f : pose.crouched ? 1.16f : 1.8f;
             const float radius = 0.27f;
             Vector3 lower = avatar.pos + Vector3.up * 0.43f;
@@ -740,6 +815,7 @@ namespace CostaLivre
                 target.Pose.standing = true;
                 target.Pose.jumpPose = target.Pose.rollPose = -1;
                 target.Pose.crouched = target.Pose.moving = target.Pose.running = false;
+                ResetMotion(target);
                 target.Pose.revision++;
                 target.HeldUntil = now + 7;
                 target.ArrestAfter = now + 18;
@@ -763,6 +839,7 @@ namespace CostaLivre
             peer.Pose.wanted = !police && peer.Bag.Count > 0;
             peer.Pose.pos = police ? PoliceSpawn + Vector3.right * (peer.Pose.id % 4) : FindCriminalSpawn();
             peer.Pose.yaw = police ? 180 : 350;
+            ResetMotion(peer);
             peer.Pose.revision++;
             SetNotice(peer, police ? 2 : 9);
         }
@@ -915,7 +992,7 @@ namespace CostaLivre
         internal void Fire(int weapon, Vector3 direction) =>
             Send(new Frame { type = "fire", index = weapon, direction = direction });
 
-        internal void ExitVehicle(Vector3 point) => Send(new Frame { type = "exit", pose = new Avatar { pos = point } });
+        internal void ExitVehicle(int side) => Request("exit", side);
 
         public void Dispose()
         {

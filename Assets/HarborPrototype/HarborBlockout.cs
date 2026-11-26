@@ -7,6 +7,7 @@ namespace CostaLivre
 {
     internal sealed class HarborBlockout
     {
+        internal enum Finish { Standard, Glass, Paint, Metal, Rubber }
         internal static readonly Vector3 Spawn = new(-11, 0, -14);
         internal static readonly Vector3 Cargo = new(17, 0, 12);
         internal static readonly Vector3 Safehouse = new(-20, 0, -11);
@@ -18,9 +19,12 @@ namespace CostaLivre
         private readonly Transform root;
         private readonly Shader shader;
         private readonly Material surfaceTemplate = Resources.Load<Material>("Harbor/HarborSurface");
-        private readonly Dictionary<Color, Material> palette = new();
+        private readonly Material responseTemplate = Resources.Load<Material>("Harbor/HarborSurfaceResponse");
+        private readonly Dictionary<(Color, Finish), Material> palette = new();
         private readonly Dictionary<(string, Color, Vector2), Material> surfaces = new();
-        private readonly Dictionary<string, (Texture2D Color, Texture2D Normal)> maps = new();
+        private readonly Dictionary<string, (Texture2D Color, Texture2D Normal, Texture2D Response)> maps = new();
+        private readonly List<(Color Color, Material Material)> asphalt = new();
+        private float wetness;
         private readonly List<Mesh> models = new();
         private readonly Dictionary<(Vector2Int Cell, Material Material), List<MeshFilter>> decoration = new();
         private readonly List<NavMeshBuildSource> walkableGeometry = new();
@@ -32,6 +36,8 @@ namespace CostaLivre
         private Material water;
         private float waterDaylight = 1;
         private Material detailTemplate;
+        private Material wearMaterial;
+        private readonly Mesh[] wearMeshes = new Mesh[4];
         private HarborStreetLights streetLights;
         private bool ultra;
         private bool detailedSurfaces;
@@ -53,6 +59,13 @@ namespace CostaLivre
             bayBase = bay.sharedMaterial;
             ApplyWater();
             Box("Harbor streets", new(0, -0.25f, 0), new(50, 0.5f, 44), road, true, "Asphalt", new(21, 19));
+            for (int i = 0; i < 8; i++)
+            {
+                var point = new Vector3(-19 + 5.3f * i, 0.004f, i % 2 == 0 ? -1.4f : 2.3f);
+                Wear(i % 3, point, i % 3 == 2 ? new Vector2(3.4f, 8f) : new Vector2(3.2f, 2.7f),
+                    Quaternion.Euler(90, 0, i * 57));
+            }
+            Wear(3, new Vector3(24.52f, 0.72f, 8), new Vector2(3.8f, 1.2f), Quaternion.Euler(0, 90, 0));
             Box("Quay edge", new(23.7f, 0.04f, 0), new(2.6f, 0.08f, 44), concrete, false, "Concrete", new(3, 28));
             Box("Quay parapet", new(24.7f, 0.68f, 0), new(0.35f, 1.36f, 44), concrete, true, "Concrete", new(24, 1));
 
@@ -224,6 +237,7 @@ namespace CostaLivre
         internal void ReleaseMaterials()
         {
             Object.Destroy(water);
+            Object.Destroy(wearMaterial);
             streetLights?.Release();
             if (signMaterial != null)
             {
@@ -382,11 +396,16 @@ namespace CostaLivre
         }
 
         internal GameObject Box(string name, Vector3 position, Vector3 size, Color color, bool solid = false,
-            string surface = null, Vector2 tiling = default, bool bake = true)
+            string surface = null, Vector2 tiling = default, bool bake = true, Finish finish = Finish.Standard)
         {
-            GameObject box = Part(root, PrimitiveType.Cube, name, position, size, color, solid);
+            GameObject box = Part(root, PrimitiveType.Cube, name, position, size, color, solid, finish);
             if (surface != null)
-                box.GetComponent<Renderer>().sharedMaterial = Surface(surface, color, tiling);
+            {
+                Renderer renderer = box.GetComponent<Renderer>();
+                renderer.sharedMaterial = Surface(surface, color, tiling);
+                if (surface == "Asphalt" || surface == "Steel")
+                    renderer.reflectionProbeUsage = ReflectionProbeUsage.BlendProbesAndSkybox;
+            }
             if (solid && bake)
             {
                 walkableGeometry.Add(new NavMeshBuildSource
@@ -400,8 +419,8 @@ namespace CostaLivre
             return box;
         }
 
-        internal void BatchDecoration(string name, Vector3 position, Vector3 size, Color color) =>
-            BatchDecoration(Box(name, position, size, color), position);
+        internal void BatchDecoration(string name, Vector3 position, Vector3 size, Color color, Finish finish = Finish.Standard) =>
+            BatchDecoration(Box(name, position, size, color, finish: finish), position);
 
         internal void StreetLampDiffuser(Vector3 position, Vector3 size)
         {
@@ -414,6 +433,43 @@ namespace CostaLivre
 
         internal void UpdateStreetLights(bool night, Vector3 view, int budget) =>
             streetLights?.Update(night, view, budget);
+
+        internal void Wear(int design, Vector3 position, Vector2 size, Quaternion rotation)
+        {
+            if (wearMaterial == null)
+            {
+                Material decal = Resources.Load<Material>("Harbor/WearDecal");
+                if (decal == null)
+                    return;
+                wearMaterial = new Material(decal);
+            }
+
+            if (wearMeshes[design] == null)
+            {
+                float x = (design % 2) * 0.5f;
+                float y = (1 - design / 2) * 0.5f;
+                var mesh = new Mesh
+                {
+                    name = "Street wear atlas quad",
+                    vertices = new Vector3[] { new(-0.5f,-0.5f,0), new(-0.5f,0.5f,0), new(0.5f,0.5f,0), new(0.5f,-0.5f,0) },
+                    uv = new Vector2[] { new(x,y), new(x,y+0.5f), new(x+0.5f,y+0.5f), new(x+0.5f,y) },
+                    triangles = new[] { 0, 1, 2, 0, 2, 3 }
+                };
+                mesh.RecalculateNormals();
+                wearMeshes[design] = mesh;
+                models.Add(mesh);
+            }
+
+            GameObject patch = new GameObject("Street surface wear");
+            patch.transform.SetParent(root, false);
+            patch.transform.SetLocalPositionAndRotation(position, rotation);
+            patch.transform.localScale = new Vector3(size.x, size.y, 1);
+            patch.AddComponent<MeshFilter>().sharedMesh = wearMeshes[design];
+            MeshRenderer renderer = patch.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = wearMaterial;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            BatchDecoration(patch, position);
+        }
 
         private void BatchDecoration(GameObject part, Vector3 position)
         {
@@ -481,24 +537,52 @@ namespace CostaLivre
             if (!maps.TryGetValue(surface, out var textures))
             {
                 textures = (Resources.Load<Texture2D>($"Harbor/{surface}Color"),
-                    Resources.Load<Texture2D>($"Harbor/{surface}Normal"));
+                    Resources.Load<Texture2D>($"Harbor/{surface}Normal"),
+                    Resources.Load<Texture2D>($"Harbor/{surface}Response"));
                 maps.Add(surface, textures);
             }
-            material = new Material(surfaceTemplate);
+            material = new Material(textures.Response != null ? responseTemplate : surfaceTemplate);
             material.color = color;
             material.SetTexture("_BaseMap", textures.Color);
             material.SetTextureScale("_BaseMap", tiling);
-            material.SetFloat("_Smoothness", surface == "Steel" ? 0.39f : 0.16f);
+            material.SetFloat("_Smoothness", textures.Response != null ? 1f : 0.16f);
+            if (textures.Response != null)
+            {
+                material.SetTexture("_MetallicGlossMap", textures.Response);
+                material.SetTexture("_OcclusionMap", textures.Response);
+                material.EnableKeyword("_METALLICSPECGLOSSMAP");
+                material.EnableKeyword("_OCCLUSIONMAP");
+                material.SetFloat("_OcclusionStrength", 0.8f);
+            }
             if (textures.Normal != null)
             {
                 material.SetTexture("_BumpMap", textures.Normal);
-                material.SetFloat("_BumpScale", 0.65f);
+                material.SetFloat("_BumpScale", surface == "Walker" ? 0.42f : 0.72f);
                 material.EnableKeyword("_NORMALMAP");
             }
             surfaces.Add(key, material);
             if (detailedSurfaces)
                 ApplySurfaceDetail(surface, material);
+            if (surface == "Asphalt")
+            {
+                asphalt.Add((color, material));
+                ApplyAsphalt(color, material);
+            }
             return material;
+        }
+
+        internal void SetSurfaceWetness(float value)
+        {
+            wetness = value;
+            foreach (var road in asphalt)
+                ApplyAsphalt(road.Color, road.Material);
+        }
+
+        private void ApplyAsphalt(Color tint, Material material)
+        {
+            material.color = Color.Lerp(tint, tint * new Color(0.65f, 0.69f, 0.73f, 1), wetness);
+            material.SetFloat("_Smoothness", Mathf.Lerp(0.28f, 1f, wetness));
+            material.SetFloat("_BumpScale", Mathf.Lerp(detailedSurfaces ? 0.82f : 0.65f, 0.36f, wetness));
         }
 
         internal void SetUltraVisuals(bool enabled, bool fullTextures)
@@ -515,6 +599,8 @@ namespace CostaLivre
             detailedSurfaces = detail;
             foreach (var entry in surfaces)
                 ApplySurfaceDetail(entry.Key.Item1, entry.Value);
+            foreach (var road in asphalt)
+                ApplyAsphalt(road.Color, road.Material);
         }
 
         internal void SetWaterDaylight(float hour)
@@ -543,14 +629,13 @@ namespace CostaLivre
                 return;
 
             if (detailedSurfaces && detailTemplate == null)
-                detailTemplate = Resources.Load<Material>("Harbor/HarborSurfaceUltra");
+                detailTemplate = Resources.Load<Material>("Harbor/HarborSurfaceResponseUltra");
             bool useDetail = detailedSurfaces && detailTemplate != null;
             const string albedo = "_DetailAlbedoMap";
             const string normal = "_DetailNormalMap";
             material.SetTexture(albedo, useDetail ? detailTemplate.GetTexture(albedo) : null);
             material.SetTexture(normal, useDetail ? detailTemplate.GetTexture(normal) : null);
             material.SetFloat("_BumpScale", useDetail ? 0.91f : 0.65f);
-            material.SetFloat("_Smoothness", surface == "Steel" ? (useDetail ? 0.53f : 0.39f) : (useDetail ? 0.24f : 0.16f));
             if (useDetail)
             {
                 Vector2 tiling = Vector2.one * (surface == "Steel" ? 2.5f : 3.2f);
@@ -563,31 +648,56 @@ namespace CostaLivre
                 material.DisableKeyword("_DETAIL_SCALED");
         }
 
-        internal Transform Model(Transform parent, string name, Color color, params CostaMesh.Section[] section)
+        internal Transform Model(Transform parent, string name, Color color, params CostaMesh.Section[] section) =>
+            FinishedModel(parent, name, color, Finish.Standard, section);
+
+        internal Transform FinishedModel(Transform parent, string name, Color color, Finish finish, params CostaMesh.Section[] section)
         {
             GameObject part = new GameObject(name);
             part.transform.SetParent(parent, false);
             Mesh mesh = CostaMesh.Loft(name, section);
             models.Add(mesh);
             part.AddComponent<MeshFilter>().sharedMesh = mesh;
-            part.AddComponent<MeshRenderer>().sharedMaterial = SolidMaterial(color);
+            Renderer renderer = part.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = SolidMaterial(color, finish);
+            if (finish != Finish.Standard)
+                renderer.reflectionProbeUsage = ReflectionProbeUsage.BlendProbesAndSkybox;
             return part.transform;
         }
 
-        private Material SolidMaterial(Color color)
+        private Material SolidMaterial(Color color, Finish finish)
         {
-            if (!palette.TryGetValue(color, out Material material))
+            var key = (color, finish);
+            if (!palette.TryGetValue(key, out Material material))
             {
-                material = new Material(shader);
+                material = new Material(finish == Finish.Standard ? shader : surfaceTemplate.shader);
                 material.color = color;
-                material.SetFloat("_Smoothness", 0.22f);
-                palette.Add(color, material);
+                float smoothness = finish switch
+                {
+                    Finish.Glass => 0.89f, Finish.Paint => 0.73f, Finish.Metal => 0.52f,
+                    Finish.Rubber => 0.07f, _ => 0.22f
+                };
+                material.SetFloat("_Smoothness", smoothness);
+                material.SetFloat("_Metallic", finish == Finish.Metal ? 0.76f : finish == Finish.Paint ? 0.24f : 0f);
+                if (finish == Finish.Paint || finish == Finish.Metal)
+                {
+                    if (detailTemplate == null)
+                        detailTemplate = Resources.Load<Material>("Harbor/HarborSurfaceResponseUltra");
+                    if (detailTemplate != null)
+                    {
+                        material.SetTexture("_BumpMap", detailTemplate.GetTexture("_DetailNormalMap"));
+                        material.SetTextureScale("_BaseMap", Vector2.one * (finish == Finish.Paint ? 6 : 2));
+                        material.SetFloat("_BumpScale", finish == Finish.Paint ? 0.15f : 0.32f);
+                        material.EnableKeyword("_NORMALMAP");
+                    }
+                }
+                palette.Add(key, material);
             }
             return material;
         }
 
         internal GameObject Part(Transform parent, PrimitiveType shape, string name, Vector3 position,
-            Vector3 scale, Color color, bool solid = false)
+            Vector3 scale, Color color, bool solid = false, Finish finish = Finish.Standard)
         {
             GameObject part = GameObject.CreatePrimitive(shape);
             part.name = name;
@@ -607,7 +717,9 @@ namespace CostaLivre
             }
 
             Renderer renderer = part.GetComponent<Renderer>();
-            renderer.sharedMaterial = SolidMaterial(color);
+            renderer.sharedMaterial = SolidMaterial(color, finish);
+            if (finish != Finish.Standard)
+                renderer.reflectionProbeUsage = ReflectionProbeUsage.BlendProbesAndSkybox;
             if (!solid)
                 renderer.shadowCastingMode = parent == root ? ShadowCastingMode.Off : ShadowCastingMode.On;
             return part;

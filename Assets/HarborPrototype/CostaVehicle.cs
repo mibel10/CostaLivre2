@@ -88,14 +88,14 @@ namespace CostaLivre
                 BuildSuperBody(art, paint, window);
             else
             {
-                art.Model(shell, "Sculpted body", paint, new(-2.23f, 0.73f, 0.36f, 0.76f),
+                art.FinishedModel(shell, "Sculpted body", paint, HarborBlockout.Finish.Paint, new(-2.23f, 0.73f, 0.36f, 0.76f),
                     new(-1.86f, 0.93f, 0.29f, 0.94f), new(-0.75f, 0.97f, 0.26f, 0.92f),
                     new(1.01f, 0.97f, 0.26f, 0.87f), new(1.91f, 0.92f, 0.31f, 0.78f),
                     new(2.20f, 0.76f, 0.35f, 0.65f));
-                art.Model(shell, "Glass cabin", window, new(-1.32f, 0.75f, 0.86f, 0.96f),
+                art.FinishedModel(shell, "Glass cabin", window, HarborBlockout.Finish.Glass, new(-1.32f, 0.75f, 0.86f, 0.96f),
                     new(-0.72f, 0.74f, 0.89f, 1.40f), new(0.51f, 0.72f, 0.85f, 1.40f),
                     new(1.04f, 0.80f, 0.84f, 0.91f));
-                art.Model(shell, "Roof", paint, new(-0.79f, 0.70f, 1.39f, 1.43f),
+                art.FinishedModel(shell, "Roof", paint, HarborBlockout.Finish.Paint, new(-0.79f, 0.70f, 1.39f, 1.43f),
                     new(-0.63f, 0.75f, 1.39f, 1.46f), new(0.37f, 0.73f, 1.39f, 1.46f),
                     new(0.54f, 0.68f, 1.38f, 1.43f));
             }
@@ -146,14 +146,14 @@ namespace CostaLivre
         private void BuildSuperBody(HarborBlockout art, Color paint, Color glass)
         {
             bool track = style == Style.Track;
-            art.Model(shell, "Wedge body", paint,
+            art.FinishedModel(shell, "Wedge body", paint, HarborBlockout.Finish.Paint,
                 new(-2.24f, 0.80f, 0.32f, 0.72f), new(-1.63f, 1.04f, 0.24f, 0.87f),
                 new(-0.62f, 1.00f, 0.22f, 0.77f), new(0.95f, 0.97f, 0.22f, 0.67f),
                 new(1.85f, 0.98f, 0.25f, 0.57f), new(2.23f, 0.69f, 0.31f, 0.49f));
-            art.Model(shell, "Swept glazing", glass, new(-1.68f, 0.62f, 0.77f, 0.83f),
+            art.FinishedModel(shell, "Swept glazing", glass, HarborBlockout.Finish.Glass, new(-1.68f, 0.62f, 0.77f, 0.83f),
                 new(-0.85f, 0.66f, 0.76f, track ? 1.20f : 1.07f), new(0.24f, 0.61f, 0.70f, 1.13f),
                 new(1.27f, 0.66f, 0.65f, 0.69f));
-            art.Model(shell, "Swept roof", paint, new(-0.87f, 0.52f, 1.08f, 1.18f),
+            art.FinishedModel(shell, "Swept roof", paint, HarborBlockout.Finish.Paint, new(-0.87f, 0.52f, 1.08f, 1.18f),
                 new(-0.51f, 0.60f, 1.13f, 1.22f), new(0.30f, 0.55f, 1.10f, 1.19f));
             if (track)
             {
@@ -182,7 +182,7 @@ namespace CostaLivre
                 Part(art, wheel, PrimitiveType.Cylinder, "Brake rotor", Vector3.zero, new(0.45f, 0.100f, 0.45f), engineColor, 90);
             }
 
-            art.Model(shell, "Tank and fairing", paint, new(-0.98f, 0.14f, 0.62f, 0.74f),
+            art.FinishedModel(shell, "Tank and fairing", paint, HarborBlockout.Finish.Paint, new(-0.98f, 0.14f, 0.62f, 0.74f),
                 new(-0.36f, 0.25f, 0.51f, 0.80f), new(0.30f, cruiser ? 0.24f : 0.29f, 0.42f, 0.99f),
                 new(0.75f, 0.17f, 0.53f, 0.87f));
             art.Model(shell, "Saddle", rubber, new(-0.82f, 0.15f, 0.79f, 0.87f),
@@ -437,7 +437,14 @@ namespace CostaLivre
         private static void Part(HarborBlockout art, Transform parent, PrimitiveType type, string name,
             Vector3 center, Vector3 size, Color color, float z = 0)
         {
-            art.Part(parent, type, name, center, size, color).transform.localRotation = Quaternion.Euler(0, 0, z);
+            var finish = name switch
+            {
+                "Tire" => HarborBlockout.Finish.Rubber,
+                "Door skin" => HarborBlockout.Finish.Paint,
+                "Alloy rim" or "Brake rotor" or "Engine" => HarborBlockout.Finish.Metal,
+                _ => HarborBlockout.Finish.Standard
+            };
+            art.Part(parent, type, name, center, size, color, finish: finish).transform.localRotation = Quaternion.Euler(0, 0, z);
         }
     }
 }

@@ -375,7 +375,7 @@ namespace CostaLivre
                         art.Box("Boulevard planter", location + Vector3.up * 0.17f, new Vector3(1.2f, 0.34f, 1.2f), Pavement);
                         art.Box("Planter soil", location + Vector3.up * 0.345f, new Vector3(1.03f, 0.025f, 1.03f),
                             new Color(0.20f, 0.19f, 0.15f));
-                        Tree(location + Vector3.up * 0.26f);
+                        Tree(location + Vector3.up * 0.345f);
                     }
                 }
             }
@@ -404,6 +404,8 @@ namespace CostaLivre
             Footprints.Add(new Rect(entry.x - width * 0.5f, front, width, depth));
             Vector3 center = new(entry.x, 0, front + depth / 2);
             float wing = (width - 2.8f) / 2;
+            art.Wear(1, new Vector3(entry.x + width * 0.32f, 0.073f, front - 1.15f),
+                new Vector2(2.8f, 1.7f), Quaternion.Euler(90, 0, 0));
             art.Box("Entrance paving", new Vector3(entry.x, 0.035f, front - 1.4f),
                 new Vector3(width + 2.5f, 0.07f, 3.2f), Pavement, false, "Concrete", new Vector2(width / 2, 2));
             art.Box("Lobby floor", center + Vector3.up * 0.016f, new Vector3(width - 0.6f, 0.03f, depth - 0.6f),
@@ -416,9 +418,9 @@ namespace CostaLivre
                 art.Box("Stone entrance wing", new Vector3(entry.x + side * (1.4f + wing / 2), 1.65f, front),
                     new Vector3(wing, 3.30f, 0.44f), color, true, "Concrete", new Vector2(wing / 2, 2));
                 art.Box("Lobby glazing", new Vector3(entry.x + side * (1.5f + wing / 2), 1.67f, front - 0.24f),
-                    new Vector3(wing * 0.76f, 1.45f, 0.04f), Glass);
+                    new Vector3(wing * 0.76f, 1.45f, 0.04f), Glass, finish: HarborBlockout.Finish.Glass);
                 art.Box("Metal entry column", new Vector3(entry.x + side * 1.53f, 1.58f, front - 0.22f),
-                    new Vector3(0.18f, 3.16f, 0.18f), trim);
+                    new Vector3(0.18f, 3.16f, 0.18f), trim, finish: HarborBlockout.Finish.Metal);
                 float bay = entry.x + side * (1.5f + wing / 2);
                 Color frame = Color.Lerp(Glass, trim, 0.33f);
                 for (int mullion = -1; mullion <= 1; mullion++)
@@ -468,7 +470,7 @@ namespace CostaLivre
                 {
                     float facade = center.z - depth / 2;
                     art.BatchDecoration("Setback window", new Vector3(center.x + x, y, facade - 0.024f),
-                        new Vector3(1.54f, 1.32f, 0.049f), Glass);
+                        new Vector3(1.54f, 1.32f, 0.049f), Glass, finish: HarborBlockout.Finish.Glass);
                     art.BatchDecoration("Window sill", new Vector3(center.x + x, y - 0.65f, facade - 0.09f),
                         new Vector3(1.68f, 0.11f, 0.23f), Pavement);
                 }
@@ -563,8 +565,10 @@ namespace CostaLivre
 
         private void Shape(string name, PrimitiveType primitive, Vector3 center, Vector3 size, Color color)
         {
-            art.Part(root, primitive, name, center, size, color,
+            GameObject part = art.Part(root, primitive, name, center, size, color,
                 name == "Tree trunk" || name == "Fountain basin" || name == "Fountain column");
+            if (name == "Tree crown" || name == "Street lamp")
+                part.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
         }
     }
 }

@@ -90,7 +90,7 @@ namespace CostaLivre
             this.root = root;
         }
 
-        internal void Build()
+        internal IEnumerable<float> Build()
         {
             Ground(-88.5f, -25, 127, 94);
             Ground(0, -43, 50, 42);
@@ -116,6 +116,8 @@ namespace CostaLivre
                 for (int x = -147; x < 76; x += 6)
                     Mark(new(x, 0.018f, z), new(2.5f, 0.03f, 0.11f));
             }
+
+            yield return 0.15f;
 
             Venue("GRAND HOTEL ATLÂNTICO", Hotel, 25, 16, 23, Stone, Brass);
             Venue("JOALHERIA ÁUREA", Jeweler, 18, 14, 6, new Color(0.52f, 0.54f, 0.50f), Brass);
@@ -145,6 +147,8 @@ namespace CostaLivre
                     new Vector3(0.80f, 0.88f, 0.59f), Brass);
             }
 
+            yield return 0.35f;
+
             for (int i = 0; i < Estate.Length; i++)
             {
                 string address = $"VILA {i + 1:00}";
@@ -170,6 +174,8 @@ namespace CostaLivre
                 art.Sign($"POSTO DE VENDA {i + 1}", point + new Vector3(0, 2.28f, -0.27f), 0.12f, Stone);
             }
 
+            yield return 0.46f;
+
             BuildPark();
             DressBoulevard();
             for (int i = 0; i < 11; i++)
@@ -193,10 +199,17 @@ namespace CostaLivre
             for (int i = 0; i < 9; i++)
                 Tree(new Vector3(-142 + 7.5f * i, 0, 32));
             Fountain(new Vector3(-56, 0, 39));
+            yield return 0.58f;
+
             BuildHighway();
             for (int i = 0; i < Districts.Length; i++)
+            {
                 BuildDistrict(Districts[i], i);
+                yield return 0.65f + 0.10f * i;
+            }
+
             art.FinishDecoration();
+            yield return 1f;
         }
 
         private void Edge(float xMin, float xMax, float z)

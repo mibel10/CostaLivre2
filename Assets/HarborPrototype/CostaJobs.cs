@@ -99,7 +99,7 @@ namespace CostaLivre
         }
 
         internal static readonly int[] Prices = { 3800, 7200, 12900 };
-        private readonly GameObject[] doors;
+        private GameObject[] doors = System.Array.Empty<GameObject>();
         private int completed = PlayerPrefs.GetInt("CostaCompleted", 0);
         private int owned = PlayerPrefs.GetInt("CostaOwned", 0);
         private int arsenal = PlayerPrefs.GetInt("CostaArsenal", 0);
@@ -119,11 +119,10 @@ namespace CostaLivre
         internal float Remaining => deadline > 0 ? Mathf.Max(0, deadline - Time.time) : -1;
         internal string Notice => Time.time < messageUntil ? L(noticeEn, noticePt) : "";
 
-        internal CostaJobs(GameObject[] doors)
+        internal void AttachDoors(GameObject[] entrances)
         {
-            this.doors = doors;
-            for (int i = 0; i < doors.Length; i++)
-                doors[i].SetActive(!Owned(i));
+            doors = entrances;
+            SetOnlineDoors(false);
         }
 
         internal void SetOnlineDoors(bool online)

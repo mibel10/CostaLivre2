@@ -24,7 +24,7 @@ namespace CostaLivre
         private readonly List<Mesh> models = new();
         private readonly Dictionary<(Vector2Int Cell, Material Material), List<MeshFilter>> decoration = new();
         private readonly List<NavMeshBuildSource> walkableGeometry = new();
-        private readonly HarborCharacter.Art characterArt = new();
+        private HarborCharacter.Art characterArt;
         private Font signFont;
         private Material signMaterial;
 
@@ -32,8 +32,6 @@ namespace CostaLivre
         {
             this.root = root;
             this.shader = shader;
-            foreach (string name in new[] { "Asphalt", "Concrete", "Steel", "Walker" })
-                maps.Add(name, (Resources.Load<Texture2D>($"Harbor/{name}Color"), Resources.Load<Texture2D>($"Harbor/{name}Normal")));
         }
 
         internal void Build()
@@ -89,7 +87,7 @@ namespace CostaLivre
 
         internal HarborCharacter Person(string name, Transform parent, Vector3 position, Color tint)
         {
-            return new HarborCharacter(characterArt, name, parent, position, Surface("Walker", tint, Vector2.one));
+            return new HarborCharacter(characterArt ??= new HarborCharacter.Art(), name, parent, position, Surface("Walker", tint, Vector2.one));
         }
 
         internal GameObject[] PoliceUniform(HarborCharacter officer)
@@ -445,7 +443,12 @@ namespace CostaLivre
             if (surfaces.TryGetValue(key, out Material material))
                 return material;
 
-            var textures = maps[surface];
+            if (!maps.TryGetValue(surface, out var textures))
+            {
+                textures = (Resources.Load<Texture2D>($"Harbor/{surface}Color"),
+                    Resources.Load<Texture2D>($"Harbor/{surface}Normal"));
+                maps.Add(surface, textures);
+            }
             material = new Material(surfaceTemplate);
             material.color = color;
             material.SetTexture("_BaseMap", textures.Color);

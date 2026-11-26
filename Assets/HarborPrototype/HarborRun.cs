@@ -1,4 +1,7 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.AI;
 using UnityEngine.InputSystem;
 using static CostaLivre.CostaText;
@@ -32,7 +35,7 @@ namespace CostaLivre
         internal const float FullStamina = 3.8f;
         private const float DefaultFov = 66f;
         private const float RollDuration = 0.69f;
-        private static readonly Vector3 MenuActorPosition = new(18.9f, 0, -10.8f);
+        private static readonly Vector3 MenuActorPosition = new(0, 0, -1200f);
 
         private readonly Guard[] guards = new Guard[GuardPosts.Length];
         private readonly InputAction[] weaponSlots = new InputAction[3];
@@ -83,7 +86,7 @@ namespace CostaLivre
         private int appliedSelection;
         private CostaBag CurrentBag => session.Online ? session.Bag : jobs.Bag;
         private int CurrentCash => session.Online ? session.Cash : jobs.Credits;
-        private bool IsPolice => session.Online && session.Local.police;
+        private bool IsPolice => session?.Online == true && session.Local.police;
         private System.Action closeOverlay;
         private CostaVehicle[] cars;
         private CostaVehicle car;
@@ -102,6 +105,13 @@ namespace CostaLivre
         private Transform playerModel;
         private HarborCharacter playerBody;
         private HarborCharacter menuBody;
+        private Transform menuStage;
+        private bool worldReady;
+        private bool worldLoading;
+        private bool worldLoadFailed;
+        private HarborLoadingScreen loadingScreen;
+        private string loadingPhase;
+        private float loadingProgress;
         private HarborMenu menu;
         private Transform menuWeaponMount;
         private Transform[] menuWeapons;
@@ -159,21 +169,124 @@ namespace CostaLivre
         {
             Application.targetFrameRate = 60;
             Application.runInBackground = true;
+            touch = new CostaTouch();
+            BindControls();
+            followCamera.nearClipPlane = 0.07f;
+            menu = new HarborMenu(bindings, padBindings, followCamera);
+            jobs = new CostaJobs();
             harbor = new HarborBlockout(transform, blockoutShader);
+            onlinePanel = new CostaOnlinePanel(Connect);
+            loadingScreen = new HarborLoadingScreen();
+            closeOverlay = CloseOverlay;
+            deploy = () => WithWorld(StartRun);
+            resume = ResumeRun;
+            quit = Application.Quit;
+            selectJob = index => WithWorld(() => SelectJob(index));
+            CreateMenuPreview();
+            ShowMenu();
+        }
+
+        private void Connect(string name, string address, int port, bool host) =>
+            WithWorld(() => session.Start(name, address, port, host));
+
+        private void WithWorld(System.Action play)
+        {
+            if (worldReady)
+                play();
+            else if (!worldLoading && !worldLoadFailed)
+            {
+                worldLoading = true;
+                loadingPhase = L("Reading the port", "Abrindo o porto");
+                loadingProgress = 0;
+                loadingScreen.Begin();
+                SetCursor(false);
+                StartCoroutine(LoadWorld(play));
+            }
+        }
+
+        private IEnumerator LoadWorld(System.Action play)
+        {
+            // Draw one full frame of the loading screen before constructing scene objects.
+            yield return null;
+            menuStage.gameObject.SetActive(false);
+            int culling = followCamera.cullingMask;
+            followCamera.cullingMask = 0;
+            using (var stages = BuildWorld().GetEnumerator())
+            {
+                while (true)
+                {
+                    bool more;
+                    try
+                    {
+                        more = stages.MoveNext();
+                    }
+                    catch (System.Exception error)
+                    {
+                        Debug.LogException(error);
+                        worldLoadFailed = true;
+                        break;
+                    }
+
+                    if (!more)
+                        break;
+                    loadingProgress = stages.Current;
+                    yield return null;
+                }
+            }
+
+            worldLoading = false;
+            if (worldLoadFailed)
+                yield break;
+
+            followCamera.cullingMask = culling;
+            worldReady = true;
+            loadingScreen.Release();
+            loadingScreen = null;
+            ShowMenu();
+            play();
+        }
+
+        private IEnumerable<float> BuildWorld()
+        {
             harbor.Build();
+            loadingPhase = L("Building Santa Luz and the coastal highway", "Montando Santa Luz e a rodovia costeira");
+            yield return 0.14f;
+
             city = new CostaCity(harbor, transform);
-            city.Build();
-            jobs = new CostaJobs(city.HouseDoors);
+            foreach (float part in city.Build())
+                yield return Mathf.Lerp(0.14f, 0.69f, part);
+
+            loadingPhase = L("Preparing vehicles and contracts", "Preparando veículos e missões");
+            yield return 0.69f;
+            jobs.AttachDoors(city.HouseDoors);
             robberies = new CostaRobberies(harbor);
             cityMap = new CostaMap(city.Footprints);
             gunShop = new CostaGunShop();
             hud = new HarborHud(cityMap);
             bagPanel = new CostaBagPanel();
-            closeOverlay = CloseOverlay;
+            yield return 0.74f;
+
+            CreateWorldActors();
+            loadingPhase = L("Preparing city navigation", "Preparando a navegação da cidade");
+            yield return 0.82f;
 
             navMesh = new NavMeshData();
             navigationBuild = harbor.BuildNavigation(navMesh);
+            while (!navigationBuild.isDone)
+                yield return Mathf.Lerp(0.82f, 0.95f, navigationBuild.progress);
 
+            navigationBuild = null;
+            navMeshInstance = NavMesh.AddNavMeshData(navMesh);
+            for (int i = 0; i < guards.Length; i++)
+                AddGuard(i);
+            ResetRun();
+            SetCursor(false);
+            loadingPhase = L("Santa Luz is ready", "Santa Luz está pronta");
+            yield return 1f;
+        }
+
+        private void CreateWorldActors()
+        {
             GameObject runner = new GameObject("Runner");
             runner.layer = LayerMask.NameToLayer("Ignore Raycast");
             runner.transform.SetParent(transform, false);
@@ -214,38 +327,35 @@ namespace CostaLivre
 
             encounter = new CostaEncounter(harbor, transform, jobs, cars);
             session = new CostaSession(cars);
-            onlinePanel = new CostaOnlinePanel(session);
+            onlinePanel.AttachSession(session);
             remotes = new CostaRemoteView(harbor, transform, effects);
-            touch = new CostaTouch();
-            BindControls();
-            followCamera.nearClipPlane = 0.07f;
-            menu = new HarborMenu(bindings, padBindings, followCamera);
-            CreateMenuPreview();
-            deploy = StartRun;
-            resume = ResumeRun;
-            quit = () => Application.Quit();
-            selectJob = SelectJob;
-            Physics.SyncTransforms();
-            ResetRun();
-            ShowMenu();
         }
 
         private void CreateMenuPreview()
         {
-            menuBody = harbor.Person("Loadout preview", transform, MenuActorPosition, new Color(0.94f, 0.93f, 0.87f));
+            menuStage = new GameObject("Menu preview set").transform;
+            menuStage.SetParent(transform);
+            menuStage.position = MenuActorPosition;
+            Color pavement = new(0.21f, 0.25f, 0.27f);
+            Color wall = new(0.19f, 0.25f, 0.26f);
+            Color steel = new(0.30f, 0.36f, 0.36f);
+            harbor.Part(menuStage, PrimitiveType.Cube, "Preview floor", new(0, -0.16f, 0), new(28, 0.3f, 20), pavement);
+            harbor.Part(menuStage, PrimitiveType.Cube, "Preview warehouse", new(0, 3.1f, 5), new(27, 6.2f, 0.33f), wall);
+            for (int i = -6; i <= 6; i++)
+                harbor.Part(menuStage, PrimitiveType.Cube, "Warehouse cladding", new(i * 1.35f, 3f, 4.78f),
+                    new(0.14f, 6, 0.16f), steel);
+            harbor.Part(menuStage, PrimitiveType.Cube, "Warehouse safety band", new(0, 0.57f, 4.75f),
+                new(21, 0.13f, 0.18f), new Color(0.63f, 0.43f, 0.25f));
+
+            menuBody = harbor.Person("Loadout preview", menuStage, MenuActorPosition, new Color(0.94f, 0.93f, 0.87f));
             menuLook = new CostaLook(harbor, menuBody);
             menuBody.Root.rotation = Quaternion.Euler(0, 215f, 0);
             menuWeaponMount = new GameObject("Preview weapons").transform;
             menuWeaponMount.SetParent(menuBody.Root, false);
             menuWeapons = new Transform[HarborArsenal.WeaponNames.Length];
-            for (int i = 0; i < menuWeapons.Length; i++)
-            {
-                Transform model = new GameObject(HarborArsenal.WeaponNames[i]).transform;
-                model.SetParent(menuWeaponMount, false);
-                HarborArsenal.BuildModel(harbor, model, i);
-                menuWeapons[i] = model;
-            }
         }
+
+        private bool OwnsWeapon(int slot) => arsenal?.Owned(slot) ?? (slot == HarborArsenal.Knife || jobs.OwnsWeapon(slot));
 
         private void UpdateMenuPreview()
         {
@@ -263,11 +373,17 @@ namespace CostaLivre
             followCamera.transform.SetPositionAndRotation(cameraPosition, Quaternion.LookRotation(focus - cameraPosition));
             followCamera.fieldOfView = fieldOfView;
             menuBody.Animate(HarborCharacter.Motion.Idle);
-            menuLook.Apply(menu.OnlinePage || session.Online ? onlinePanel.Outfit : 0, IsPolice);
-            int previewSlot = arsenal.Owned(menu.SelectedWeapon) ? menu.SelectedWeapon : arsenal.Slot;
-            bool equipped = previewSlot >= 0;
-            if (equipped)
+            menuLook.Apply(menu.OnlinePage || session?.Online == true ? onlinePanel.Outfit : 0, IsPolice);
+            int previewSlot = OwnsWeapon(menu.SelectedWeapon) ? menu.SelectedWeapon : arsenal?.Slot ?? HarborArsenal.Knife;
+            if (previewSlot >= 0)
             {
+                if (menuWeapons[previewSlot] == null)
+                {
+                    Transform model = new GameObject(HarborArsenal.WeaponNames[previewSlot]).transform;
+                    model.SetParent(menuWeaponMount, false);
+                    HarborArsenal.BuildModel(harbor, model, previewSlot);
+                    menuWeapons[previewSlot] = model;
+                }
                 if (previewSlot == HarborArsenal.Knife)
                     menuBody.HoldKnife(false, false, -1);
                 else
@@ -276,13 +392,13 @@ namespace CostaLivre
                     menuBody.Root.rotation * Quaternion.Euler(15, -9, 0));
             }
             for (int i = 0; i < menuWeapons.Length; i++)
-                menuWeapons[i].gameObject.SetActive(equipped && previewSlot == i);
+                menuWeapons[i]?.gameObject.SetActive(previewSlot == i);
         }
 
         private void ShowMenu()
         {
             inMenu = true;
-            menuBody.Root.gameObject.SetActive(true);
+            menuStage.gameObject.SetActive(true);
             Time.timeScale = 0;
             SetCursor(false);
             UpdateMenuPreview();
@@ -308,7 +424,7 @@ namespace CostaLivre
                 EquipWeapon(menu.SelectedWeapon);
             }
             inMenu = false;
-            menuBody.Root.gameObject.SetActive(false);
+            menuStage.gameObject.SetActive(false);
             Time.timeScale = 1;
             PositionCamera(false, true);
             SetCursor(true);
@@ -365,6 +481,7 @@ namespace CostaLivre
             session?.Dispose();
             remotes?.Dispose();
             menu?.Release();
+            loadingScreen?.Release();
             touch?.Release();
             menuBody?.Release();
             playerBody?.Release();
@@ -388,7 +505,7 @@ namespace CostaLivre
             {
                 menu?.FlushGraphics();
                 SetCursor(false);
-                pausedForFocus = !session.Online && !inMenu && overlay == FieldOverlay.None;
+                pausedForFocus = session?.Online != true && !inMenu && overlay == FieldOverlay.None;
                 if (pausedForFocus)
                     Time.timeScale = 0;
             }
@@ -586,22 +703,15 @@ namespace CostaLivre
         private void Update()
         {
             menu.SaveGraphicsIfDue();
-            if (navigationBuild != null && navigationBuild.isDone)
-            {
-                navigationBuild = null;
-                navMeshInstance = NavMesh.AddNavMeshData(navMesh);
-                for (int i = 0; i < guards.Length; i++)
-                {
-                    AddGuard(i);
-                    if (session.Online)
-                        guards[i].Agent.gameObject.SetActive(false);
-                }
-                if (!session.Online)
-                    ResetGuards();
-            }
-            TickNetwork();
+            if (worldLoadFailed)
+                CostaUi.Update(false);
+            if (worldLoading || worldLoadFailed)
+                return;
+
+            if (worldReady)
+                TickNetwork();
             touch.Update(!inMenu && overlay == FieldOverlay.None && !pausedForFocus,
-                car != null, !session.Online && (state == RunState.Caught || state == RunState.Delivered));
+                car != null, worldReady && !session.Online && (state == RunState.Caught || state == RunState.Delivered));
             if (inMenu || overlay != FieldOverlay.None)
                 CostaUi.Update(menu.CapturingKey);
             if (pausedForFocus)
@@ -614,14 +724,14 @@ namespace CostaLivre
                     UpdateMenuPreview();
                     return;
                 }
-                if ((!menu.OnlinePage || session.Online)
+                if (menu.DeployPage
                     && (Pressed(restart, TouchControl.Retry) || Keyboard.current?.enterKey.wasPressedThisFrame == true))
                 {
                     gamepad = restart.activeControl?.device is Gamepad;
                     if (CanResume())
                         ResumeRun();
                     else
-                        StartRun();
+                        deploy();
                 }
                 else if ((Pressed(openMenu, TouchControl.Menu) || jobsBoard.WasPressedThisFrame()) && CanResume())
                 {
@@ -1102,7 +1212,7 @@ namespace CostaLivre
 
         private void LateUpdate()
         {
-            if (cars == null)
+            if (!worldReady)
                 return;
             foreach (CostaVehicle vehicle in cars)
                 vehicle.CloseIdleDoors();
@@ -1589,6 +1699,14 @@ namespace CostaLivre
 
         private void OnGUI()
         {
+            if (worldLoading || worldLoadFailed)
+            {
+                loadingScreen.Draw(loadingPhase, loadingProgress, worldLoadFailed, ReloadScene);
+                if (worldLoadFailed)
+                    CostaUi.DrawPointer();
+                return;
+            }
+
             DrawInterface();
             if (inMenu || overlay != FieldOverlay.None)
                 CostaUi.DrawPointer();
@@ -1596,11 +1714,13 @@ namespace CostaLivre
                 touch.Draw(car != null, state == RunState.Caught || state == RunState.Delivered);
         }
 
+        private void ReloadScene() => SceneManager.LoadSceneAsync(gameObject.scene.buildIndex);
+
         private void DrawInterface()
         {
             if (inMenu)
             {
-                menu.Draw(CanResume(), deploy, resume, quit, jobs, selectJob, onlinePanel, arsenal, session.Online, touch, navigationBuild == null);
+                menu.Draw(CanResume(), deploy, resume, quit, jobs, selectJob, onlinePanel, OwnsWeapon, session?.Online == true, touch);
                 return;
             }
             if (overlay == FieldOverlay.Map)

@@ -6,7 +6,8 @@ namespace CostaLivre
 {
     internal sealed class CostaOnlinePanel
     {
-        private readonly CostaSession session;
+        private CostaSession session;
+        private readonly Action<string, string, int, bool> connect;
         private string name = PlayerPrefs.GetString("CostaMultiplayerName", "Jogador");
         private string ip = "127.0.0.1";
         private string port = "7777";
@@ -22,7 +23,9 @@ namespace CostaLivre
         private int editing;
 
         internal int Outfit { get; private set; } = Mathf.Clamp(PlayerPrefs.GetInt("CostaOutfit", 0), 0, 242);
-        internal CostaOnlinePanel(CostaSession session) => this.session = session;
+        internal CostaOnlinePanel(Action<string, string, int, bool> connect) => this.connect = connect;
+
+        internal void AttachSession(CostaSession readySession) => session = readySession;
 
         internal void Draw(float x, float y, float height, Action play)
         {
@@ -36,21 +39,22 @@ namespace CostaLivre
             Fill(new Rect(x - 9, y, 415, Mathf.Min(height - y - 16, 377)), Board);
             Label(new Rect(x + 8, y + 2, 395, 45), "Multiplayer", title, Text);
             float row = y + 54;
-            if (!session.Online)
+            if (session?.Online != true)
             {
+                bool connecting = session?.Connecting == true;
                 Label(new Rect(x + 8, row, 350, 22), L("PLAYER NAME", "NOME DO JOGADOR"), labels, Muted);
                 name = Input(new Rect(x + 8, row + 25, 362, 34), name, 20, 1, TouchScreenKeyboardType.Default);
                 Label(new Rect(x + 8, row + 61, 230, 20), L("HOST IPV4", "IPV4 DO ANFITRIÃO"), labels, Muted);
                 Label(new Rect(x + 286, row + 61, 76, 20), L("PORT", "PORTA"), labels, Muted);
                 ip = Input(new Rect(x + 8, row + 84, 264, 34), ip, 15, 2, TouchScreenKeyboardType.NumbersAndPunctuation);
                 port = Input(new Rect(x + 286, row + 84, 84, 34), port, 5, 3, TouchScreenKeyboardType.NumberPad);
-                if (Button(new Rect(x + 8, row + 127, 174, 40), L("Host LAN", "Hospedar LAN"), !session.Connecting))
+                if (Button(new Rect(x + 8, row + 127, 174, 40), L("Host LAN", "Hospedar LAN"), !connecting))
                     Start(true);
-                if (Button(new Rect(x + 195, row + 127, 175, 40), L("Join by IP", "Entrar por IP"), !session.Connecting))
+                if (Button(new Rect(x + 195, row + 127, 175, 40), L("Join by IP", "Entrar por IP"), !connecting))
                     Start(false);
-                if (session.Connecting && Button(new Rect(x + 8, row + 199, 116, 30), L("Cancel", "Cancelar"), true))
+                if (connecting && Button(new Rect(x + 8, row + 199, 116, 30), L("Cancel", "Cancelar"), true))
                     session.Dispose();
-                Label(new Rect(x + 8, row + 174, 378, 25), session.Status, labels, Gold);
+                Label(new Rect(x + 8, row + 174, 378, 25), session?.Status ?? "", labels, Gold);
                 return;
             }
 
@@ -119,7 +123,7 @@ namespace CostaLivre
                 number = 0;
             PlayerPrefs.SetString("CostaMultiplayerName", name);
             PlayerPrefs.Save();
-            session.Start(name, ip, number, host);
+            connect(name, ip, number, host);
         }
 
         private void Change(int category, int option, int offset)

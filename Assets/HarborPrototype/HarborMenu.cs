@@ -87,6 +87,7 @@ namespace CostaLivre
         }
         internal void ShowJobs() => page = ScreenPage.Jobs;
         internal void ShowOnline() => page = ScreenPage.Online;
+        internal bool DeployPage => page == ScreenPage.Deploy;
         internal bool OnlinePage => page == ScreenPage.Online;
         private GUIStyle headline;
         private GUIStyle hero;
@@ -132,7 +133,7 @@ namespace CostaLivre
         }
 
         internal void Draw(bool resume, Action deploy, Action continueRun, Action quit, CostaJobs jobs, Action<int> selectJob,
-            CostaOnlinePanel online, HarborArsenal arsenal, bool sessionActive, CostaTouch touch, bool soloReady)
+            CostaOnlinePanel online, Func<int, bool> ownsWeapon, bool sessionActive, CostaTouch touch)
         {
             if (editTouch)
             {
@@ -175,14 +176,14 @@ namespace CostaLivre
             {
                 case ScreenPage.Deploy:
                     DrawDeploy(x, stacked ? top : top + (height - top) * 0.21f,
-                        resume, sessionActive, soloReady, deploy, continueRun);
+                        resume, sessionActive, deploy, continueRun);
                     break;
                 case ScreenPage.Loadout:
                     Text(new Rect(x, top, 300, 63), L("Loadout", "Equipamento"), headline, Paper);
                     int owned = 0;
                     for (int i = 0; i < HarborArsenal.WeaponNames.Length; i++)
                     {
-                        if (!arsenal.Owned(i))
+                        if (!ownsWeapon(i))
                             continue;
                         if (MenuButton(new Rect(x, top + 77 + owned * 43, 248, 38), Weapon(i), i == SelectedWeapon))
                         {
@@ -198,10 +199,7 @@ namespace CostaLivre
                     DrawOptions(x, top);
                     break;
                 case ScreenPage.Jobs:
-                    if (!soloReady && !sessionActive)
-                        Text(new Rect(x, top, 390, 45),
-                            L("Preparing city navigation…", "Preparando a navegação da cidade…"), label, Grey);
-                    else if (!sessionActive)
+                    if (!sessionActive)
                         DrawJobs(x, top, jobs, selectJob);
                     break;
                 case ScreenPage.Online:
@@ -258,18 +256,11 @@ namespace CostaLivre
                 quit();
         }
 
-        private void DrawDeploy(float x, float y, bool resume, bool sessionActive, bool soloReady,
+        private void DrawDeploy(float x, float y, bool resume, bool sessionActive,
             Action deploy, Action continueRun)
         {
             Fill(new Rect(x, y, 42, 3), Copper);
             Text(new Rect(x - 2, y + 12, 516, 91), sessionActive ? "Multiplayer" : "Santa Luz", hero, Paper);
-            if (!soloReady && !sessionActive)
-            {
-                Text(new Rect(x, y + 107, 410, 52),
-                    L("Preparing city navigation…", "Preparando a navegação da cidade…"), label, Grey);
-                return;
-            }
-
             string action = resume ? L("Resume", "Continuar") : L("Enter the city", "Entrar na cidade");
             Rect enter = new(x, y + 117, 264, 60);
             if (MenuButton(enter, action, true))

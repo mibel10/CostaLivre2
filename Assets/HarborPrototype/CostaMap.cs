@@ -359,7 +359,7 @@ namespace CostaLivre
                 Vector2 tip = position + direction * step;
                 Fill(new Rect(tip.x - 1f, tip.y - 1f, 2, 2), Text);
             }
-            foreach (int wing in new[] { -1, 1 })
+            for (int wing = -1; wing <= 1; wing += 2)
             {
                 for (int step = 1; step <= 3; step++)
                 {

@@ -63,6 +63,9 @@ namespace CostaLivre
         private float soloYaw;
         private float soloPitch;
         private float soloEscapeElapsed;
+        private int soloWantedLevel;
+        private float soloHeatRemaining;
+        private float soloCrimeRemaining;
         private CostaVehicle soloContractCar;
         private Vector3 soloContractCarPosition;
         private float soloContractCarYaw;
@@ -141,7 +144,6 @@ namespace CostaLivre
         private bool gamepad;
         private bool pursuit;
         private float blockedExitUntil;
-        private bool independentAlert;
         private int wantedLevel;
         private float heatUntil;
         private float nextCrime;
@@ -445,8 +447,14 @@ namespace CostaLivre
                     state = soloState;
                     escapeStartedAt = Time.time - soloEscapeElapsed;
                     cargo.SetActive(harborJob && state == RunState.FindCargo);
-                    if (state == RunState.Escape || jobs.Active == 4 && jobs.StepNumber == 2)
-                        StartPursuit(0.45f);
+                    wantedLevel = soloWantedLevel;
+                    heatUntil = Time.time + soloHeatRemaining;
+                    nextCrime = Time.time + soloCrimeRemaining;
+                    if (wantedLevel > 0)
+                    {
+                        pursuit = true;
+                        nextPursuitUpdate = Time.time + 0.45f;
+                    }
                     menu.ShowOnline();
                     ShowMenu();
                 }
@@ -463,6 +471,9 @@ namespace CostaLivre
                 soloYaw = yaw;
                 soloPitch = pitch;
                 soloEscapeElapsed = state == RunState.Escape ? Time.time - escapeStartedAt : 0;
+                soloWantedLevel = wantedLevel;
+                soloHeatRemaining = Mathf.Max(0, heatUntil - Time.time);
+                soloCrimeRemaining = Mathf.Max(0, nextCrime - Time.time);
                 soloContractCar = encounter.Active && (jobs.Current.Mode is CostaJobs.Action.Seize or CostaJobs.Action.DeliverVehicle)
                     ? cars[jobs.Current.Vehicle] : null;
                 soloDrivingContractCar = soloContractCar != null && car == soloContractCar;
@@ -920,7 +931,7 @@ namespace CostaLivre
             else if (robberies.Take(site, jobs))
             {
                 cargoPack.SetActive(true);
-                StartPursuit(0.45f, lootOnly: true);
+                StartPursuit(0.45f);
             }
             return true;
         }
@@ -930,11 +941,7 @@ namespace CostaLivre
             if (session.Online)
                 session.Request("sell", item);
             else
-            {
                 jobs.SellLoot(item);
-                if (jobs.Bag.Count == 0 && !independentAlert)
-                    StopPursuit();
-            }
         }
 
         private bool BuyWeapon(int index)
@@ -951,7 +958,6 @@ namespace CostaLivre
 
         private void StopPursuit()
         {
-            independentAlert = false;
             wantedLevel = 0;
             arrestProgress = 0;
             arrestingGuard = null;
@@ -1321,12 +1327,10 @@ namespace CostaLivre
             }
         }
 
-        private void StartPursuit(float delay, bool lootOnly = false, bool combat = false)
+        private void StartPursuit(float delay, bool combat = false)
         {
             if (session.Online || state == RunState.Delivered || state == RunState.Caught)
                 return;
-            if (!lootOnly)
-                independentAlert = true;
             heatUntil = Time.time + CostaSession.HeatDecayTime;
             if (!combat || Time.time >= nextCrime)
             {
@@ -1405,7 +1409,6 @@ namespace CostaLivre
 
         private void ResetRun(bool resetJob = true)
         {
-            independentAlert = false;
             vehicleMotion.Clear();
             wantedLevel = 0;
             nextCrime = 0;

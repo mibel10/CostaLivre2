@@ -27,7 +27,7 @@ namespace CostaLivre
         private int activeLights;
         private int previousBudget;
         private double nextScan;
-        private bool lit;
+        private int brightness = -1;
 
         internal Material Diffuser { get; }
 
@@ -44,16 +44,19 @@ namespace CostaLivre
 
         internal void Add(Vector3 position) => lamps.Add(position);
 
-        internal void Update(bool night, Vector3 view, int budget)
+        internal void Update(float night, Vector3 view, int budget)
         {
-            if (lit != night)
+            int level = Mathf.RoundToInt(night * 32);
+            if (brightness != level)
             {
-                lit = night;
-                Diffuser.SetColor(Emission, night ? Warm * 2.65f : Color.black);
+                brightness = level;
+                Diffuser.SetColor(Emission, Warm * (2.65f * level / 32f));
+                for (int i = 0; i < activeLights; i++)
+                    lights[i].intensity = Intensity * level / 32f;
                 nextScan = 0;
             }
 
-            if (!night || budget <= 0)
+            if (level == 0 || budget <= 0)
             {
                 TurnOffFrom(0);
                 previousBudget = 0;
@@ -71,6 +74,7 @@ namespace CostaLivre
             {
                 Light light = lights[i] ??= CreateLight();
                 light.transform.position = nearest[i];
+                light.intensity = Intensity * level / 32f;
                 if (!light.enabled)
                     light.enabled = true;
             }
@@ -80,7 +84,7 @@ namespace CostaLivre
                 fogLights[i] = new Vector4(nearest[i].x, nearest[i].y, nearest[i].z, Range);
             if (fogCount > 0)
             {
-                Color color = Warm.linear * Intensity;
+                Color color = Warm.linear * (Intensity * level / 32f);
                 Shader.SetGlobalVector(FogLightColor, new Vector4(color.r, color.g, color.b,
                     Mathf.Cos(OuterCone * Mathf.Deg2Rad * 0.5f)));
                 Shader.SetGlobalVectorArray(FogLights, fogLights);

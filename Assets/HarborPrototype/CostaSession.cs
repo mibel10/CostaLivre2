@@ -15,7 +15,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 9;
+        private const int Protocol = 10;
         private const float Interval = 0.083f;
         internal const int PoliceArmor = 50;
         internal const int MaxWanted = 6;
@@ -122,6 +122,8 @@ namespace CostaLivre
             public bool[] sites;
             public Vector3 direction;
             public int[] scenery;
+            public CostaTraffic.Car[] traffic;
+            public CostaTraffic.CityEvent cityEvent;
             public int harmSequence;
             public int harmAmount;
             public Vector3 harmSource;
@@ -140,6 +142,8 @@ namespace CostaLivre
             public Vehicle[] vehicles;
             public bool[] sites;
             public int[] scenery;
+            public CostaTraffic.Car[] traffic;
+            public CostaTraffic.CityEvent cityEvent;
         }
 
         [Serializable]
@@ -212,6 +216,7 @@ namespace CostaLivre
         private bool identitySent;
         private readonly CostaVehicle[] sceneVehicles;
         private readonly CostaWorldDamage scenery;
+        private readonly CostaTraffic traffic;
         private readonly Queue<ImpactEvent> surfaceEvents = new();
         private readonly ImpactEvent impactFrame = new();
         private int lastHarm;
@@ -267,7 +272,8 @@ namespace CostaLivre
                     : HarborDaylight.Advance(HarborDaylight.StartHour, now - worldStart);
             }
         }
-        internal bool WorldIsNight => HarborDaylight.IsNight(!Hosting && hasWorldHour ? receivedWorldHour : WorldHour);
+        private CostaTraffic.Car[] trafficTarget;
+        private CostaTraffic.CityEvent cityEventTarget;
         internal string Status => status;
         internal string Notice { get; private set; } = "";
         internal bool ReadImpact(out ImpactEvent impact) => surfaceEvents.TryDequeue(out impact);
@@ -289,8 +295,9 @@ namespace CostaLivre
         internal int PoliceLimit => AllowedPolice(Players.Length);
         internal static int AllowedPolice(int players) => Mathf.Min(4, Mathf.Max(0, players) * 3 / 10);
 
-        internal CostaSession(CostaVehicle[] vehicles, CostaWorldDamage scenery = null)
+        internal CostaSession(CostaVehicle[] vehicles, CostaWorldDamage scenery = null, CostaTraffic traffic = null)
         {
+            this.traffic = traffic;
             this.scenery = scenery;
             sceneVehicles = vehicles;
             initialHomes = new int[vehicles.Length];
@@ -395,6 +402,8 @@ namespace CostaLivre
             if (listener != null)
                 TickHost(now, delta);
             TickClient(now, localPose);
+            if (Online && !Hosting)
+                traffic?.Present(trafficTarget, cityEventTarget, WorldHour);
         }
 
         private void TickClient(float now, Avatar localPose)
@@ -484,7 +493,11 @@ namespace CostaLivre
                     continue;
 
                 if (!Hosting)
+                {
                     scenery?.Apply(frame.scenery);
+                    trafficTarget = frame.traffic;
+                    cityEventTarget = frame.cityEvent;
+                }
                 if (frame.harmSequence != lastHarm)
                 {
                     lastHarm = frame.harmSequence;
@@ -681,6 +694,20 @@ namespace CostaLivre
                 if (peer.Ready && peer.ArrestTarget != 0)
                     AdvanceArrest(peer, now);
 
+            Vector3? chase = null;
+            int strongest = 0;
+            foreach (Peer peer in peers)
+                if (peer.Ready && peer.Pose.playing && peer.Pose.wantedLevel >= 2 && peer.Pose.wantedLevel > strongest)
+                {
+                    strongest = peer.Pose.wantedLevel;
+                    chase = peer.Pose.pos;
+                }
+            if (traffic != null)
+            {
+                float hour = WorldHour;
+                traffic.Simulate(delta, hour, chase);
+                traffic.UpdateSignals(hour);
+            }
             if (now < nextSnapshot)
                 return;
             nextSnapshot = now + Interval;
@@ -727,6 +754,8 @@ namespace CostaLivre
             world.vehicles = hostCars;
             world.worldHour = WorldHour;
             world.scenery = scenery?.Capture();
+            world.traffic = traffic?.Cars;
+            world.cityEvent = traffic?.Incident;
             for (int i = 0; i < world.sites.Length; i++)
                 world.sites[i] = now >= restock[i];
             byte[] shared = Encoding.UTF8.GetBytes(JsonUtility.ToJson(world));
@@ -1675,6 +1704,11 @@ namespace CostaLivre
             expiredResumes.Clear();
             Array.Clear(restock, 0, restock.Length);
             scenery?.Reset();
+            traffic?.Reset();
+            trafficTarget = null;
+            cityEventTarget = null;
+            world.traffic = null;
+            world.cityEvent = null;
             surfaceEvents.Clear();
             lastHarm = lastPressure = 0;
             Harm = default;

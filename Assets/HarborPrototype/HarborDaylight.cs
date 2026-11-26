@@ -56,8 +56,6 @@ namespace CostaLivre
         internal static float Advance(float hour, double seconds) =>
             Mathf.Repeat(hour + (float)(seconds % CycleSeconds * (24.0 / CycleSeconds)), 24f);
 
-        internal static bool IsNight(float hour) => hour >= 19f || hour < 6f;
-
         internal static float CityNight(float hour)
         {
             float evening = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(17.7f, 20f, hour));

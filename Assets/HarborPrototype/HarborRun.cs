@@ -43,6 +43,7 @@ namespace CostaLivre
         private readonly Guard[] guards = new Guard[GuardPosts.Length];
         private readonly InputAction[] weaponSlots = new InputAction[3];
         private HarborBlockout harbor;
+        private CostaTraffic traffic;
         private CostaVenueLife venues;
         private HarborWeather atmosphere;
         private CostaCity city;
@@ -293,6 +294,7 @@ namespace CostaLivre
 
             loadingPhase = L("Preparing vehicles and contracts", "Preparando veículos e missões");
             yield return 0.69f;
+            traffic = new CostaTraffic(harbor, transform);
             venues = new CostaVenueLife(harbor, transform);
             jobs.AttachDoors(city.HouseDoors);
             city.UpdateHouseDoors(jobs, false, snap: true);
@@ -364,7 +366,7 @@ namespace CostaLivre
             };
 
             encounter = new CostaEncounter(harbor, transform, jobs, cars);
-            session = new CostaSession(cars, harbor.Damage);
+            session = new CostaSession(cars, harbor.Damage, traffic);
             onlinePanel.AttachSession(session);
             remotes = new CostaRemoteView(harbor, transform, effects);
         }
@@ -547,6 +549,7 @@ namespace CostaLivre
             encounter?.Dispose();
             atmosphere?.Release();
             venues?.Release();
+            traffic?.Release();
             harbor?.ReleaseMaterials();
         }
 
@@ -806,18 +809,26 @@ namespace CostaLivre
             menu.SetWorldHour(hour, weather);
             atmosphere.Apply(hour, weather, followCamera, menu.GraphicsPreset, harbor);
             harbor.SetWaterDaylight(hour ?? HarborDaylight.StartHour);
-            bool night = hour.HasValue && (session.Online ? session.WorldIsNight : HarborDaylight.IsNight(hour.Value));
+            float night = hour.HasValue ? HarborDaylight.CityNight(hour.Value) : 0;
             harbor.UpdateStreetLights(night, followCamera.transform.position, menu.StreetLightBudget);
             float grip = Mathf.Lerp(1, .64f, weather.Wet);
-            float lamps = hour.HasValue ? HarborDaylight.CityNight(hour.Value) : 0;
             if (cars != null)
                 foreach (CostaVehicle vehicle in cars)
                 {
                     vehicle.Grip = grip;
-                    vehicle.SetRunningLights(lamps);
+                    vehicle.SetRunningLights(night);
                 }
-            if (hour.HasValue)
-                venues?.Update(hour.Value, followCamera.transform.position);
+            if (hour.HasValue && venues != null)
+            {
+                venues.Update(hour.Value, followCamera.transform.position);
+                traffic.PresentCrew(followCamera.transform.position);
+                if (!session.Online && !session.Hosting)
+                {
+                    if (!inMenu && overlay == FieldOverlay.None && !pausedForFocus)
+                        traffic.Simulate(Time.deltaTime, hour.Value, pursuit ? player.transform.position : null);
+                    traffic.UpdateSignals(hour.Value);
+                }
+            }
         }
 
         private void Update()
@@ -2138,6 +2149,13 @@ namespace CostaLivre
                 : robberies.Notice.Length > 0 ? robberies.Notice : jobs.Notice;
             if (notice.Length == 0)
                 notice = venues.Notice;
+            if (notice.Length == 0 && traffic.NearbyEvent(position, out int incident))
+                notice = incident switch
+                {
+                    0 => L("Temporary roadworks", "Obras temporárias na via"),
+                    1 => L("Stranded vehicle ahead", "Veículo avariado à frente"),
+                    _ => L("Street delivery in progress", "Entrega em andamento na via")
+                };
             hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? -1 : jobs.Remaining,
                 session.Online ? session.Local.wantedLevel : wantedLevel, notice, prompt, stamina / FullStamina,
                 session.Online ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat) : arrestProgress,

@@ -470,7 +470,7 @@ namespace CostaLivre
             BatchDecoration(part, position);
         }
 
-        internal void UpdateStreetLights(bool night, Vector3 view, int budget) =>
+        internal void UpdateStreetLights(float night, Vector3 view, int budget) =>
             streetLights?.Update(night, view, budget);
 
         internal void Wear(int design, Vector3 position, Vector2 size, Quaternion rotation)

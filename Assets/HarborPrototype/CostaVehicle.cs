@@ -19,6 +19,8 @@ namespace CostaLivre
         private readonly BoxCollider body;
         private readonly Collider[] nearbyColliders = new Collider[16];
         private readonly Transform[] wheels;
+        private readonly Transform[] doors = new Transform[2];
+        private readonly float[] doorUpdated = new float[2];
         private float speed;
         internal float Speed => Mathf.Abs(speed);
         internal float SignedSpeed => speed;
@@ -110,6 +112,17 @@ namespace CostaLivre
                         new(0.42f, 0.018f, 0.42f), new Color(0.51f, 0.53f, 0.54f), 90);
                 }
 
+                Transform door = new GameObject("Door hinge").transform;
+                door.SetParent(shell, false);
+                door.localPosition = new Vector3(side * (super ? 1.01f : 0.98f), 0.63f, 0.65f);
+                doors[DoorIndex(side)] = door;
+                Part(art, door, PrimitiveType.Cube, "Door skin", new(0, 0.035f, -0.60f),
+                    new(0.035f, super ? 0.29f : 0.39f, 1.17f), paint);
+                Part(art, door, PrimitiveType.Cube, "Door seal", new(side * 0.018f, -0.18f, -0.60f),
+                    new(0.016f, 0.017f, 1.18f), trim);
+                Part(art, door, PrimitiveType.Cube, "Door handle", new(side * 0.028f, 0.13f, -0.91f),
+                    new(0.038f, 0.023f, 0.14f), trim);
+
                 Part(art, shell, PrimitiveType.Cube, "Headlight", new(side * 0.60f, 0.58f, 2.115f),
                     new(0.38f, 0.16f, 0.13f), new Color(0.83f, 0.83f, 0.73f));
                 Part(art, shell, PrimitiveType.Cube, "Tail light", new(side * 0.60f, 0.68f, -2.146f),
@@ -188,6 +201,35 @@ namespace CostaLivre
                 new(0.22f, 0.076f, 0.085f), new Color(0.48f, 0.065f, 0.060f));
         }
 
+        private static int DoorIndex(int side) => side < 0 ? 0 : 1;
+
+        internal void PoseDoor(int side, float open)
+        {
+            Transform door = doors[DoorIndex(side)];
+            if (door == null)
+                return;
+            doorUpdated[DoorIndex(side)] = Time.unscaledTime;
+            door.localRotation = Quaternion.Euler(0, -side * 62f * open, 0);
+        }
+
+        internal void CloseIdleDoors()
+        {
+            for (int i = 0; i < doors.Length; i++)
+                if (doors[i] != null && Time.unscaledTime - doorUpdated[i] > 0.08f
+                    && doors[i].localRotation != Quaternion.identity)
+                    doors[i].localRotation = Quaternion.RotateTowards(doors[i].localRotation, Quaternion.identity,
+                        300f * Time.unscaledDeltaTime);
+        }
+
+        internal bool TryBoard(Vector3 from, Vector3 position, Quaternion rotation, out int side, out Vector3 step)
+        {
+            side = Vector3.Dot(from - position, rotation * Vector3.right) < 0 ? -1 : 1;
+            Vector3 handHeight = Vector3.up * 0.65f;
+            return TryExit(position, rotation, side, out step)
+                && !Physics.Linecast(from + handHeight, step + handHeight,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        }
+
         internal float TopSpeed => topSpeed;
         internal float Acceleration => engine;
         internal float ReverseSpeed => IsBike ? 3f : 7f;
@@ -256,6 +298,9 @@ namespace CostaLivre
             speed = 0;
             Root.SetPositionAndRotation(Home, Quaternion.Euler(0, homeYaw, 0));
             shell.localRotation = Quaternion.identity;
+            foreach (Transform door in doors)
+                if (door != null)
+                    door.localRotation = Quaternion.identity;
         }
 
         internal float SimulatedTravel(Vector3 position, Quaternion rotation, Vector3 direction, float distance)

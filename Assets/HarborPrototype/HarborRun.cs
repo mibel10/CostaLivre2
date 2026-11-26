@@ -83,6 +83,7 @@ namespace CostaLivre
         private System.Action closeOverlay;
         private CostaVehicle[] cars;
         private CostaVehicle car;
+        private readonly CostaVehicleMotion vehicleMotion = new();
         private CostaBindings bindings;
         private InputAction jobsBoard;
         private System.Action<int> selectJob;
@@ -494,6 +495,7 @@ namespace CostaLivre
             if (netRevision != avatar.revision)
             {
                 netRevision = avatar.revision;
+                vehicleMotion.Begin(avatar, cars);
                 state = RunState.FindCargo;
                 car = avatar.vehicle >= 0 ? cars[avatar.vehicle] : null;
                 player.enabled = false;
@@ -503,13 +505,13 @@ namespace CostaLivre
                 playerModel.gameObject.SetActive(car == null || car.IsBike);
                 arsenal.SetVisible(car == null);
                 ResizeController(1.8f);
-                player.enabled = car == null;
+                ApplyVehiclePresentation();
                 crouching = walking = runningPose = false;
                 grounded = true;
                 verticalSpeed = -2.3f;
                 rollClock = landing = 0;
                 yaw = avatar.yaw;
-                if (!inMenu)
+                if (!inMenu && !vehicleMotion.Active)
                     PositionCamera(false, true);
             }
 
@@ -592,6 +594,18 @@ namespace CostaLivre
                     || (overlay == FieldOverlay.Bag && Pressed(bagKey, TouchControl.Bag)))
                     CloseOverlay();
                 return;
+            }
+
+            if (vehicleMotion.Active)
+            {
+                if (vehicleMotion.Sample(playerBody))
+                {
+                    PositionCamera(false);
+                    if (!session.Online && pursuit)
+                        UpdatePursuit();
+                    return;
+                }
+                ApplyVehiclePresentation();
             }
 
             if (Pressed(openMenu, TouchControl.Menu) || (!session.Online && jobsBoard.WasPressedThisFrame()))
@@ -683,6 +697,8 @@ namespace CostaLivre
             }
             if (interaction && TryUseVehicle())
                 interaction = false;
+            if (vehicleMotion.Active)
+                return;
 
             if (car != null)
             {
@@ -840,7 +856,7 @@ namespace CostaLivre
                 missionInteraction = takeAction && UsingContractObjective();
                 CostaVehicle seized = encounter.Advance(player.transform.position, car, takeAction && canUse,
                     canUse && Held(interact, TouchControl.Use), rollClock > 0, Time.deltaTime);
-                if (seized != null)
+                if (seized != null && !BeginSoloBoarding(seized))
                     EnterVehicle(seized);
                 if (encounter.Health <= 0)
                 {
@@ -940,14 +956,15 @@ namespace CostaLivre
                         return true;
                     }
 
+                    CostaVehicle leaving = car;
                     car = null;
+                    player.enabled = false;
                     player.transform.position = exit;
-                    playerModel.gameObject.SetActive(true);
-                    playerModel.localPosition = Vector3.zero;
-                    arsenal.SetVisible(true);
-                    player.enabled = true;
                     grounded = true;
                     verticalSpeed = -2.3f;
+                    vehicleMotion.Begin(leaving, false, side, exit, exit, leaving.Root.position,
+                        leaving.Root.eulerAngles.y, CostaVehicleMotion.ExitTime);
+                    ApplyVehiclePresentation();
                     return true;
                 }
                 blockedExitUntil = Time.unscaledTime + 2;
@@ -976,8 +993,37 @@ namespace CostaLivre
                 return true;
             }
 
-            EnterVehicle(nearby);
+            return BeginSoloBoarding(nearby);
+        }
+
+        private bool BeginSoloBoarding(CostaVehicle vehicle)
+        {
+            Vector3 start = player.transform.position;
+            if (!vehicle.TryBoard(start, vehicle.Root.position, vehicle.Root.rotation, out int side, out Vector3 step))
+                return false;
+
+            EnterVehicle(vehicle);
+            player.transform.position = vehicle.Root.position;
+            vehicleMotion.Begin(vehicle, true, side, start, step, vehicle.Root.position,
+                vehicle.Root.eulerAngles.y, CostaVehicleMotion.EnterTime);
+            ApplyVehiclePresentation();
             return true;
+        }
+
+        private void ApplyVehiclePresentation()
+        {
+            player.enabled = car == null && !vehicleMotion.Active;
+            playerModel.localPosition = Vector3.zero;
+            playerModel.gameObject.SetActive(vehicleMotion.Active || car == null || car.IsBike);
+            arsenal.SetVisible(car == null && !vehicleMotion.Active);
+        }
+
+        private void LateUpdate()
+        {
+            if (cars == null)
+                return;
+            foreach (CostaVehicle vehicle in cars)
+                vehicle.CloseIdleDoors();
         }
 
         private void EnterVehicle(CostaVehicle vehicle)
@@ -999,6 +1045,8 @@ namespace CostaLivre
                 if (!session.Online && encounter.Active && encounter.ReservesVehicle(i))
                     continue;
                 CostaVehicle candidate = cars[i];
+                if (candidate.Speed >= 3f)
+                    continue;
                 float separation = (candidate.Root.position - player.transform.position).sqrMagnitude;
                 if (separation <= distance && (!Physics.Linecast(player.transform.position + Vector3.up * 0.8f,
                     candidate.Root.position + Vector3.up * 0.8f, out RaycastHit obstruction,
@@ -1057,7 +1105,8 @@ namespace CostaLivre
         private void PositionCamera(bool aiming, bool snap = false)
         {
             Quaternion rotation = Quaternion.Euler(pitch, yaw, 0);
-            Vector3 pivot = player.transform.position + Vector3.up * (car != null ? 2.05f : crouching ? 0.97f : 1.42f);
+            Vector3 focus = vehicleMotion.Active ? playerModel.position : player.transform.position;
+            Vector3 pivot = focus + Vector3.up * (car != null ? 2.05f : crouching ? 0.97f : 1.42f);
             Vector3 cameraOffset = car != null ? new Vector3(0, 0.68f, -6.45f)
                 : aiming ? new Vector3(0.54f, 0.10f, -2.05f) : new Vector3(0.80f, 0.32f, -3.65f);
             Vector3 offset = rotation * cameraOffset;
@@ -1299,6 +1348,7 @@ namespace CostaLivre
         private void ResetRun(bool resetJob = true)
         {
             independentAlert = false;
+            vehicleMotion.Clear();
             state = RunState.FindCargo;
             pursuit = false;
             if (resetJob)
@@ -1488,6 +1538,8 @@ namespace CostaLivre
             string use = CostaTouch.Available ? L("Use", "Usar") : gamepad ? padBindings.Name(3) : bindings.Name(3);
             if (session.Online && session.Local.held > 0)
                 return L($"Detained · {session.Local.held}s", $"Detido · {session.Local.held}s");
+            if (vehicleMotion.Active)
+                return vehicleMotion.Entering ? L("Getting in", "Entrando no veículo") : L("Getting out", "Saindo do veículo");
             if (car != null && Time.unscaledTime < blockedExitUntil)
                 return L("Both sides are blocked", "Saída bloqueada dos dois lados");
             if (car != null && !session.Online && encounter.Active && jobs.Current.Mode == CostaJobs.Action.DeliverVehicle

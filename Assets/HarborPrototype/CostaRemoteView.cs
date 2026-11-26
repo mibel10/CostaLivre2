@@ -21,6 +21,7 @@ namespace CostaLivre
             internal float FlashUntil;
             internal float KnifeSwingUntil;
             internal CostaSession.Avatar State;
+            internal readonly CostaVehicleMotion VehicleMotion = new();
         }
 
         private readonly Dictionary<int, Rendered> models = new();
@@ -62,9 +63,15 @@ namespace CostaLivre
                         .Select(filter => filter.sharedMesh).ToArray();
                     models.Add(avatar.id, model);
                 }
+                if (model.State?.revision != avatar.revision)
+                    model.VehicleMotion.Begin(avatar, cars);
                 model.State = avatar;
                 model.Look.Apply(avatar.outfit, avatar.police);
                 model.Pack.SetActive(avatar.wanted && !avatar.police);
+                bool transitioning = model.VehicleMotion.Sample(model.Body);
+                model.Mount.gameObject.SetActive(!transitioning && avatar.vehicle < 0);
+                if (transitioning)
+                    continue;
                 bool bike = avatar.vehicle >= 0 && avatar.vehicle < cars.Length && cars[avatar.vehicle].IsBike;
                 model.Body.Root.gameObject.SetActive(avatar.vehicle < 0 || bike);
 
@@ -271,6 +278,7 @@ namespace CostaLivre
 
         private void Release(Rendered model)
         {
+            model.VehicleMotion.Clear();
             model.Body.Release();
             foreach (Mesh mesh in model.UniformMeshes)
                 art.ReleaseModel(mesh);

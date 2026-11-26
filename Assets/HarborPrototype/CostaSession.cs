@@ -13,7 +13,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 6;
+        private const int Protocol = 7;
         private const float Interval = 0.083f;
         internal const int PoliceArmor = 50;
         private const int PoliceKit = (1 << 0) | (1 << 3);
@@ -45,6 +45,13 @@ namespace CostaLivre
             public bool wanted;
             public int outfit;
             public int vehicle = -1;
+            public int doorCar = -1;
+            public int doorSide;
+            public float doorTime;
+            public Vector3 doorStart;
+            public Vector3 doorStep;
+            public Vector3 doorCenter;
+            public float doorYaw;
             public int revision;
             public int held;
             public float bikeLean;
@@ -132,6 +139,7 @@ namespace CostaLivre
             internal bool SprintExhausted;
             internal float TravelSlack = 0.55f;
             internal float HeldUntil;
+            internal float DoorUntil;
             internal float ArrestAfter;
             internal float NextShot;
             internal float RespawnProtection;
@@ -152,6 +160,7 @@ namespace CostaLivre
         private readonly int[] initialHomes;
         private TcpListener listener;
         private Vehicle[] hostCars;
+        private float[] doorBusyUntil;
         private CostaWire connection;
         private Task connecting;
         private TcpClient pendingClient;
@@ -234,6 +243,7 @@ namespace CostaLivre
                     listener = new TcpListener(IPAddress.Any, port);
                     listener.Start(MaxPlayers);
                     hostCars = new Vehicle[sceneVehicles.Length];
+                    doorBusyUntil = new float[hostCars.Length];
                     for (int i = 0; i < hostCars.Length; i++)
                         hostCars[i] = new Vehicle { pos = sceneVehicles[i].Home, yaw = initialHomes[i] };
                 }
@@ -304,7 +314,8 @@ namespace CostaLivre
                 }
                 if (frame == null || frame.type != "state" || frame.protocol != Protocol || frame.players == null
                     || frame.players.Length > MaxPlayers || frame.vehicles == null || frame.vehicles.Length != sceneVehicles.Length
-                    || Array.Exists(frame.players, avatar => avatar == null || avatar.vehicle < -1 || avatar.vehicle >= sceneVehicles.Length)
+                    || Array.Exists(frame.players, avatar => avatar == null || avatar.vehicle < -1 || avatar.vehicle >= sceneVehicles.Length
+                        || avatar.doorCar < -1 || avatar.doorCar >= sceneVehicles.Length)
                     || Array.Exists(frame.vehicles, vehicle => vehicle == null)
                     || frame.loaded?.Length != HarborArsenal.WeaponNames.Length
                     || frame.reloading?.Length != HarborArsenal.WeaponNames.Length)
@@ -414,6 +425,8 @@ namespace CostaLivre
                             peer.Pose = saved.Pose;
                             peer.Pose.name = SafeName(message.name);
                             peer.Pose.playing = false;
+                            peer.Pose.doorCar = -1;
+                            peer.Pose.doorTime = 0;
                             peer.Credits = saved.Credits;
                             peer.Weapons = saved.Weapons;
                             peer.Bag.Replace(saved.Bag.Amounts);
@@ -469,6 +482,9 @@ namespace CostaLivre
             {
                 if (!peer.Ready)
                     continue;
+                peer.Pose.doorTime = Mathf.Max(0, peer.DoorUntil - now);
+                if (peer.Pose.doorTime == 0)
+                    peer.Pose.doorCar = -1;
                 peer.Pose.held = Mathf.CeilToInt(Mathf.Max(0, peer.HeldUntil - now));
                 peer.Pose.arrestProtected = now < peer.ArrestAfter;
                 for (int i = 0; i < peer.ReloadEnds.Length; i++)
@@ -521,12 +537,12 @@ namespace CostaLivre
                 if (msg.pose != null && msg.pose.revision == avatar.revision)
                 {
                     avatar.playing |= msg.pose.playing;
-                    if (avatar.playing && now >= peer.HeldUntil)
+                    if (avatar.playing && now >= peer.HeldUntil && now >= peer.DoorUntil)
                         UpdatePose(peer, msg.pose, now);
                 }
                 return;
             }
-            if (now < peer.HeldUntil && msg.type != "outfit")
+            if ((now < peer.HeldUntil || now < peer.DoorUntil) && msg.type != "outfit")
                 return;
 
             if (!avatar.playing && msg.type != "police" && msg.type != "outfit")
@@ -611,16 +627,17 @@ namespace CostaLivre
                     if (avatar.vehicle < 0 && msg.index >= 0 && msg.index < hostCars.Length)
                     {
                         Vehicle car = hostCars[msg.index];
-                        if (car.driver == 0 && Near(car.pos, avatar.pos, 4.0f)
-                            && (!Physics.Linecast(avatar.pos + Vector3.up * 0.8f, car.pos + Vector3.up * 0.8f,
-                                out RaycastHit obstruction, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
-                                || obstruction.transform == sceneVehicles[msg.index].Root))
+                        CostaVehicle vehicle = sceneVehicles[msg.index];
+                        if (car.driver == 0 && now >= doorBusyUntil[msg.index] && Mathf.Abs(car.speed) < 3f
+                            && !avatar.crouched && avatar.rollPose < 0 && Supported(avatar.pos)
+                            && Near(car.pos, avatar.pos, 4f)
+                            && vehicle.TryBoard(avatar.pos, car.pos, Quaternion.Euler(0, car.yaw, 0), out int side, out Vector3 step))
                         {
                             car.driver = avatar.id;
+                            car.speed = 0;
                             avatar.vehicle = msg.index;
-                            ResetMotion(peer);
+                            StartDoorMotion(peer, msg.index, side, avatar.pos, step, car, now, CostaVehicleMotion.EnterTime);
                             avatar.pos = car.pos;
-                            avatar.revision++;
                         }
                     }
                     break;
@@ -632,15 +649,32 @@ namespace CostaLivre
                         if (vehicle.TryExit(car.pos, Quaternion.Euler(0, car.yaw, 0), msg.index, out Vector3 exit)
                             && ValidPoint(exit))
                         {
+                            int index = avatar.vehicle;
                             ReleaseVehicle(peer);
+                            StartDoorMotion(peer, index, msg.index, exit, exit, car, now, CostaVehicleMotion.ExitTime);
                             avatar.pos = exit;
-                            ResetMotion(peer);
                             avatar.yaw = car.yaw;
-                            avatar.revision++;
                         }
                     }
                     break;
             }
+        }
+
+        private void StartDoorMotion(Peer peer, int index, int side, Vector3 start, Vector3 step,
+            Vehicle car, float now, float duration)
+        {
+            ResetMotion(peer);
+            peer.DoorUntil = doorBusyUntil[index] = now + duration;
+            peer.LastPose = peer.DoorUntil;
+            Avatar avatar = peer.Pose;
+            avatar.doorCar = index;
+            avatar.doorSide = side;
+            avatar.doorStart = start;
+            avatar.doorStep = step;
+            avatar.doorCenter = car.pos;
+            avatar.doorYaw = car.yaw;
+            avatar.standing = false;
+            avatar.revision++;
         }
 
         private void UpdatePose(Peer peer, Avatar pose, float now)
@@ -749,6 +783,9 @@ namespace CostaLivre
 
         private static void ResetMotion(Peer peer)
         {
+            peer.DoorUntil = 0;
+            peer.Pose.doorCar = -1;
+            peer.Pose.doorTime = 0;
             peer.AirborneSince = -1;
             peer.RollUntil = 0;
             peer.ReportedRoll = false;

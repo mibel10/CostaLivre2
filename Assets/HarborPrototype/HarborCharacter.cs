@@ -206,6 +206,31 @@ namespace CostaLivre
             AlignLimb(leftThigh, leftCalf, leftFoot, Root.TransformPoint(new Vector3(-0.26f, 0.41f, 0.04f)), Root.forward);
         }
 
+        internal void VehiclePose(bool entering, float progress, float seated, int side, bool bike)
+        {
+            if (entering && progress < 0.29f)
+            {
+                Animate(Motion.Walk, progress: progress * 5f % 1f);
+                return;
+            }
+
+            Animate(Motion.Idle, progress: 0);
+            float knockPhase = Mathf.Clamp01((progress - 0.29f) / 0.22f);
+            float knock = entering && !bike ? Mathf.Sin(Mathf.PI * knockPhase) : 0f;
+            float brace = entering ? knock : Mathf.Sin(Mathf.PI * progress);
+            mesh.transform.localPosition = Vector3.down * (seated * 0.38f + brace * 0.08f);
+
+            Vector3 right = new(0.28f, 1.10f - seated * 0.23f, 0.20f + brace * 0.19f);
+            Vector3 left = new(-0.28f, 1.02f - seated * 0.21f, 0.12f + seated * 0.20f);
+            AlignArm(rightShoulder, rightElbow, rightHand, Root.TransformPoint(right), Root.right);
+            AlignArm(leftShoulder, leftElbow, leftHand, Root.TransformPoint(left), -Root.right);
+            float step = Mathf.Sin(Mathf.PI * seated) * 0.17f;
+            AlignLimb(rightThigh, rightCalf, rightFoot,
+                Root.TransformPoint(new Vector3(0.15f + 0.10f * side * step, 0.06f + step, 0.05f + seated * 0.30f)), Root.forward);
+            AlignLimb(leftThigh, leftCalf, leftFoot,
+                Root.TransformPoint(new Vector3(-0.15f, 0.05f + step * 0.45f, -0.07f + seated * 0.32f)), Root.forward);
+        }
+
         private void AlignArm(Transform shoulder, Transform elbow, Transform hand, Vector3 target, Vector3 outward)
         {
             AlignLimb(shoulder, elbow, hand, target, outward * 0.6f - Root.up);

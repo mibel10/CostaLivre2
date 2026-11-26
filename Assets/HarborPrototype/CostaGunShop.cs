@@ -15,7 +15,7 @@ namespace CostaLivre
         private GUIStyle label;
         private GUIStyle button;
 
-        internal void Draw(int cash, HarborArsenal weapons, Func<int, bool> buy, Action close)
+        internal void Draw(int cash, HarborArsenal weapons, Func<int, bool> buy, Action<int> equip, Action close)
         {
             if (title == null)
             {
@@ -52,7 +52,7 @@ namespace CostaLivre
                 if (Button(new Rect(box.xMax - 147, y + 4, 121, 28), action, available && weapons.Slot != i))
                 {
                     if (owned || buy(i))
-                        weapons.Select(i);
+                        equip(i);
                 }
             }
 

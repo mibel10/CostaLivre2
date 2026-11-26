@@ -12,7 +12,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 4;
+        private const int Protocol = 5;
         private const float Interval = 0.083f;
         private const int PoliceKit = (1 << 0) | (1 << 3);
         internal static readonly Vector3 CriminalSpawn = CostaCity.CitySpawn + Vector3.left * 2.8f;
@@ -32,6 +32,7 @@ namespace CostaLivre
             public bool playing;
             public bool moving;
             public bool running;
+            public bool aiming;
             public float jumpPose = -1;
             public float rollPose = -1;
             public int equipped = HarborArsenal.Knife;
@@ -74,6 +75,8 @@ namespace CostaLivre
             public Avatar[] players;
             public Vehicle[] vehicles;
             public int[] bag;
+            public int[] loaded;
+            public bool[] reloading;
             public bool[] sites;
             public Vector3 direction;
         }
@@ -130,6 +133,8 @@ namespace CostaLivre
         internal CostaBag Bag { get; } = new();
         internal int Cash { get; private set; }
         internal int WeaponMask { get; private set; }
+        internal int[] Loaded { get; private set; }
+        internal bool[] Reloading { get; private set; }
         internal bool Online => Local != null && connection != null && !connection.Closed;
         internal bool Connecting => connecting != null || (connection != null && Local == null);
         internal bool Hosting => listener != null;
@@ -238,7 +243,9 @@ namespace CostaLivre
                 if (frame == null || frame.type != "state" || frame.protocol != Protocol || frame.players == null
                     || frame.players.Length > MaxPlayers || frame.vehicles == null || frame.vehicles.Length != sceneVehicles.Length
                     || Array.Exists(frame.players, avatar => avatar == null || avatar.vehicle < -1 || avatar.vehicle >= sceneVehicles.Length)
-                    || Array.Exists(frame.vehicles, vehicle => vehicle == null))
+                    || Array.Exists(frame.vehicles, vehicle => vehicle == null)
+                    || frame.loaded?.Length != HarborArsenal.WeaponNames.Length
+                    || frame.reloading?.Length != HarborArsenal.WeaponNames.Length)
                 {
                     Dispose();
                     status = L("Incompatible session.", "Sessão incompatível.");
@@ -258,6 +265,8 @@ namespace CostaLivre
 
                 Cash = frame.credits;
                 WeaponMask = frame.weapons;
+                Loaded = frame.loaded;
+                Reloading = frame.reloading;
                 Bag.Replace(frame.bag);
                 nextWatchdog = now + 9f;
                 status = requestedHost ? L("Hosting", "Hospedando") : L("Connected", "Conectado");
@@ -409,11 +418,18 @@ namespace CostaLivre
             {
                 if (!peer.Ready)
                     continue;
+                var loaded = new int[peer.UsedRounds.Length];
+                var reloading = new bool[loaded.Length];
+                for (int i = 0; i < loaded.Length; i++)
+                {
+                    loaded[i] = HarborArsenal.ShotRules(i).magazine - peer.UsedRounds[i];
+                    reloading[i] = peer.ReloadEnds[i] > 0;
+                }
                 var snapshot = new Frame
                 {
                     type = "state", protocol = Protocol, id = peer.Pose.id, players = players,
                     vehicles = hostCars, sites = ready, credits = peer.Credits,
-                    weapons = WeaponInventory(peer), bag = peer.Bag.Amounts,
+                    weapons = WeaponInventory(peer), bag = peer.Bag.Amounts, loaded = loaded, reloading = reloading,
                     notice = peer.Notice, noticeVersion = peer.NoticeVersion
                 };
                 peer.Wire.Send(JsonUtility.ToJson(snapshot));
@@ -499,12 +515,12 @@ namespace CostaLivre
                     Fire(peer, msg.index, msg.direction, now);
                     break;
                 case "equip":
-                    if (CanEquip(peer, msg.index))
+                    if (msg.index == -1 || CanEquip(peer, msg.index))
                         avatar.equipped = msg.index;
                     break;
                 case "reload":
                     if (msg.index != HarborArsenal.Knife && CanEquip(peer, msg.index)
-                        && peer.UsedRounds[msg.index] > 0 && peer.ReloadEnds[msg.index] == 0)
+                        && avatar.equipped == msg.index && peer.UsedRounds[msg.index] > 0 && peer.ReloadEnds[msg.index] == 0)
                         peer.ReloadEnds[msg.index] = now + HarborArsenal.ShotRules(msg.index).reload;
                     break;
                 case "arrest":
@@ -556,7 +572,7 @@ namespace CostaLivre
             if (Vector3.Distance(avatar.pos, pose.pos) > elapsed * speedLimit + 0.9f)
                 return;
 
-            int equipped = CanEquip(peer, pose.equipped) ? pose.equipped : -1;
+            int equipped = avatar.equipped;
             Vector3 movement = pose.pos - avatar.pos;
             float allowedTravel = elapsed * Mathf.Max(FootSpeed(avatar, avatar.equipped), FootSpeed(pose, equipped)) + 0.55f;
             if (avatar.vehicle < 0 && movement.x * movement.x + movement.z * movement.z >
@@ -578,7 +594,7 @@ namespace CostaLivre
             avatar.standing = pose.standing && !avatar.crouched && avatar.vehicle < 0;
             avatar.moving = pose.moving;
             avatar.running = pose.running;
-            avatar.equipped = equipped;
+            avatar.aiming = pose.aiming;
             avatar.jumpPose = Finite(pose.jumpPose) ? Mathf.Clamp(pose.jumpPose, -1, 1) : -1;
             avatar.rollPose = Finite(pose.rollPose) ? Mathf.Clamp(pose.rollPose, -1, 1) : -1;
             if (avatar.vehicle >= 0)
@@ -607,7 +623,8 @@ namespace CostaLivre
 
         private void Fire(Peer shooter, int weapon, Vector3 direction, float now)
         {
-            if (!CanEquip(shooter, weapon) || now + 0.025f < shooter.NextShot
+            if (!CanEquip(shooter, weapon) || shooter.Pose.equipped != weapon
+                || shooter.Pose.rollPose >= 0 || now + 0.025f < shooter.NextShot
                 || !Finite(direction.x) || !Finite(direction.y) || !Finite(direction.z)
                 || direction.sqrMagnitude < 0.85f || direction.sqrMagnitude > 1.15f)
                 return;
@@ -615,7 +632,7 @@ namespace CostaLivre
             bool melee = weapon == HarborArsenal.Knife;
             if (melee)
             {
-                if (shooter.Pose.equipped != weapon || shooter.Pose.crouched || shooter.Pose.rollPose >= 0
+                if (shooter.Pose.crouched
                     || Mathf.Abs(direction.y) > 0.05f)
                     return;
             }
@@ -632,8 +649,22 @@ namespace CostaLivre
 
             float heightAboveFeet = melee ? HarborArsenal.KnifeHitHeight : shooter.Pose.crouched ? 0.90f : 1.22f;
             Vector3 origin = shooter.Pose.pos + Vector3.up * heightAboveFeet;
-            float closest = Physics.Raycast(origin, direction, out RaycastHit cover, rules.range,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) ? cover.distance : rules.range;
+            Vector3 right = Vector3.Cross(Vector3.up, direction).normalized;
+            if (right == Vector3.zero)
+                right = Vector3.right;
+            Vector3 up = Vector3.Cross(direction, right);
+            for (int i = 0; i < rules.pellets; i++)
+            {
+                Vector2 scatter = HarborArsenal.Scatter(i, rules.pellets, rules.spread, shooter.Pose.aiming);
+                Vector3 ray = (direction + right * scatter.x + up * scatter.y).normalized;
+                DamageAlongRay(shooter, origin, ray, rules.range, rules.damage, now);
+            }
+        }
+
+        private void DamageAlongRay(Peer shooter, Vector3 origin, Vector3 direction, float range, int damage, float now)
+        {
+            float closest = Physics.Raycast(origin, direction, out RaycastHit cover, range,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) ? cover.distance : range;
             Peer victim = null;
             foreach (Peer candidate in peers)
             {
@@ -655,7 +686,7 @@ namespace CostaLivre
 
             if (victim == null)
                 return;
-            victim.Pose.health -= rules.damage;
+            victim.Pose.health -= damage;
             SetNotice(victim, 10);
             if (victim.Pose.health <= 0)
             {

@@ -65,10 +65,10 @@ namespace CostaLivre
             new("Knife", 0, 40, 1, 1.75f, 0.55f, 0, 0, 66, false)
         };
 
-        internal static (float range, float interval, int damage, int magazine, float reload) ShotRules(int index)
+        internal static (float range, float interval, int damage, int magazine, float reload, int pellets, float spread) ShotRules(int index)
         {
             Weapon weapon = weaponRules[index];
-            return (weapon.Range, weapon.Interval, weapon.Damage, weapon.Capacity, weapon.ReloadTime);
+            return (weapon.Range, weapon.Interval, weapon.Damage, weapon.Capacity, weapon.ReloadTime, weapon.Pellets, weapon.Spread);
         }
 
         private readonly Weapon[] weapons = System.Array.ConvertAll(weaponRules, rule => rule.Copy());
@@ -82,6 +82,7 @@ namespace CostaLivre
         private int heavy = -1;
         private int? onlineWeapons;
         private bool loanerPistol;
+        private bool[] hostReloading;
         private float nextShot;
         private float reloadedAt;
         private float flashUntil;
@@ -144,7 +145,13 @@ namespace CostaLivre
         internal int Capacity => Armed ? Current.Capacity : 0;
         internal float AimFov => Armed ? Current.AimFov : 66f;
         internal Vector3 ShotDirection { get; private set; }
-        internal bool Reloading => reloadedAt > 0;
+        internal bool Reloading => Armed && (onlineWeapons.HasValue ? hostReloading?[slot] == true : reloadedAt > 0);
+        internal void SyncAmmo(int[] loaded, bool[] reloading)
+        {
+            hostReloading = reloading;
+            for (int i = 0; i < weapons.Length; i++)
+                weapons[i].Loaded = loaded[i];
+        }
         internal bool HitVisible => Time.time < hitUntil;
 
         internal HarborArsenal(HarborBlockout harbor, Transform playerModel, Shader shader, CostaJobs economy)
@@ -263,11 +270,11 @@ namespace CostaLivre
 
         internal void Reload()
         {
-            if (HasFirearm && !Reloading && Current.Loaded < Current.Capacity)
+            if (!onlineWeapons.HasValue && HasFirearm && !Reloading && Current.Loaded < Current.Capacity)
                 reloadedAt = Time.time + Current.ReloadTime;
         }
 
-        internal bool Update(Camera camera, Vector3 hand, float pitch, bool triggerPressed, bool triggerHeld, bool aiming,
+        internal bool Update(Camera camera, Vector3 hand, float pitch, bool triggerPressed, bool triggerHeld, bool aiming, bool crouching,
             Action<Collider, int> applyHit)
         {
             if (!Armed)
@@ -276,7 +283,7 @@ namespace CostaLivre
             if (flash.gameObject.activeSelf && Time.time >= flashUntil)
                 HideEffects();
 
-            if (Reloading && Time.time >= reloadedAt)
+            if (!onlineWeapons.HasValue && Reloading && Time.time >= reloadedAt)
             {
                 Current.Loaded = Current.Capacity;
                 reloadedAt = 0;
@@ -292,7 +299,7 @@ namespace CostaLivre
                 audio.PlayOneShot(weapon.Shot, 0.42f);
                 ShotDirection = mount.parent.forward;
                 Vector3 knifeOrigin = mount.parent.position + Vector3.up * KnifeHitHeight;
-                if (Physics.Raycast(knifeOrigin, ShotDirection, out RaycastHit strike, weapon.Range,
+                if (!onlineWeapons.HasValue && Physics.Raycast(knifeOrigin, ShotDirection, out RaycastHit strike, weapon.Range,
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Collide))
                     applyHit(strike.collider, weapon.Damage);
                 return true;
@@ -303,14 +310,15 @@ namespace CostaLivre
                 return false;
             }
 
-            weapon.Loaded--;
+            if (!onlineWeapons.HasValue)
+                weapon.Loaded--;
             nextShot = Time.time + weapon.Interval;
             audio.PlayOneShot(weapon.Shot, 0.42f);
 
             Ray view = camera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
             Vector3 muzzle = weapon.Muzzle.position;
             // Start collision checks at the shoulder so the visual barrel cannot bypass cover.
-            Vector3 origin = mount.parent.position + Vector3.up * 1.22f;
+            Vector3 origin = mount.parent.position + Vector3.up * (crouching ? 0.90f : 1.22f);
             Vector3 aimPoint = Physics.Raycast(view, out RaycastHit aimHit, weapon.Range,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Collide)
                 ? aimHit.point : view.GetPoint(weapon.Range);
@@ -320,22 +328,16 @@ namespace CostaLivre
 
             ShotDirection = forward;
             Vector3 tracerEnd = origin + forward * weapon.Range;
-            float spread = weapon.Spread * (aiming && weapon.Pellets == 1 ? 0.35f : 1);
-            for (int i = 0; i < weapon.Pellets; i++)
+            int visualPellets = onlineWeapons.HasValue ? 1 : weapon.Pellets;
+            for (int i = 0; i < visualPellets; i++)
             {
-                Vector2 scatter = i == 0 ? Vector2.zero : UnityEngine.Random.insideUnitCircle;
-                Vector3 direction = (forward + (camera.transform.right * scatter.x
-                    + camera.transform.up * scatter.y) * spread).normalized;
-                if (weapon.Pellets == 1)
-                {
-                    Vector2 sway = UnityEngine.Random.insideUnitCircle * spread;
-                    direction = (forward + camera.transform.right * sway.x + camera.transform.up * sway.y).normalized;
-                }
-
+                Vector2 scatter = onlineWeapons.HasValue ? Vector2.zero : Scatter(i, weapon.Pellets, weapon.Spread, aiming);
+                Vector3 direction = (forward + camera.transform.right * scatter.x + camera.transform.up * scatter.y).normalized;
                 if (Physics.Raycast(origin, direction, out RaycastHit hit, weapon.Range,
                     Physics.DefaultRaycastLayers, QueryTriggerInteraction.Collide))
                 {
-                    applyHit(hit.collider, weapon.Damage);
+                    if (!onlineWeapons.HasValue)
+                        applyHit(hit.collider, weapon.Damage);
                     if (i == 0)
                         tracerEnd = hit.point;
                 }
@@ -352,6 +354,10 @@ namespace CostaLivre
             }
             return true;
         }
+
+        internal static Vector2 Scatter(int pellet, int pellets, float spread, bool aiming) =>
+            pellets > 1 && pellet == 0 ? Vector2.zero
+                : UnityEngine.Random.insideUnitCircle * (aiming && pellets == 1 ? spread * 0.35f : spread);
 
         internal void ShowHit() => hitUntil = Time.time + 0.16f;
 

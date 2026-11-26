@@ -72,8 +72,10 @@ namespace CostaLivre
         private bool crouching;
         private bool walking;
         private bool runningPose;
+        private bool aimingPose;
         private int netRevision = -1;
         private int pendingBuy = -1;
+        private float nextReloadRequest;
         private int appliedSelection;
         private CostaBag CurrentBag => session.Online ? session.Bag : jobs.Bag;
         private int CurrentCash => session.Online ? session.Cash : jobs.Credits;
@@ -282,7 +284,7 @@ namespace CostaLivre
             if (menu.SelectionVersion != appliedSelection)
             {
                 appliedSelection = menu.SelectionVersion;
-                arsenal.Select(menu.SelectedWeapon);
+                EquipWeapon(menu.SelectedWeapon);
             }
             inMenu = false;
             menuBody.Root.gameObject.SetActive(false);
@@ -383,7 +385,7 @@ namespace CostaLivre
                 yaw = car != null ? car.Root.eulerAngles.y : playerModel.eulerAngles.y,
                 revision = netRevision,
                 playing = enteredOnlineWorld,
-                equipped = arsenal.Slot,
+                aiming = aimingPose,
                 standing = grounded && !crouching && rollClock <= 0 && car == null,
                 crouched = crouching,
                 jumpPose = car == null && (!grounded || landing > 0)
@@ -512,10 +514,12 @@ namespace CostaLivre
                 wasPolice = avatar.police;
                 pendingBuy = -1;
                 arsenal.Reset();
+                arsenal.Select(avatar.equipped);
             }
+            arsenal.SyncAmmo(session.Loaded, session.Reloading);
             if (pendingBuy >= 0 && arsenal.Owned(pendingBuy))
             {
-                arsenal.Select(pendingBuy);
+                EquipWeapon(pendingBuy);
                 pendingBuy = -1;
             }
             localLook.Apply(avatar.outfit, avatar.police);
@@ -682,29 +686,39 @@ namespace CostaLivre
             }
 
             CycleWeapons();
-            bool wasReloading = arsenal.Reloading;
-            if (Pressed(reload, TouchControl.Reload))
-                arsenal.Reload();
+
 
             bool aiming = arsenal.HasFirearm && rollClock <= 0 && Held(aim, TouchControl.Aim)
                 && (touch.Down(TouchControl.Aim) || Cursor.lockState == CursorLockMode.Locked || aim.activeControl?.device is Gamepad);
+            aimingPose = aiming;
             MovePlayer(aiming);
             Physics.SyncTransforms();
             PositionCamera(aiming && rollClock <= 0);
 
             bool fireEnabled = rollClock <= 0 && (!arsenal.KnifeEquipped || !crouching) && !recapturing
                 && (touch.Down(TouchControl.Fire) || Cursor.lockState == CursorLockMode.Locked || shoot.activeControl?.device is Gamepad);
+            bool firePressed = fireEnabled && Pressed(shoot, TouchControl.Fire);
+            bool fireHeld = fireEnabled && Held(shoot, TouchControl.Fire);
+            if (Pressed(reload, TouchControl.Reload) || arsenal.Loaded == 0 && (firePressed || fireHeld))
+            {
+                if (!session.Online)
+                    arsenal.Reload();
+                else if (arsenal.HasFirearm && !arsenal.Reloading && arsenal.Loaded < arsenal.Capacity
+                    && Time.unscaledTime >= nextReloadRequest)
+                {
+                    nextReloadRequest = Time.unscaledTime + 0.25f;
+                    session.Request("reload", arsenal.Slot);
+                }
+            }
             bool contractCombat = !session.Online && encounter.Combat;
-            if (arsenal.Update(followCamera, playerBody.WeaponHand, pitch, fireEnabled && Pressed(shoot, TouchControl.Fire),
-                fireEnabled && Held(shoot, TouchControl.Fire), aiming, HitGuard))
+            if (arsenal.Update(followCamera, playerBody.WeaponHand, pitch, firePressed,
+                fireHeld, aiming, crouching, HitGuard))
             {
                 if (session.Online)
                     session.Fire(arsenal.Slot, arsenal.ShotDirection);
                 else if (!contractCombat)
                     StartPursuit(0.25f);
             }
-            if (session.Online && !wasReloading && arsenal.Reloading)
-                session.Request("reload", arsenal.Slot);
 
             bool originalInteraction = harborJob && state == RunState.FindCargo
                 && IsNear(HarborBlockout.Cargo, InteractionRadius) && interaction;
@@ -987,6 +1001,14 @@ namespace CostaLivre
         }
 
         private bool CanResume() => enteredRun && (state == RunState.FindCargo || state == RunState.Escape);
+
+        private void EquipWeapon(int index)
+        {
+            int previous = arsenal.Slot;
+            arsenal.Select(index);
+            if (session.Online && previous != arsenal.Slot)
+                session.Request("equip", arsenal.Slot);
+        }
 
         private void CycleWeapons()
         {
@@ -1300,7 +1322,7 @@ namespace CostaLivre
             escapeSeconds = 0;
             arsenal.Reset();
             if (menu != null)
-                arsenal.Select(menu.SelectedWeapon);
+                EquipWeapon(menu.SelectedWeapon);
             UpdateContractWeapon();
             playerBody.Animate(HarborCharacter.Motion.Idle, progress: 0);
             PositionCamera(false, true);
@@ -1374,7 +1396,7 @@ namespace CostaLivre
             }
             if (overlay == FieldOverlay.Shop)
             {
-                gunShop.Draw(CurrentCash, arsenal, BuyWeapon, closeOverlay);
+                gunShop.Draw(CurrentCash, arsenal, BuyWeapon, EquipWeapon, closeOverlay);
                 return;
             }
             if (overlay == FieldOverlay.Bag || overlay == FieldOverlay.Vendor)

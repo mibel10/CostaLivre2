@@ -86,6 +86,29 @@ namespace CostaLivre
             public Vector3 direction;
         }
 
+        [Serializable]
+        private sealed class WorldSnapshot
+        {
+            public string type = "state";
+            public int protocol = Protocol;
+            public Avatar[] players;
+            public Vehicle[] vehicles;
+            public bool[] sites;
+        }
+
+        [Serializable]
+        private sealed class PlayerSnapshot
+        {
+            public int id;
+            public int credits;
+            public int weapons;
+            public int notice;
+            public int noticeVersion;
+            public int[] bag;
+            public int[] loaded = new int[HarborArsenal.WeaponNames.Length];
+            public bool[] reloading = new bool[HarborArsenal.WeaponNames.Length];
+        }
+
         private sealed class Peer
         {
             internal CostaWire Wire;
@@ -112,9 +135,12 @@ namespace CostaLivre
             internal readonly int[] UsedRounds = new int[HarborArsenal.WeaponNames.Length];
             internal readonly float[] ReloadEnds = new float[HarborArsenal.WeaponNames.Length];
             internal readonly CostaBag Bag = new();
+            internal readonly PlayerSnapshot Snapshot = new();
         }
 
         private readonly List<Peer> peers = new();
+        private readonly List<Avatar> active = new(MaxPlayers);
+        private readonly WorldSnapshot world = new() { sites = new bool[CostaRobberies.Sites.Length] };
         private readonly Dictionary<string, Peer> disconnected = new();
         private RSA clientIdentity;
         private readonly CostaVehicle[] sceneVehicles;
@@ -424,7 +450,7 @@ namespace CostaLivre
             if (now < nextSnapshot)
                 return;
             nextSnapshot = now + Interval;
-            List<Avatar> active = new();
+            active.Clear();
             foreach (Peer peer in peers)
             {
                 if (!peer.Ready)
@@ -441,29 +467,35 @@ namespace CostaLivre
                 }
                 active.Add(peer.Pose);
             }
-            Avatar[] players = active.ToArray();
-            var ready = new bool[restock.Length];
-            for (int i = 0; i < ready.Length; i++)
-                ready[i] = now >= restock[i];
+            if (active.Count == 0)
+                return;
+            if (world.players?.Length != active.Count)
+                world.players = new Avatar[active.Count];
+            active.CopyTo(world.players);
+            world.vehicles = hostCars;
+            for (int i = 0; i < world.sites.Length; i++)
+                world.sites[i] = now >= restock[i];
+            string shared = JsonUtility.ToJson(world);
+            string prefix = shared.Substring(0, shared.Length - 1);
+
             foreach (Peer peer in peers)
             {
                 if (!peer.Ready)
                     continue;
-                var loaded = new int[peer.UsedRounds.Length];
-                var reloading = new bool[loaded.Length];
-                for (int i = 0; i < loaded.Length; i++)
+                var snapshot = peer.Snapshot;
+                snapshot.id = peer.Pose.id;
+                snapshot.credits = peer.Credits;
+                snapshot.weapons = WeaponInventory(peer);
+                snapshot.bag = peer.Bag.Amounts;
+                snapshot.notice = peer.Notice;
+                snapshot.noticeVersion = peer.NoticeVersion;
+                for (int i = 0; i < snapshot.loaded.Length; i++)
                 {
-                    loaded[i] = HarborArsenal.ShotRules(i).magazine - peer.UsedRounds[i];
-                    reloading[i] = peer.ReloadEnds[i] > 0;
+                    snapshot.loaded[i] = HarborArsenal.ShotRules(i).magazine - peer.UsedRounds[i];
+                    snapshot.reloading[i] = peer.ReloadEnds[i] > 0;
                 }
-                var snapshot = new Frame
-                {
-                    type = "state", protocol = Protocol, id = peer.Pose.id, players = players,
-                    vehicles = hostCars, sites = ready, credits = peer.Credits,
-                    weapons = WeaponInventory(peer), bag = peer.Bag.Amounts, loaded = loaded, reloading = reloading,
-                    notice = peer.Notice, noticeVersion = peer.NoticeVersion
-                };
-                peer.Wire.Send(JsonUtility.ToJson(snapshot));
+                string personal = JsonUtility.ToJson(snapshot);
+                peer.Wire.Send(string.Concat(prefix, ",", personal.Substring(1)));
             }
         }
 
@@ -1093,6 +1125,9 @@ namespace CostaLivre
             foreach (Peer peer in peers)
                 peer.Wire.Dispose();
             peers.Clear();
+            active.Clear();
+            world.players = null;
+            world.vehicles = null;
             disconnected.Clear();
             Array.Clear(restock, 0, restock.Length);
             Players = Array.Empty<Avatar>();

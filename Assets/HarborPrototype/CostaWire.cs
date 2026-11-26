@@ -44,13 +44,14 @@ namespace CostaLivre
             if (Closed)
                 return;
 
-            if (Encoding.UTF8.GetByteCount(text) > Limit || Interlocked.Increment(ref outCount) > 96)
+            int length = Encoding.UTF8.GetByteCount(text);
+            if (length > Limit || Interlocked.Increment(ref outCount) > 96)
             {
                 Dispose();
                 return;
             }
 
-            outgoing.Enqueue(Encode(text));
+            outgoing.Enqueue(Encode(text, length));
             pending.Release();
         }
 
@@ -60,7 +61,7 @@ namespace CostaLivre
             {
                 try
                 {
-                    byte[] response = Encode(text);
+                    byte[] response = Encode(text, Encoding.UTF8.GetByteCount(text));
                     await client.GetStream().WriteAsync(response, 0, response.Length).ConfigureAwait(false);
                 }
                 catch (Exception e) when (e is System.IO.IOException || e is SocketException || e is ObjectDisposedException)
@@ -69,16 +70,14 @@ namespace CostaLivre
             }
         }
 
-        private static byte[] Encode(string text)
+        private static byte[] Encode(string text, int length)
         {
-            byte[] textBytes = Encoding.UTF8.GetBytes(text);
-            byte[] frame = new byte[textBytes.Length + 4];
-            int length = textBytes.Length;
+            byte[] frame = new byte[length + 4];
             frame[0] = (byte)(length >> 24);
             frame[1] = (byte)(length >> 16);
             frame[2] = (byte)(length >> 8);
             frame[3] = (byte)length;
-            Buffer.BlockCopy(textBytes, 0, frame, 4, length);
+            Encoding.UTF8.GetBytes(text, 0, text.Length, frame, 4);
             return frame;
         }
 

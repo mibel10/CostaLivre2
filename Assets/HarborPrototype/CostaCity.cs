@@ -208,7 +208,8 @@ namespace CostaLivre
                 yield return 0.65f + 0.10f * i;
             }
 
-            art.FinishDecoration();
+            foreach (float part in art.FinishDecoration())
+                yield return Mathf.Lerp(0.86f, 0.99f, part);
             yield return 1f;
         }
 

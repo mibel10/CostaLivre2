@@ -424,10 +424,18 @@ namespace CostaLivre
             pieces.Add(part.GetComponent<MeshFilter>());
         }
 
-        internal void FinishDecoration()
+        internal IEnumerable<float> FinishDecoration()
         {
+            int processed = 0;
+            double nextFrame = Time.realtimeSinceStartupAsDouble + 0.004;
             foreach (var entry in decoration)
             {
+                if (Time.realtimeSinceStartupAsDouble >= nextFrame)
+                {
+                    yield return (float)processed / decoration.Count;
+                    nextFrame = Time.realtimeSinceStartupAsDouble + 0.004;
+                }
+                processed++;
                 List<MeshFilter> pieces = entry.Value;
                 if (pieces.Count < 2)
                     continue;

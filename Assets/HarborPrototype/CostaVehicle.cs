@@ -286,20 +286,30 @@ namespace CostaLivre
             }
         }
 
-        internal void ApplyNetwork(Vector3 position, float yaw, float velocity, bool snap, float lean = 0)
+        internal bool ApplyNetwork(Vector3 position, float yaw, float velocity, bool snap, float lean = 0)
         {
             float blend = snap ? 1f : 1f - Mathf.Exp(-Time.unscaledDeltaTime * 15f);
             Vector3 previous = Root.position;
-            Root.SetPositionAndRotation(Vector3.Lerp(previous, position, blend),
-                Quaternion.Slerp(Root.rotation, Quaternion.Euler(0, yaw, 0), blend));
-            if (!snap)
-                SpinWheels(Vector3.Dot(Root.position - previous, Root.forward));
+            Quaternion previousRotation = Root.rotation;
+            Quaternion targetRotation = Quaternion.Euler(0, yaw, 0);
+            Vector3 next = (position - previous).sqrMagnitude < 0.000001f
+                ? position : Vector3.Lerp(previous, position, blend);
+            Quaternion rotation = Quaternion.Angle(previousRotation, targetRotation) < 0.05f
+                ? targetRotation : Quaternion.Slerp(previousRotation, targetRotation, blend);
+            bool changed = !previous.Equals(next) || !previousRotation.Equals(rotation);
+            if (changed)
+            {
+                Root.SetPositionAndRotation(next, rotation);
+                if (!snap && !previous.Equals(next))
+                    SpinWheels(Vector3.Dot(next - previous, Root.forward));
+            }
             if (IsBike)
                 shell.localRotation = Quaternion.Slerp(shell.localRotation, Quaternion.Euler(0, 0, lean), blend);
             speed = velocity;
+            return changed;
         }
 
-        internal void Drive(Vector2 input, bool braking)
+        internal bool Drive(Vector2 input, bool braking)
         {
             float dt = Time.deltaTime;
             float target = braking ? 0 : input.y >= 0 ? topSpeed * input.y : ReverseSpeed * input.y;
@@ -312,7 +322,7 @@ namespace CostaLivre
                 shell.localRotation = Quaternion.Slerp(shell.localRotation, Quaternion.Euler(0, 0, lean), dt * 9f);
             }
             if (Mathf.Abs(speed) < 0.04f)
-                return;
+                return false;
 
             body.enabled = false;
             try
@@ -321,7 +331,9 @@ namespace CostaLivre
                     * Mathf.Lerp(92f, 48f, Mathf.Abs(speed) / topSpeed) * steeringStrength * dt, 0);
                 Vector3 center = Root.position + Vector3.up * body.center.y;
                 Vector3 halves = body.size * 0.5f - Vector3.one * 0.075f;
-                if (!Physics.CheckBox(center, halves, steering, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                bool turned = !steering.Equals(Root.rotation)
+                    && !Physics.CheckBox(center, halves, steering, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                if (turned)
                     Root.rotation = steering;
                 Vector3 direction = Root.forward * Mathf.Sign(speed);
                 float distance = Mathf.Abs(speed) * dt;
@@ -333,7 +345,9 @@ namespace CostaLivre
                 }
 
                 Root.position += direction * distance;
-                SpinWheels(Vector3.Dot(direction, Root.forward) * distance);
+                if (distance > 0)
+                    SpinWheels(Vector3.Dot(direction, Root.forward) * distance);
+                return turned || distance > 0;
             }
             finally
             {

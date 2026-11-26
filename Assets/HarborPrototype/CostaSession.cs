@@ -431,7 +431,6 @@ namespace CostaLivre
             if (left)
                 Rebalance();
 
-            Physics.SyncTransforms();
             for (int i = 0; i < hostCars.Length; i++)
             {
                 Vehicle vehicle = hostCars[i];

@@ -480,12 +480,16 @@ namespace CostaLivre
             CostaSession.Avatar avatar = session.Local;
             if (avatar.held > 0 && overlay != FieldOverlay.None)
                 CloseOverlay();
+            bool syncCars = joined;
             for (int i = 0; i < cars.Length; i++)
             {
                 CostaSession.Vehicle vehicle = session.Cars[i];
                 if (i != avatar.vehicle || netRevision != avatar.revision)
-                    cars[i].ApplyNetwork(vehicle.pos, vehicle.yaw, vehicle.speed, joined || i == avatar.vehicle, vehicle.lean);
+                    syncCars |= cars[i].ApplyNetwork(vehicle.pos, vehicle.yaw, vehicle.speed, joined || i == avatar.vehicle, vehicle.lean);
             }
+
+            if (syncCars)
+                Physics.SyncTransforms();
 
             if (netRevision != avatar.revision)
             {
@@ -505,7 +509,6 @@ namespace CostaLivre
                 verticalSpeed = -2.3f;
                 rollClock = landing = 0;
                 yaw = avatar.yaw;
-                Physics.SyncTransforms();
                 if (!inMenu)
                     PositionCamera(false, true);
             }
@@ -645,9 +648,12 @@ namespace CostaLivre
             if (!session.Online)
             {
                 robberies.Refresh();
+                bool moved = false;
                 foreach (CostaVehicle vehicle in cars)
                     if (vehicle != car && vehicle.Speed > 0.05f)
-                        vehicle.Drive(Vector2.zero, false);
+                        moved |= vehicle.Drive(Vector2.zero, false);
+                if (moved)
+                    Physics.SyncTransforms();
             }
             cargoPack.SetActive(CurrentBag.Count > 0 || state == RunState.Escape
                 || !session.Online && encounter.CarryingLoot);
@@ -680,7 +686,8 @@ namespace CostaLivre
 
             if (car != null)
             {
-                car.Drive(MovementInput(), Held(jump, TouchControl.Jump));
+                if (car.Drive(MovementInput(), Held(jump, TouchControl.Jump)))
+                    Physics.SyncTransforms();
                 player.transform.position = car.Root.position;
                 if (car.IsBike)
                 {
@@ -691,7 +698,6 @@ namespace CostaLivre
                 }
                 yaw = Mathf.LerpAngle(yaw, car.Root.eulerAngles.y, 1 - Mathf.Exp(-Time.deltaTime * 6f));
                 pitch = Mathf.Lerp(pitch, 15f, 1 - Mathf.Exp(-Time.deltaTime * 4f));
-                Physics.SyncTransforms();
                 PositionCamera(false);
                 UpdateCityJobs(false);
                 if (pursuit)
@@ -707,7 +713,6 @@ namespace CostaLivre
                 && (touch.Down(TouchControl.Aim) || Cursor.lockState == CursorLockMode.Locked || aim.activeControl?.device is Gamepad);
             aimingPose = aiming;
             MovePlayer(aiming);
-            Physics.SyncTransforms();
             PositionCamera(aiming && rollClock <= 0);
 
             bool fireEnabled = rollClock <= 0 && (!arsenal.KnifeEquipped || !crouching) && !recapturing
@@ -1335,6 +1340,7 @@ namespace CostaLivre
             if (Application.isFocused)
                 SetCursor(true);
 
+            Physics.SyncTransforms();
             ResetGuards();
         }
 

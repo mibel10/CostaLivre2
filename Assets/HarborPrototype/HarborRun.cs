@@ -107,6 +107,9 @@ namespace CostaLivre
         private bool harborJob;
         private HarborArsenal arsenal;
         private CostaEffects effects;
+        private CostaUrbanAudio urbanAudio;
+        private HarborWeather.Conditions worldWeather;
+        private float cityNight;
         private CostaScore score;
         private readonly CostaTransitions transitions = new();
         private int shownCompletion;
@@ -315,6 +318,7 @@ namespace CostaLivre
             yield return 0.74f;
 
             CreateWorldActors();
+            urbanAudio = new CostaUrbanAudio(transform, effects.WorldAudio, traffic.VehiclesForAudio, cars, venues);
             for (int floor = 0; floor < CostaFootstepBank.Floors; floor++)
             {
                 effects.WarmSteps(floor);
@@ -596,6 +600,7 @@ namespace CostaLivre
             Destroy(navMesh);
             Destroy(controls);
             arsenal?.Dispose();
+            urbanAudio?.Release();
             effects?.Release();
             bagPanel?.Release();
             encounter?.Dispose();
@@ -863,10 +868,12 @@ namespace CostaLivre
             if (!inMenu || pauseMenu)
                 hour = session.Online ? session.WorldHour : HarborDaylight.Advance(HarborDaylight.StartHour, soloDaySeconds);
             var weather = hour.HasValue ? HarborWeather.Conditions.At(hour.Value) : default;
+            worldWeather = weather;
             menu.SetWorldHour(hour, weather);
             atmosphere.Apply(hour, weather, followCamera, menu.GraphicsPreset, harbor);
             harbor.SetWaterDaylight(hour ?? HarborDaylight.StartHour);
             float night = hour.HasValue ? HarborDaylight.CityNight(hour.Value) : 0;
+            cityNight = night;
             harbor.UpdateStreetLights(night, followCamera.transform.position, menu.StreetLightBudget);
             float grip = Mathf.Lerp(1, .64f, weather.Wet);
             if (cars != null)
@@ -1509,7 +1516,33 @@ namespace CostaLivre
                 && state != RunState.Caught && state != RunState.Delivered;
             effects.UpdateWorldAudio(!inMenu || pauseMenu);
             effects.Drive(driving ? car : null, driving && car != null ? engineThrottle : 0);
+            float ambience = inMenu && !pauseMenu || pausedForFocus ? 0 : quiet ? .31f : 1;
+            Vector3 listenerArea = car != null ? car.Root.position : player.transform.position;
+            urbanAudio.Update(listenerArea, ambience, cityNight, worldWeather.Rain, heat, car,
+                ambience > .05f && heat > 0 ? NearbyPoliceVehicle(listenerArea) : null);
             harbor.Damage.Animate();
+        }
+
+        private Vector3? NearbyPoliceVehicle(Vector3 observer)
+        {
+            if (!session.Online)
+                return null;
+            Vector3? result = null;
+            float range = 130 * 130;
+            foreach (CostaSession.Avatar avatar in session.Players)
+            {
+                if (avatar.id == session.Local.id || !avatar.playing || !avatar.police
+                    || avatar.vehicle < 0 || avatar.vehicle >= cars.Length)
+                    continue;
+                Vector3 position = cars[avatar.vehicle].Root.position + Vector3.up * 1.37f;
+                float distance = (position - observer).sqrMagnitude;
+                if (distance < range)
+                {
+                    range = distance;
+                    result = position;
+                }
+            }
+            return result;
         }
 
         private void EnterVehicle(CostaVehicle vehicle)

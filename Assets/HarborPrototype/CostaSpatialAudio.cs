@@ -128,7 +128,8 @@ namespace CostaLivre
 
         internal void Play(AudioClip clip, Vector3 point, float gain, float near, float far, int priority, float pitch = 1)
         {
-            if (clip == null || gain <= 0 || (point - Listener).sqrMagnitude >= far * far)
+            if (clip == null || clip.loadState != AudioDataLoadState.Loaded || gain <= 0
+                || (point - Listener).sqrMagnitude >= far * far)
                 return;
 
             int slot = next;

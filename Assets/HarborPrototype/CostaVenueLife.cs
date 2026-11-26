@@ -189,6 +189,23 @@ namespace CostaLivre
             }
         }
 
+        internal Transform NearestSpeaker(Vector3 listener)
+        {
+            Transform speaker = null;
+            float range = 22 * 22;
+            foreach (Venue venue in venues)
+            {
+                Transform clerk = venue.Clerk.Root;
+                float distance = (clerk.position - listener).sqrMagnitude;
+                if (clerk.gameObject.activeInHierarchy && distance < range)
+                {
+                    speaker = clerk;
+                    range = distance;
+                }
+            }
+            return speaker;
+        }
+
         internal bool Use(Vector3 player)
         {
             int index = Find(player);

@@ -135,6 +135,7 @@ namespace CostaLivre
         }
 
         internal Car[] Cars => running ? state : null;
+        internal CostaVehicle[] VehiclesForAudio => cars;
         internal CityEvent Incident => incident;
 
         internal void Simulate(float step, float hour, Vector3? pursuit)

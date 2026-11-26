@@ -73,6 +73,8 @@ namespace CostaLivre
             particles = new CostaImpactParticles(parent);
         }
 
+        internal CostaSpatialAudio WorldAudio => spatialAudio;
+
         internal void UpdateWorldAudio(bool inWorld) => spatialAudio.Update(inWorld);
 
         internal void WarmSteps(int surface) => footsteps.Warm(surface);

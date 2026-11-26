@@ -21,7 +21,8 @@ namespace CostaLivre
         private readonly int[] fingers = new int[Centers.Length];
         private int lookFinger = -1;
         private int selected;
-        private GUIStyle caption;
+        private readonly CostaTouchIcons icons = new();
+        private Vector2 stickOffset;
         internal Vector2 Move { get; private set; }
         internal Vector2 Look { get; private set; }
         internal static bool Available => Application.isMobilePlatform && Touchscreen.current != null;
@@ -44,7 +45,7 @@ namespace CostaLivre
             Array.Clear(down, 0, down.Length);
             Array.Clear(pressed, 0, pressed.Length);
             lookFinger = -1;
-            Move = Look = Vector2.zero;
+            Move = Look = stickOffset = Vector2.zero;
         }
 
         internal void Update(bool gameplay, bool driving, bool retry)
@@ -57,7 +58,7 @@ namespace CostaLivre
 
             Array.Clear(pressed, 0, pressed.Length);
             Array.Clear(down, 0, down.Length);
-            Move = Look = Vector2.zero;
+            Move = Look = stickOffset = Vector2.zero;
             bool keepLook = false;
             foreach (var finger in Touchscreen.current.touches)
             {
@@ -94,8 +95,11 @@ namespace CostaLivre
                     if (button == (int)Control.Move)
                     {
                         Rect area = Bounds(button);
-                        Vector2 offset = p - area.center;
-                        Move = Vector2.ClampMagnitude(new Vector2(offset.x, -offset.y) / (area.width * .43f), 1);
+                        float travel = area.width * .32f;
+                        stickOffset = Vector2.ClampMagnitude(p - area.center, travel);
+                        Vector2 axes = new Vector2(stickOffset.x, -stickOffset.y) / travel;
+                        float magnitude = Mathf.InverseLerp(0.12f, 1f, axes.magnitude);
+                        Move = axes.normalized * magnitude;
                     }
                 }
                 if (lookFinger == id)
@@ -104,6 +108,9 @@ namespace CostaLivre
                     keepLook = true;
                 }
             }
+            for (int i = 0; i < fingers.Length; i++)
+                if (!down[i])
+                    fingers[i] = -1;
             if (!keepLook)
                 lookFinger = -1;
         }
@@ -140,18 +147,29 @@ namespace CostaLivre
 
         private void DrawButton(int i, bool highlighted, bool driving)
         {
-            caption ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
             Rect area = Bounds(i);
-            var previous = GUI.color;
-            GUI.color = highlighted ? new Color(.9f, .55f, .25f, .83f) : new Color(.07f, .12f, .16f, .65f);
-            GUI.DrawTexture(area, Texture2D.whiteTexture);
-            GUI.color = Color.white;
-            string label = driving && i == (int)Control.Jump ? L("Brake", "Freio") : Title(i);
-            float fontScale = Mathf.Min(.22f, 1.5f / label.Length);
-            caption.fontSize = Mathf.Max(8, Mathf.RoundToInt(area.width * fontScale));
-            GUI.Label(area, label, caption);
+            Color previous = GUI.color;
+            GUI.color = highlighted ? new Color(0.72f, 0.40f, 0.16f, 0.86f) : new Color(0.045f, 0.08f, 0.11f, 0.68f);
+            GUI.DrawTexture(area, icons.Round);
+            GUI.color = highlighted ? new Color(1f, 0.76f, 0.38f) : new Color(0.73f, 0.86f, 0.91f, 0.74f);
+            GUI.DrawTexture(area, icons.Rim);
+
+            if (i == (int)Control.Move)
+            {
+                float thumbSize = area.width * 0.36f;
+                Vector2 center = area.center + stickOffset;
+                Rect thumb = new(center.x - thumbSize * 0.5f, center.y - thumbSize * 0.5f, thumbSize, thumbSize);
+                GUI.DrawTexture(thumb, icons.Round);
+            }
+            else
+            {
+                GUI.color = new Color(0.97f, 0.97f, 0.91f);
+                GUI.DrawTexture(area, icons.Icon(driving && i == (int)Control.Jump ? 14 : i));
+            }
             GUI.color = previous;
         }
+
+        internal void Release() => icons.Release();
 
         internal bool DrawEditor()
         {

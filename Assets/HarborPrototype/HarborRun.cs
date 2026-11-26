@@ -351,6 +351,7 @@ namespace CostaLivre
             session?.Dispose();
             remotes?.Dispose();
             menu?.Release();
+            touch?.Release();
             menuBody?.Release();
             playerBody?.Release();
             foreach (Guard guard in guards)

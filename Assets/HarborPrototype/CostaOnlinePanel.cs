@@ -33,20 +33,20 @@ namespace CostaLivre
                 title = Style(34, TextAnchor.MiddleLeft);
                 buttons = Style(14, TextAnchor.MiddleCenter);
             }
-            Fill(new Rect(x - 9, y, 415, Mathf.Min(height - y - 44, 412)), Board);
+            Fill(new Rect(x - 9, y, 415, Mathf.Min(height - y - 16, 377)), Board);
             Label(new Rect(x + 8, y + 2, 395, 45), "Multiplayer", title, Text);
             float row = y + 54;
             if (!session.Online)
             {
                 Label(new Rect(x + 8, row, 350, 22), L("PLAYER NAME", "NOME DO JOGADOR"), labels, Muted);
-                name = Input(new Rect(x + 8, row + 27, 362, 24), name, 20, 1, TouchScreenKeyboardType.Default);
+                name = Input(new Rect(x + 8, row + 25, 362, 34), name, 20, 1, TouchScreenKeyboardType.Default);
                 Label(new Rect(x + 8, row + 61, 230, 20), L("HOST IPV4", "IPV4 DO ANFITRIÃO"), labels, Muted);
                 Label(new Rect(x + 286, row + 61, 76, 20), L("PORT", "PORTA"), labels, Muted);
-                ip = Input(new Rect(x + 8, row + 86, 264, 24), ip, 15, 2, TouchScreenKeyboardType.NumbersAndPunctuation);
-                port = Input(new Rect(x + 286, row + 86, 84, 24), port, 5, 3, TouchScreenKeyboardType.NumberPad);
-                if (Button(new Rect(x + 8, row + 127, 174, 34), L("Host LAN", "Hospedar LAN"), !session.Connecting))
+                ip = Input(new Rect(x + 8, row + 84, 264, 34), ip, 15, 2, TouchScreenKeyboardType.NumbersAndPunctuation);
+                port = Input(new Rect(x + 286, row + 84, 84, 34), port, 5, 3, TouchScreenKeyboardType.NumberPad);
+                if (Button(new Rect(x + 8, row + 127, 174, 40), L("Host LAN", "Hospedar LAN"), !session.Connecting))
                     Start(true);
-                if (Button(new Rect(x + 195, row + 127, 175, 34), L("Join by IP", "Entrar por IP"), !session.Connecting))
+                if (Button(new Rect(x + 195, row + 127, 175, 40), L("Join by IP", "Entrar por IP"), !session.Connecting))
                     Start(false);
                 if (session.Connecting && Button(new Rect(x + 8, row + 199, 116, 30), L("Cancel", "Cancelar"), true))
                     session.Dispose();
@@ -75,12 +75,12 @@ namespace CostaLivre
                 int index = Outfit / Powers[i] % 3;
                 float yy = row + 101 + i * 32;
                 Label(new Rect(x + 8, yy, 244, 26), OutfitLabel(i, index), labels, Text);
-                if (Button(new Rect(x + 263, yy, 49, 24), "‹", !police))
+                if (Button(new Rect(x + 263, yy, 49, 30), "‹", !police))
                     Change(i, index, -1);
-                if (Button(new Rect(x + 322, yy, 48, 24), "›", !police))
+                if (Button(new Rect(x + 322, yy, 48, 30), "›", !police))
                     Change(i, index, 1);
             }
-            if (Button(new Rect(x + 8, row + 270, 174, 34), L("Play", "Jogar"), true))
+            if (Button(new Rect(x + 8, row + 270, 174, 40), L("Play", "Jogar"), true))
                 play();
             Label(new Rect(x + 190, row + 266, 186, 38), session.CurrentNotice, labels, Gold);
         }

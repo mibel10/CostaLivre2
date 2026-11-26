@@ -251,10 +251,17 @@ namespace CostaLivre
         {
             float angle = Mathf.Sin(Time.unscaledTime * 0.38f) * 0.26f;
             Vector3 cameraPosition = MenuActorPosition + new Vector3(-2.85f + angle, 1.57f, -3.45f);
-            Vector3 cameraRight = Vector3.Cross(Vector3.up, (MenuActorPosition - cameraPosition).normalized);
-            Vector3 focus = MenuActorPosition + Vector3.up * 1.0f - cameraRight * 1.17f;
+            const float fieldOfView = 35f;
+            Vector3 center = MenuActorPosition + Vector3.up * 1.05f;
+            Vector3 forward = center - cameraPosition;
+            Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
+            Vector3 up = Vector3.Cross(forward.normalized, right);
+            float halfHeight = forward.magnitude * Mathf.Tan(fieldOfView * Mathf.Deg2Rad / 2f);
+            Vector2 offset = (menu.PreviewViewport - Vector2.one * 0.5f) * 2f;
+            Vector3 focus = center - right * (offset.x * halfHeight * followCamera.aspect)
+                - up * (offset.y * halfHeight);
             followCamera.transform.SetPositionAndRotation(cameraPosition, Quaternion.LookRotation(focus - cameraPosition));
-            followCamera.fieldOfView = 35f;
+            followCamera.fieldOfView = fieldOfView;
             menuBody.Animate(HarborCharacter.Motion.Idle);
             menuLook.Apply(menu.OnlinePage || session.Online ? onlinePanel.Outfit : 0, IsPolice);
             int previewSlot = arsenal.Owned(menu.SelectedWeapon) ? menu.SelectedWeapon : arsenal.Slot;

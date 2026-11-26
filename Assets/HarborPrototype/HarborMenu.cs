@@ -9,11 +9,56 @@ namespace CostaLivre
         private enum ScreenPage { Deploy, Loadout, Options, Jobs, Online }
         private enum SettingsPage { Controls, Graphics, Language }
 
-        private static readonly Color Paper = new(0.87f, 0.87f, 0.81f);
-        private static readonly Color Grey = new(0.60f, 0.65f, 0.63f);
-        private static readonly Color Copper = new(0.83f, 0.56f, 0.37f);
-        private static readonly Color Carbon = new(0.047f, 0.063f, 0.066f, 0.94f);
-        private static readonly Color Line = new(0.25f, 0.32f, 0.31f, 0.92f);
+        private static readonly Color Paper = new(0.98f, 0.95f, 0.89f);
+        private static readonly Color Grey = new(0.73f, 0.78f, 0.78f);
+        private static readonly Color Copper = new(1.00f, 0.72f, 0.45f);
+        private static readonly Color Carbon = new(0.037f, 0.063f, 0.078f, 0.94f);
+        private static readonly Color Line = new(0.24f, 0.33f, 0.37f, 0.82f);
+        private static readonly Color Hover = new(0.12f, 0.22f, 0.27f, 0.97f);
+        private static readonly Color Rail = new(0.023f, 0.040f, 0.052f, 0.88f);
+
+        private readonly struct MenuFrame
+        {
+            internal readonly Rect Safe;
+            internal readonly float Scale, Width, Height;
+            internal readonly bool Compact, Portrait;
+
+            internal MenuFrame(Rect safe)
+            {
+                Safe = safe;
+                float aspect = safe.width / safe.height;
+                Compact = Application.isMobilePlatform || aspect < 1.5f;
+                Portrait = aspect < 1.15f;
+                Scale = Compact ? Mathf.Min(safe.width / 650f, safe.height / 482f, 3f)
+                    : Mathf.Min(safe.width / 1010f, safe.height / 570f, 2.25f);
+                Width = safe.width / Scale;
+                Height = safe.height / Scale;
+            }
+
+            internal static MenuFrame Current
+            {
+                get
+                {
+                    Rect safe = Screen.safeArea;
+                    if (safe.width <= 0 || safe.height <= 0)
+                        safe = new Rect(0, 0, Mathf.Max(1, Screen.width), Mathf.Max(1, Screen.height));
+                    return new MenuFrame(safe);
+                }
+            }
+        }
+
+        internal Vector2 PreviewViewport
+        {
+            get
+            {
+                MenuFrame frame = MenuFrame.Current;
+                bool stacked = frame.Portrait && page == ScreenPage.Deploy;
+                float x = stacked ? 0.53f : 0.77f;
+                float y = stacked ? 0.68f : 0.49f;
+                return new Vector2((frame.Safe.x + frame.Safe.width * x) / Mathf.Max(1, Screen.width),
+                    (frame.Safe.y + frame.Safe.height * y) / Mathf.Max(1, Screen.height));
+            }
+        }
 
         private readonly Texture2D gradient;
         private ScreenPage page;
@@ -46,6 +91,7 @@ namespace CostaLivre
         internal void ShowOnline() => page = ScreenPage.Online;
         internal bool OnlinePage => page == ScreenPage.Online;
         private GUIStyle headline;
+        private GUIStyle hero;
         private GUIStyle subhead;
         private GUIStyle label;
         private GUIStyle button;
@@ -63,13 +109,25 @@ namespace CostaLivre
             int fullscreen = PlayerPrefs.GetInt("CostaFullscreen", -1);
             if (fullscreen >= 0)
                 Screen.fullScreenMode = fullscreen > 0 ? FullScreenMode.FullScreenWindow : FullScreenMode.Windowed;
-            gradient = new Texture2D(32, 1, TextureFormat.RGBA32, false);
-            gradient.wrapMode = TextureWrapMode.Clamp;
-            for (int i = 0; i < gradient.width; i++)
+            gradient = new Texture2D(64, 32, TextureFormat.RGBA32, false)
             {
-                float t = i / (gradient.width - 1f);
-                gradient.SetPixel(i, 0, new Color(0.025f, 0.041f, 0.046f, Mathf.Pow(1f - t, 1.14f) * 0.99f));
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+            var colors = new Color32[gradient.width * gradient.height];
+            for (int y = 0; y < gradient.height; y++)
+            {
+                float vertical = y / (gradient.height - 1f);
+                float edge = Mathf.Pow(Mathf.Abs(vertical * 2f - 1f), 3f) * 0.55f;
+                for (int x = 0; x < gradient.width; x++)
+                {
+                    float horizontal = x / (gradient.width - 1f);
+                    float shade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.28f, 0.83f, horizontal));
+                    colors[y * gradient.width + x] = new Color(0.025f, 0.052f, 0.072f,
+                        Mathf.Lerp(edge, 0.98f, shade));
+                }
             }
+            gradient.SetPixels32(colors);
             gradient.Apply(false, true);
             AudioListener.volume = Volume;
         }
@@ -88,40 +146,37 @@ namespace CostaLivre
                 CreateStyles();
 
             Matrix4x4 original = GUI.matrix;
-            float scale = Mathf.Min(Screen.width / 924f, Screen.height / 544f, 1.65f);
-            float width = Screen.width / scale;
-            float height = Screen.height / scale;
-            GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
-            GUI.DrawTexture(new Rect(0, 0, width * 0.79f, height), gradient);
-            Text(new Rect(29, 21, 260, 26), "COSTA LIVRE 2", subhead, Paper);
+            MenuFrame frame = MenuFrame.Current;
+            float width = frame.Width;
+            float height = frame.Height;
+            float left = frame.Safe.x;
+            float topInset = Screen.height - frame.Safe.yMax;
+            bool stacked = frame.Portrait && page == ScreenPage.Deploy;
+            float x = frame.Compact ? 24 : 242;
+            float top = frame.Compact ? 88 : Mathf.Max(105, height * 0.18f);
+            if (stacked)
+                top = Mathf.Max(146, height * 0.55f);
 
-            float x = 173;
-            float top = Mathf.Max(99, height * 0.18f);
-            float rail = top + 33;
-            Tab(new Rect(28, rail, 124, 37), ScreenPage.Deploy, L("Play", "Jogar"));
-            Tab(new Rect(28, rail + 43, 124, 37), ScreenPage.Loadout, L("Loadout", "Equipamento"));
-            Tab(new Rect(28, rail + 86, 124, 37), ScreenPage.Options, L("Options", "Opções"));
-            if (!sessionActive)
-                Tab(new Rect(28, rail + 129, 124, 37), ScreenPage.Jobs, L("Jobs", "Missões"));
-            Tab(new Rect(28, rail + (sessionActive ? 129 : 172), 124, 37), ScreenPage.Online, "Multiplayer");
-            if (MenuButton(new Rect(28, height - 91, 124, 34), L("Quit", "Sair"), false))
-                quit();
+            if (stacked)
+            {
+                Matrix4x4 rotate = Matrix4x4.TRS(new Vector3(0, Screen.height, 0),
+                    Quaternion.Euler(0, 0, -90), Vector3.one);
+                GUI.matrix = original * rotate;
+                GUI.DrawTexture(new Rect(0, 0, Screen.height, Screen.width), gradient);
+                GUI.matrix = original;
+            }
+            else
+                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), gradient);
+
+            GUI.matrix = original * Matrix4x4.TRS(new Vector3(left, topInset, 0),
+                Quaternion.identity, new Vector3(frame.Scale, frame.Scale, 1));
+            DrawNavigation(frame, sessionActive, quit);
 
             switch (page)
             {
                 case ScreenPage.Deploy:
-                    if (!soloReady && !sessionActive)
-                    {
-                        Text(new Rect(x, top + 12, 417, 74), "Santa Luz", headline, Paper);
-                        Text(new Rect(x, top + 101, 330, 48),
-                            L("Preparing city navigation…", "Preparando a navegação da cidade…"), label, Grey);
-                        break;
-                    }
-                    Text(new Rect(x, top + 12, 417, 74), sessionActive ? "Multiplayer" : "Santa Luz", headline, Paper);
-                    if (MenuButton(new Rect(x, top + 101, 202, 48), resume ? L("Resume", "Continuar") : L("Enter the city", "Entrar na cidade"), true))
-                        (resume ? continueRun : deploy)();
-                    if (resume && !sessionActive && MenuButton(new Rect(x, top + 161, 202, 34), L("Restart", "Recomeçar"), false))
-                        deploy();
+                    DrawDeploy(x, stacked ? top : top + (height - top) * 0.21f,
+                        resume, sessionActive, soloReady, deploy, continueRun);
                     break;
                 case ScreenPage.Loadout:
                     Text(new Rect(x, top, 300, 63), L("Loadout", "Equipamento"), headline, Paper);
@@ -130,7 +185,7 @@ namespace CostaLivre
                     {
                         if (!arsenal.Owned(i))
                             continue;
-                        if (MenuButton(new Rect(x, top + 77 + owned * 38, 222, 33), Weapon(i), i == SelectedWeapon))
+                        if (MenuButton(new Rect(x, top + 77 + owned * 43, 248, 38), Weapon(i), i == SelectedWeapon))
                         {
                             SelectedWeapon = i;
                             SelectionVersion++;
@@ -151,18 +206,86 @@ namespace CostaLivre
                         DrawJobs(x, top, jobs, selectJob);
                     break;
                 case ScreenPage.Online:
-                    online.Draw(x, top - 9, height, continueRun);
+                    online.Draw(x, top, height, continueRun);
                     break;
             }
 
             GUI.matrix = original;
         }
 
+        private void DrawNavigation(MenuFrame frame, bool sessionActive, Action quit)
+        {
+            float end = frame.Width - 24;
+            if (frame.Compact)
+            {
+                Fill(new Rect(0, 0, frame.Width, 74), Rail);
+                Fill(new Rect(24, 36, end - 24, 1), Line);
+                Fill(new Rect(24, 16, 16, 3), Copper);
+                Text(new Rect(49, 3, 260, 29), "COSTA LIVRE 2", subhead, Paper);
+                if (MenuButton(new Rect(end - 82, 2, 82, 32), L("Quit", "Sair"), false))
+                    quit();
+
+                float gap = 6;
+                int count = sessionActive ? 4 : 5;
+                float width = Mathf.Min(152, (end - 24 - (count - 1) * gap) / count);
+                float x = 24;
+                Tab(new Rect(x, 42, width, 36), ScreenPage.Deploy, L("Play", "Jogar"));
+                x += width + gap;
+                Tab(new Rect(x, 42, width, 36), ScreenPage.Loadout, L("Loadout", "Equipamento"));
+                x += width + gap;
+                Tab(new Rect(x, 42, width, 36), ScreenPage.Options, L("Options", "Opções"));
+                x += width + gap;
+                if (!sessionActive)
+                {
+                    Tab(new Rect(x, 42, width, 36), ScreenPage.Jobs, L("Jobs", "Missões"));
+                    x += width + gap;
+                }
+                Tab(new Rect(x, 42, width, 36), ScreenPage.Online, "Multiplayer");
+                return;
+            }
+
+            Fill(new Rect(24, 24, 188, frame.Height - 48), Rail);
+            Fill(new Rect(211, 24, 1, frame.Height - 48), Line);
+            Fill(new Rect(41, 44, 20, 3), Copper);
+            Text(new Rect(41, 54, 158, 41), "COSTA LIVRE 2", subhead, Paper);
+            float rail = Mathf.Max(116, frame.Height * 0.22f);
+            Tab(new Rect(40, rail, 156, 43), ScreenPage.Deploy, L("Play", "Jogar"));
+            Tab(new Rect(40, rail + 50, 156, 43), ScreenPage.Loadout, L("Loadout", "Equipamento"));
+            Tab(new Rect(40, rail + 100, 156, 43), ScreenPage.Options, L("Options", "Opções"));
+            if (!sessionActive)
+                Tab(new Rect(40, rail + 150, 156, 43), ScreenPage.Jobs, L("Jobs", "Missões"));
+            Tab(new Rect(40, rail + (sessionActive ? 150 : 200), 156, 43), ScreenPage.Online, "Multiplayer");
+            if (MenuButton(new Rect(40, frame.Height - 84, 156, 42), L("Quit", "Sair"), false))
+                quit();
+        }
+
+        private void DrawDeploy(float x, float y, bool resume, bool sessionActive, bool soloReady,
+            Action deploy, Action continueRun)
+        {
+            Fill(new Rect(x, y, 42, 3), Copper);
+            Text(new Rect(x - 2, y + 12, 516, 91), sessionActive ? "Multiplayer" : "Santa Luz", hero, Paper);
+            if (!soloReady && !sessionActive)
+            {
+                Text(new Rect(x, y + 107, 410, 52),
+                    L("Preparing city navigation…", "Preparando a navegação da cidade…"), label, Grey);
+                return;
+            }
+
+            string action = resume ? L("Resume", "Continuar") : L("Enter the city", "Entrar na cidade");
+            Rect enter = new(x, y + 117, 264, 60);
+            if (MenuButton(enter, action, true))
+                (resume ? continueRun : deploy)();
+            Text(new Rect(enter.xMax - 31, enter.y, 28, enter.height), "›", subhead, Rail);
+            if (resume && !sessionActive &&
+                MenuButton(new Rect(x, enter.yMax + 8, 264, 42), L("Restart", "Recomeçar"), false))
+                deploy();
+        }
+
         private void DrawJobs(float x, float top, CostaJobs jobs, Action<int> select)
         {
-            Text(new Rect(x, top - 14, 400, 69), L("Jobs board", "Missões"), headline, Paper);
+            Text(new Rect(x, top - 6, 415, 66), L("Jobs board", "Missões"), headline, Paper);
             Text(new Rect(x, top + 52, 355, 24), Money(jobs.Credits), label, Copper);
-            float y = top + 85;
+            float y = top + 78;
             if (MenuButton(new Rect(x, y, 349, 30), L("Harbor cargo", "Carga do porto"), false))
                 select(-2);
             int first = jobPage * JobsPerPage;
@@ -170,17 +293,17 @@ namespace CostaLivre
             for (int i = first; i < last; i++)
             {
                 var job = CostaJobs.List[i];
-                float row = y + (i - first + 1) * 36;
+                float row = y + (i - first + 1) * 35;
                 string status = jobs.Completed(i) ? L("Done", "Concluída") : Money(job.Reward);
                 if (MenuButton(new Rect(x, row, 274, 30), job.Title, jobs.Active == i))
                     select(i);
                 Text(new Rect(x + 282, row, 109, 30), status, label, Grey);
             }
 
-            if (MenuButton(new Rect(x, y + 7 * 36, 274, 29), L("Explore freely", "Explorar livremente"), false))
+            if (MenuButton(new Rect(x, y + 7 * 35, 274, 29), L("Explore freely", "Explorar livremente"), false))
                 select(-1);
 
-            float nav = y + 8 * 36;
+            float nav = y + 8 * 35;
             int pages = (CostaJobs.List.Length + JobsPerPage - 1) / JobsPerPage;
             if (jobPage > 0 && MenuButton(new Rect(x, nav, 105, 29), L("Previous", "Anterior"), false))
                 jobPage--;
@@ -191,19 +314,19 @@ namespace CostaLivre
 
         private void DrawOptions(float x, float top)
         {
-            Text(new Rect(x, top - 20, 380, 70), L("Options", "Opções"), headline, Paper);
-            float tab = top + 50;
-            if (MenuButton(new Rect(x, tab, 111, 33), L("Controls", "Controles"), settings == SettingsPage.Controls))
+            Text(new Rect(x, top - 5, 380, 62), L("Options", "Opções"), headline, Paper);
+            float tab = top + 63;
+            if (MenuButton(new Rect(x, tab, 111, 39), L("Controls", "Controles"), settings == SettingsPage.Controls))
                 settings = SettingsPage.Controls;
-            if (MenuButton(new Rect(x + 116, tab, 109, 33), L("Graphics", "Gráficos"), settings == SettingsPage.Graphics))
+            if (MenuButton(new Rect(x + 116, tab, 109, 39), L("Graphics", "Gráficos"), settings == SettingsPage.Graphics))
                 settings = SettingsPage.Graphics;
-            if (MenuButton(new Rect(x + 230, tab, 120, 33), L("Language", "Idioma"), settings == SettingsPage.Language))
+            if (MenuButton(new Rect(x + 230, tab, 120, 39), L("Language", "Idioma"), settings == SettingsPage.Language))
                 settings = SettingsPage.Language;
 
-            if (CostaTouch.Available && MenuButton(new Rect(x + 355, tab, 135, 33), L("Touch layout", "Toque"), false))
+            if (CostaTouch.Available && MenuButton(new Rect(x + 355, tab, 135, 39), L("Touch layout", "Toque"), false))
                 editTouch = true;
 
-            float y = tab + 48;
+            float y = tab + 51;
             switch (settings)
             {
                 case SettingsPage.Controls:
@@ -380,14 +503,14 @@ namespace CostaLivre
 
         private bool MenuButton(Rect bounds, string name, bool selected)
         {
-            bool hover = bounds.Contains(Event.current.mousePosition);
-            Fill(bounds, selected ? Copper : hover ? Line : Carbon);
+            bool hover = bounds.Contains(Event.current.mousePosition) || CostaUi.Hovering(bounds);
+            Fill(bounds, selected ? Copper : hover ? Hover : Carbon);
             if (!selected)
-                Fill(new Rect(bounds.x, bounds.y, 2, bounds.height), Line);
+                Fill(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), Line);
             Color before = GUI.contentColor;
             GUI.contentColor = selected ? Carbon : Paper;
             int fontSize = button.fontSize;
-            float available = bounds.width - 6;
+            float available = bounds.width - 8;
             float required = button.CalcSize(new GUIContent(name)).x;
             if (required > available)
                 button.fontSize = Mathf.Max(11, Mathf.FloorToInt(fontSize * available / required));
@@ -399,11 +522,12 @@ namespace CostaLivre
 
         private void CreateStyles()
         {
-            headline = Style(56, FontStyle.Bold);
-            subhead = Style(17, FontStyle.Normal, true);
-            label = Style(13, FontStyle.Bold);
+            hero = Style(78, FontStyle.Bold);
+            headline = Style(52, FontStyle.Bold);
+            subhead = Style(18, FontStyle.Bold);
+            label = Style(15, FontStyle.Bold);
             button = Style(16, FontStyle.Bold);
-            button.padding = new RectOffset(13, 0, 0, 0);
+            button.padding = new RectOffset(12, 6, 0, 0);
         }
 
         private static GUIStyle Style(int size, FontStyle weight, bool wrap = false)

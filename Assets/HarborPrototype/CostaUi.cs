@@ -61,6 +61,8 @@ namespace CostaLivre
 
         internal static Vector2 Position => GUIUtility.ScreenToGUIPoint(pointer);
 
+        internal static bool Hovering(Rect area) => active && area.Contains(Position);
+
         internal static bool Button(Rect area, string label, GUIStyle style)
         {
             if (!CostaTouch.Available)

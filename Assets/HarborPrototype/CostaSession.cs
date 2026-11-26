@@ -201,6 +201,7 @@ namespace CostaLivre
         internal bool Hosting => listener != null;
         internal string Status => status;
         internal string Notice { get; private set; } = "";
+        internal int NoticeEvent { get; private set; }
         internal string CurrentNotice => Time.realtimeSinceStartup < noticeUntil ? Notice : "";
         internal int PoliceCount
         {
@@ -283,6 +284,7 @@ namespace CostaLivre
 
         private void TickClient(float now, Avatar localPose)
         {
+            NoticeEvent = 0;
             if (connecting != null)
             {
                 if (connecting.Status == TaskStatus.RanToCompletion)
@@ -357,6 +359,7 @@ namespace CostaLivre
                 if (frame.noticeVersion != seenNotice)
                 {
                     seenNotice = frame.noticeVersion;
+                    NoticeEvent = frame.notice;
                     Notice = FormatNotice(frame.notice);
                     noticeUntil = now + 4.2f;
                 }

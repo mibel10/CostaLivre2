@@ -17,6 +17,7 @@ namespace CostaLivre
         private Vector3 center;
         private Quaternion heading;
         private float endsAt;
+        private float previousProgress;
 
         internal bool Active => vehicle != null;
         internal bool Entering => entering;
@@ -32,6 +33,7 @@ namespace CostaLivre
             center = vehicleCenter;
             heading = Quaternion.Euler(0, yaw, 0);
             endsAt = Time.realtimeSinceStartup + secondsLeft;
+            previousProgress = Mathf.Max(0f, 1f - secondsLeft / (entering ? EnterTime : ExitTime));
         }
 
         internal void Begin(CostaSession.Avatar avatar, CostaVehicle[] cars)
@@ -43,18 +45,21 @@ namespace CostaLivre
                     avatar.doorStep, avatar.doorCenter, avatar.doorYaw, avatar.doorTime);
         }
 
-        internal bool Sample(HarborCharacter body)
+        internal bool Sample(HarborCharacter body, CostaEffects effects = null, AudioSource source = null)
         {
             if (!Active)
                 return false;
             float remaining = endsAt - Time.realtimeSinceStartup;
+            float progress = Mathf.Clamp01(1f - remaining / (entering ? EnterTime : ExitTime));
+            if (effects != null)
+                PlayCues(effects, source, progress);
+            previousProgress = progress;
             if (remaining <= 0)
             {
                 Clear();
                 return false;
             }
 
-            float progress = Mathf.Clamp01(1f - remaining / (entering ? EnterTime : ExitTime));
             Vector3 right = heading * Vector3.right * side;
             Vector3 seat = center + right * 0.46f + heading * Vector3.back * 0.18f;
             float approach = entering ? Ease(progress / 0.29f) : 1f;
@@ -77,6 +82,24 @@ namespace CostaLivre
             vehicle.PoseDoor(side, door);
             body.VehiclePose(entering, progress, slip, side, vehicle.IsBike);
             return true;
+        }
+
+        private void PlayCues(CostaEffects effects, AudioSource source, float progress)
+        {
+            if (vehicle.IsBike)
+            {
+                if (previousProgress < 0.32f && progress >= 0.32f)
+                    effects.Play(CostaEffects.Cue.Mount, 0.33f, source);
+                return;
+            }
+
+            if (entering && previousProgress < 0.36f && progress >= 0.36f)
+                effects.Play(CostaEffects.Cue.Lock, 0.59f, source);
+            float open = entering ? 0.47f : 0.10f;
+            if (previousProgress < open && progress >= open)
+                effects.Play(CostaEffects.Cue.DoorOpen, 0.41f, source);
+            if (previousProgress < 0.98f && progress >= 0.98f)
+                effects.Play(CostaEffects.Cue.DoorShut, 0.53f, source);
         }
 
         internal void Clear()

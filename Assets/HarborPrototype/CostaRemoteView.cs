@@ -22,21 +22,24 @@ namespace CostaLivre
             internal float KnifeSwingUntil;
             internal CostaSession.Avatar State;
             internal readonly CostaVehicleMotion VehicleMotion = new();
+            internal CostaEffects.Footfalls Footfalls;
         }
 
         private readonly Dictionary<int, Rendered> models = new();
         private readonly List<int> stale = new();
         private readonly Plane[] viewPlanes = new Plane[6];
         private readonly HarborBlockout art;
+        private readonly CostaEffects effects;
         private readonly Transform root;
         private GUIStyle nameTag;
         private GameObject[] weapons;
         private AudioClip[] shotClips;
 
-        internal CostaRemoteView(HarborBlockout art, Transform root)
+        internal CostaRemoteView(HarborBlockout art, Transform root, CostaEffects effects)
         {
             this.art = art;
             this.root = root;
+            this.effects = effects;
         }
 
         internal void Refresh(CostaSession session, CostaVehicle[] cars, Camera camera)
@@ -63,12 +66,19 @@ namespace CostaLivre
                         .Select(filter => filter.sharedMesh).ToArray();
                     models.Add(avatar.id, model);
                 }
-                if (model.State?.revision != avatar.revision)
+                CostaSession.Avatar previous = model.State;
+                bool continuous = previous?.revision == avatar.revision;
+                if (!continuous)
+                {
                     model.VehicleMotion.Begin(avatar, cars);
+                    model.Footfalls = default;
+                }
                 model.State = avatar;
                 model.Look.Apply(avatar.outfit, avatar.police);
                 model.Pack.SetActive(avatar.carryingLoot && !avatar.police);
-                bool transitioning = model.VehicleMotion.Sample(model.Body);
+                const float doorAudioRange = 31f;
+                bool nearbyDoor = (avatar.doorCenter - camera.transform.position).sqrMagnitude < doorAudioRange * doorAudioRange;
+                bool transitioning = model.VehicleMotion.Sample(model.Body, nearbyDoor ? effects : null, model.Audio);
                 model.Mount.gameObject.SetActive(!transitioning && avatar.vehicle < 0);
                 if (transitioning)
                     continue;
@@ -88,11 +98,23 @@ namespace CostaLivre
                 {
                     float amount = 1 - Mathf.Exp(-Time.unscaledDeltaTime * 15f);
                     Transform body = model.Body.Root;
-                    Vector3 position = Vector3.Distance(body.position, avatar.pos) > 10
-                        ? avatar.pos : Vector3.Lerp(body.position, avatar.pos, amount);
+                    Vector3 before = body.position;
+                    Vector3 position = (before - avatar.pos).sqrMagnitude > 100
+                        ? avatar.pos : Vector3.Lerp(before, avatar.pos, amount);
                     body.SetPositionAndRotation(position,
                         Quaternion.Slerp(body.rotation, Quaternion.Euler(0, avatar.yaw, 0), amount));
                     PlayShot(model, avatar, camera.transform.position);
+                    if (continuous && (position - camera.transform.position).sqrMagnitude < 17f * 17f)
+                    {
+                        Vector3 moved = position - before;
+                        bool onGround = avatar.jumpPose < 0 && avatar.rollPose < 0;
+                        model.Footfalls.Update(effects, new Vector2(moved.x, moved.z).magnitude,
+                            onGround && avatar.moving, avatar.running, avatar.crouched, model.Audio);
+                        if (previous.jumpPose is >= 0 and < 0.78f && avatar.jumpPose >= 0.78f)
+                            effects.Play(CostaEffects.Cue.Land, 0.26f, model.Audio);
+                        if (previous.rollPose < 0 && avatar.rollPose >= 0)
+                            effects.Play(CostaEffects.Cue.Roll, 0.28f, model.Audio);
+                    }
                     if (!InView(position))
                         continue;
                     if (avatar.rollPose >= 0)

@@ -3,6 +3,7 @@ using UnityEngine.AI;
 using UnityEngine.InputSystem;
 using static CostaLivre.CostaText;
 using TouchControl = CostaLivre.CostaTouch.Control;
+using Cue = CostaLivre.CostaEffects.Cue;
 
 namespace CostaLivre
 {
@@ -92,6 +93,9 @@ namespace CostaLivre
         private System.Action<int> selectJob;
         private bool harborJob;
         private HarborArsenal arsenal;
+        private CostaEffects effects;
+        private CostaEffects.Footfalls footfalls;
+        private float engineThrottle;
         private GameObject cargo;
         private GameObject cargoPack;
         private CharacterController player;
@@ -184,6 +188,7 @@ namespace CostaLivre
             cargoPack = harbor.Pack(playerModel, playerBody.Chest);
             localLook = new CostaLook(harbor, playerBody);
 
+            effects = new CostaEffects(transform);
             arsenal = new HarborArsenal(harbor, playerModel, blockoutShader, jobs);
             cargo = harbor.Case();
 
@@ -210,7 +215,7 @@ namespace CostaLivre
             encounter = new CostaEncounter(harbor, transform, jobs, cars);
             session = new CostaSession(cars);
             onlinePanel = new CostaOnlinePanel(session);
-            remotes = new CostaRemoteView(harbor, transform);
+            remotes = new CostaRemoteView(harbor, transform, effects);
             touch = new CostaTouch();
             BindControls();
             followCamera.nearClipPlane = 0.07f;
@@ -365,6 +370,7 @@ namespace CostaLivre
             Destroy(navMesh);
             Destroy(controls);
             arsenal?.Dispose();
+            effects?.Release();
             encounter?.Dispose();
             harbor?.ReleaseMaterials();
         }
@@ -409,7 +415,17 @@ namespace CostaLivre
                 bikeLean = car != null ? car.RiderLean : 0,
                 held = car != null ? Mathf.RoundToInt(car.SignedSpeed * 10f) : 0
             };
+            int priorHeat = session.Local?.wantedLevel ?? 0;
             session.Tick(pose);
+            switch (session.NoticeEvent)
+            {
+                case 3: case 4: effects.Play(Cue.Cuffs); break;
+                case 5: effects.Play(Cue.Loot); break;
+                case 7: effects.Play(Cue.Sale); break;
+                case 8: effects.Play(Cue.Purchase); break;
+            }
+            if (session.Online && priorHeat == 0 && session.Local.wantedLevel > 0)
+                effects.Play(Cue.Alert, 0.32f);
 
             if (!session.Online)
             {
@@ -541,7 +557,10 @@ namespace CostaLivre
                 arsenal.Reset();
                 arsenal.Select(avatar.equipped);
             }
+            bool reloadWasActive = arsenal.Reloading;
             arsenal.SyncAmmo(session.Loaded, session.Reloading);
+            if (!reloadWasActive && arsenal.Reloading)
+                effects.Play(Cue.Reload);
             if (pendingBuy >= 0 && arsenal.Owned(pendingBuy))
             {
                 EquipWeapon(pendingBuy);
@@ -616,7 +635,7 @@ namespace CostaLivre
 
             if (vehicleMotion.Active)
             {
-                if (vehicleMotion.Sample(playerBody))
+                if (vehicleMotion.Sample(playerBody, effects))
                 {
                     PositionCamera(false);
                     if (!session.Online)
@@ -719,8 +738,13 @@ namespace CostaLivre
 
             if (car != null)
             {
-                if (car.Drive(MovementInput(), Held(jump, TouchControl.Jump)))
+                Vector2 steering = MovementInput();
+                engineThrottle = steering.y;
+                float previousSpeed = car.Speed;
+                bool braking = Held(jump, TouchControl.Jump);
+                if (car.Drive(steering, braking))
                     Physics.SyncTransforms();
+                effects.Brake(previousSpeed, braking && Pressed(jump, TouchControl.Jump) ? 0 : car.Speed);
                 player.transform.position = car.Root.position;
                 if (car.IsBike)
                 {
@@ -740,6 +764,7 @@ namespace CostaLivre
             }
 
             CycleWeapons();
+            bool wasReloading = arsenal.Reloading;
 
 
             bool aiming = arsenal.HasFirearm && rollClock <= 0 && Held(aim, TouchControl.Aim)
@@ -773,6 +798,9 @@ namespace CostaLivre
                     StartPursuit(0.25f, combat: true);
             }
 
+            if (!session.Online && !wasReloading && arsenal.Reloading)
+                effects.Play(Cue.Reload);
+
             bool originalInteraction = harborJob && state == RunState.FindCargo
                 && IsNear(HarborBlockout.Cargo, InteractionRadius) && interaction;
             if (originalInteraction)
@@ -802,6 +830,7 @@ namespace CostaLivre
 
         private void OpenOverlay(FieldOverlay screen)
         {
+            effects.Play(Cue.PanelOpen, 0.32f);
             overlay = screen;
             Time.timeScale = 0;
             SetCursor(false);
@@ -809,6 +838,8 @@ namespace CostaLivre
 
         private void CloseOverlay()
         {
+            if (overlay != FieldOverlay.None)
+                effects.Play(Cue.PanelClose, 0.27f);
             overlay = FieldOverlay.None;
             Time.timeScale = 1;
             SetCursor(true);
@@ -865,6 +896,7 @@ namespace CostaLivre
                 escapeSeconds = Time.time - escapeStartedAt;
                 if (IsNear(HarborBlockout.Safehouse, InteractionRadius))
                 {
+                    effects.Play(Cue.Reward);
                     if (PlayerPrefs.GetInt("CostaPortPaid", 0) == 0)
                     {
                         PlayerPrefs.SetInt("CostaPortPaid", 1);
@@ -875,6 +907,7 @@ namespace CostaLivre
                 }
             }
 
+            int cashBefore = jobs.Credits;
             jobs.CheckClock();
             bool missionInteraction;
             if (encounter.Active)
@@ -902,6 +935,8 @@ namespace CostaLivre
                     StopPursuit();
             }
             UpdateContractWeapon();
+            if (jobs.Credits > cashBefore)
+                effects.Play(Cue.Reward);
 
             if (takeAction && !missionInteraction)
             {
@@ -909,7 +944,8 @@ namespace CostaLivre
                     return;
                 int property = jobs.NearbyProperty(player.transform.position);
                 if (property >= 0 && !jobs.Owned(property))
-                    jobs.Buy(property);
+                    if (jobs.Buy(property))
+                        effects.Play(Cue.Purchase);
             }
         }
 
@@ -931,6 +967,7 @@ namespace CostaLivre
             else if (robberies.Take(site, jobs))
             {
                 cargoPack.SetActive(true);
+                effects.Play(Cue.Loot);
                 StartPursuit(0.45f);
             }
             return true;
@@ -941,13 +978,23 @@ namespace CostaLivre
             if (session.Online)
                 session.Request("sell", item);
             else
+            {
+                int previousCash = jobs.Credits;
                 jobs.SellLoot(item);
+                if (jobs.Credits > previousCash)
+                    effects.Play(Cue.Sale);
+            }
         }
 
         private bool BuyWeapon(int index)
         {
             if (!session.Online)
-                return jobs.BuyWeapon(index);
+            {
+                if (!jobs.BuyWeapon(index))
+                    return false;
+                effects.Play(Cue.Purchase);
+                return true;
+            }
             if (!IsPolice && !arsenal.Owned(index) && session.Cash >= CostaJobs.WeaponPrices[index])
             {
                 pendingBuy = index;
@@ -1050,6 +1097,9 @@ namespace CostaLivre
                 return;
             foreach (CostaVehicle vehicle in cars)
                 vehicle.CloseIdleDoors();
+            bool driving = !inMenu && overlay == FieldOverlay.None && !pausedForFocus && !vehicleMotion.Active
+                && state != RunState.Caught && state != RunState.Delivered;
+            effects.Drive(driving ? car : null, driving && car != null ? engineThrottle : 0);
         }
 
         private void EnterVehicle(CostaVehicle vehicle)
@@ -1091,8 +1141,12 @@ namespace CostaLivre
         {
             int previous = arsenal.Slot;
             arsenal.Select(index);
-            if (session.Online && previous != arsenal.Slot)
-                session.Request("equip", arsenal.Slot);
+            if (previous != arsenal.Slot)
+            {
+                effects.Play(Cue.Equip, 0.27f);
+                if (session.Online)
+                    session.Request("equip", arsenal.Slot);
+            }
         }
 
         private void CycleWeapons()
@@ -1124,8 +1178,12 @@ namespace CostaLivre
                 gamepad = true;
                 arsenal.Cycle(-1);
             }
-            if (session.Online && previous != arsenal.Slot)
-                session.Request("equip", arsenal.Slot);
+            if (previous != arsenal.Slot)
+            {
+                effects.Play(Cue.Equip, 0.27f);
+                if (session.Online)
+                    session.Request("equip", arsenal.Slot);
+            }
         }
 
         private void PositionCamera(bool aiming, bool snap = false)
@@ -1188,6 +1246,7 @@ namespace CostaLivre
                 stamina -= 0.75f;
                 sprintRecoveryDelay = 0.75f;
                 ResizeController(1.0f);
+                effects.Play(Cue.Roll);
             }
 
             bool rolling = rollClock > 0;
@@ -1211,6 +1270,7 @@ namespace CostaLivre
                 verticalSpeed = -2.3f;
                 if (!rolling && !crouching && Pressed(jump, TouchControl.Jump))
                 {
+                    effects.Play(Cue.Jump, 0.24f);
                     verticalSpeed = 5.8f;
                     grounded = false;
                     jumpClock = 0;
@@ -1240,12 +1300,19 @@ namespace CostaLivre
             }
 
             bool wasGrounded = grounded;
+            Vector3 from = player.transform.position;
             CollisionFlags hit = player.Move((velocity + Vector3.up * verticalSpeed) * step);
             grounded = (hit & CollisionFlags.Below) != 0;
             if ((hit & CollisionFlags.Above) != 0 && verticalSpeed > 0)
                 verticalSpeed = 0;
             if (!wasGrounded && grounded)
+            {
                 landing = 0.14f;
+                effects.Play(Cue.Land, Mathf.Lerp(0.28f, 0.65f, Mathf.Clamp01(-verticalSpeed / 14f)));
+            }
+            Vector3 moved = player.transform.position - from;
+            footfalls.Update(effects, new Vector2(moved.x, moved.z).magnitude, grounded && wasGrounded && !rolling,
+                running, crouching);
 
             if (rolling)
             {
@@ -1341,6 +1408,7 @@ namespace CostaLivre
                 return;
 
             pursuit = true;
+            effects.Play(Cue.Alert, 0.42f);
             nextPursuitUpdate = Time.time + delay;
         }
 
@@ -1391,6 +1459,7 @@ namespace CostaLivre
                 arrestProgress += Time.deltaTime / SoloArrestTime;
                 if (arrestProgress >= 1)
                 {
+                    effects.Play(Cue.Cuffs);
                     EndRun(RunState.Caught);
                     return;
                 }
@@ -1410,6 +1479,8 @@ namespace CostaLivre
         private void ResetRun(bool resetJob = true)
         {
             vehicleMotion.Clear();
+            footfalls = default;
+            engineThrottle = 0;
             wantedLevel = 0;
             nextCrime = 0;
             arrestProgress = 0;

@@ -170,7 +170,10 @@ namespace CostaLivre
         private readonly List<Peer> peers = new();
         private readonly List<Avatar> active = new(MaxPlayers);
         private readonly WorldSnapshot world = new() { sites = new bool[CostaRobberies.Sites.Length] };
-        private readonly Dictionary<string, Peer> disconnected = new();
+        private const float ResumeLifetime = 300f;
+        private const int ResumeLimit = MaxPlayers * 4;
+        private readonly Dictionary<string, (Peer State, float Expires)> disconnected = new();
+        private readonly List<string> expiredResumes = new();
         private RSA clientIdentity;
         private bool identitySent;
         private readonly CostaVehicle[] sceneVehicles;
@@ -487,6 +490,13 @@ namespace CostaLivre
                 }
             }
 
+            expiredResumes.Clear();
+            foreach (var entry in disconnected)
+                if (now >= entry.Value.Expires)
+                    expiredResumes.Add(entry.Key);
+            foreach (string key in expiredResumes)
+                disconnected.Remove(key);
+
             bool left = false;
             for (int index = peers.Count - 1; index >= 0; index--)
             {
@@ -498,7 +508,7 @@ namespace CostaLivre
                     peers.RemoveAt(index);
                     left |= peer.Ready;
                     if (peer.Ready)
-                        disconnected[peer.ResumeKey] = peer;
+                        RememberDisconnected(peer, now);
                     continue;
                 }
                 Frame pendingPose = null;
@@ -521,9 +531,10 @@ namespace CostaLivre
                         }
                         peer.ResumeKey = resumeKey;
                         peer.Challenge = null;
-                        if (disconnected.TryGetValue(peer.ResumeKey, out Peer saved))
+                        if (disconnected.TryGetValue(peer.ResumeKey, out var resume))
                         {
                             disconnected.Remove(peer.ResumeKey);
+                            Peer saved = resume.State;
                             peer.Pose = saved.Pose;
                             peer.Pose.name = SafeName(message.name);
                             peer.Pose.playing = false;
@@ -657,6 +668,25 @@ namespace CostaLivre
                 string personal = JsonUtility.ToJson(snapshot);
                 peer.Wire.Send(string.Concat(prefix, ",", personal.Substring(1)));
             }
+        }
+
+        private void RememberDisconnected(Peer peer, float now)
+        {
+            peer.Wire = null;
+            if (disconnected.Count >= ResumeLimit)
+            {
+                string oldest = null;
+                float expires = float.PositiveInfinity;
+                foreach (var entry in disconnected)
+                    if (entry.Value.Expires < expires)
+                    {
+                        oldest = entry.Key;
+                        expires = entry.Value.Expires;
+                    }
+                if (oldest != null)
+                    disconnected.Remove(oldest);
+            }
+            disconnected[peer.ResumeKey] = (peer, now + ResumeLifetime);
         }
 
         private void Handle(Peer peer, Frame msg, float now)
@@ -1429,6 +1459,7 @@ namespace CostaLivre
             world.players = null;
             world.vehicles = null;
             disconnected.Clear();
+            expiredResumes.Clear();
             Array.Clear(restock, 0, restock.Length);
             Players = Array.Empty<Avatar>();
             Cars = null;

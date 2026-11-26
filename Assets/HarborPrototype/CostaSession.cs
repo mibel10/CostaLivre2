@@ -501,6 +501,7 @@ namespace CostaLivre
                         disconnected[peer.ResumeKey] = peer;
                     continue;
                 }
+                Frame pendingPose = null;
                 for (int n = 0; n < 12 && peer.Wire.Receive(out string text); n++)
                 {
                     Frame message = Parse(text);
@@ -555,9 +556,22 @@ namespace CostaLivre
                     }
                     else
                     {
+                        if (message.type == "pose")
+                        {
+                            if (message.pose != null && message.pose.revision == peer.Pose.revision)
+                                pendingPose = message;
+                            continue;
+                        }
+                        if (pendingPose != null)
+                        {
+                            Handle(peer, pendingPose, now);
+                            pendingPose = null;
+                        }
                         Handle(peer, message, now);
                     }
                 }
+                if (pendingPose != null && !peer.Wire.Closed)
+                    Handle(peer, pendingPose, now);
             }
 
             if (left)

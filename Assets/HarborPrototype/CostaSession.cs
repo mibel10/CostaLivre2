@@ -182,7 +182,7 @@ namespace CostaLivre
         internal bool Hosting => listener != null;
         internal string Status => status;
         internal string Notice { get; private set; } = "";
-        internal string CurrentNotice => Time.unscaledTime < noticeUntil ? Notice : "";
+        internal string CurrentNotice => Time.realtimeSinceStartup < noticeUntil ? Notice : "";
         internal int PoliceCount
         {
             get
@@ -239,9 +239,9 @@ namespace CostaLivre
                 }
                 pendingClient = new TcpClient(AddressFamily.InterNetwork);
                 connecting = pendingClient.ConnectAsync(host ? IPAddress.Loopback : IPAddress.Parse(address), port);
-                connectDeadline = Time.unscaledTime + 8f;
+                connectDeadline = Time.realtimeSinceStartup + 8f;
                 status = L("Connecting…", "Conectando…");
-                lastClock = Time.unscaledTime;
+                lastClock = Time.realtimeSinceStartup;
             }
             catch (SocketException)
             {
@@ -252,7 +252,7 @@ namespace CostaLivre
 
         internal void Tick(Avatar localPose)
         {
-            float now = Time.unscaledTime;
+            float now = Time.realtimeSinceStartup;
             float delta = Mathf.Clamp(now - lastClock, 0, 0.10f);
             lastClock = now;
 

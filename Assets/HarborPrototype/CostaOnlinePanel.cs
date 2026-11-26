@@ -12,7 +12,8 @@ namespace CostaLivre
         private string ip = "127.0.0.1";
         private string port = "7777";
         private bool internet = true;
-        private string relay = PlayerPrefs.GetString("CostaRelayAddress", "");
+        private const string DefaultRelay = "https://costalivre2-mibel10-relay.onrender.com";
+        private string relay = DefaultRelay;
         private string invite = "";
         private float copiedUntil;
         private static readonly int[] Powers = { 1, 3, 9, 27, 81 };
@@ -54,10 +55,8 @@ namespace CostaLivre
                     internet = false;
                 if (internet)
                 {
-                    Label(new Rect(x + 8, row + 104, 350, 20), L("RELAY ADDRESS", "ENDEREÇO DO SERVIDOR"), labels, Muted);
-                    relay = Input(new Rect(x + 8, row + 126, 362, 32), relay, 180, 4, TouchScreenKeyboardType.URL);
-                    Label(new Rect(x + 8, row + 165, 350, 20), L("ROOM CODE OR INVITE", "CÓDIGO OU CONVITE DA SALA"), labels, Muted);
-                    invite = Input(new Rect(x + 8, row + 188, 362, 32), invite, 210, 5, TouchScreenKeyboardType.URL);
+                    Label(new Rect(x + 8, row + 112, 350, 20), L("ROOM CODE OR INVITE", "CÓDIGO OU CONVITE DA SALA"), labels, Muted);
+                    invite = Input(new Rect(x + 8, row + 136, 362, 36), invite, 210, 5, TouchScreenKeyboardType.URL);
                 }
                 else
                 {
@@ -66,7 +65,7 @@ namespace CostaLivre
                     ip = Input(new Rect(x + 8, row + 126, 264, 34), ip, 15, 2, TouchScreenKeyboardType.NumbersAndPunctuation);
                     port = Input(new Rect(x + 286, row + 126, 84, 34), port, 5, 3, TouchScreenKeyboardType.NumberPad);
                 }
-                float actions = row + (internet ? 228 : 172);
+                float actions = row + (internet ? 180 : 172);
                 if (Button(new Rect(x + 8, actions, 174, 36), internet ? L("Create room", "Criar sala") : L("Host LAN", "Hospedar LAN"), !connecting))
                     Start(true);
                 if (Button(new Rect(x + 195, actions, 175, 36), internet ? L("Join room", "Entrar na sala") : L("Join by IP", "Entrar por IP"), !connecting))
@@ -161,10 +160,8 @@ namespace CostaLivre
                 address = link.AbsolutePath.Substring(6);
             }
             PlayerPrefs.SetString("CostaMultiplayerName", name);
-            if (internet)
-                PlayerPrefs.SetString("CostaRelayAddress", relay);
             PlayerPrefs.Save();
-            connect(name, address, number, host, internet ? relay : null);
+            connect(name, address, number, host, internet ? DefaultRelay : null);
         }
 
         private void Change(int category, int option, int offset)

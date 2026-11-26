@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: costalivre2-relay
+    name: costalivre2-mibel10-relay
     runtime: node
     plan: free
     rootDir: Server/relay

@@ -75,9 +75,9 @@ Referências dos modelos e chips. [Snapdragon 778G](https://www.qualcomm.com/sma
 
 ### Jogar pela internet
 
-No menu **Multiplayer → Internet**, o anfitrião preenche **Endereço do servidor** com o endereço HTTPS do relay e clica em **Criar sala**. Depois, usa **Copiar convite** e manda o convite aos amigos. Os convidados colam o texto em **Código ou convite da sala** e clicam em **Entrar na sala**. Todos usam a mesma versão da build. A sessão dura enquanto o anfitrião estiver conectado.
+No menu **Multiplayer → Internet**, o anfitrião informa o nome e clica em **Criar sala**. Depois, usa **Copiar convite** e manda o link aos amigos. Os convidados colam o link ou código em **Código ou convite da sala** e clicam em **Entrar na sala**. Todos usam a mesma versão da build. A sessão dura enquanto o anfitrião estiver conectado.
 
-O relay oficial do projeto pode rodar gratuitamente no Render, sem depender do seu computador. Crie um Blueprint no Render apontando para o repositório `mibel10/CostaLivre2` e selecione o arquivo `render.yaml`. Após o primeiro deploy, use o endereço HTTPS gerado pelo Render no campo **Endereço do servidor**. Seus amigos entram com o convite copiado pelo anfitrião.
+O relay oficial do projeto pode rodar gratuitamente no Render, sem depender do seu computador. Crie um Blueprint no Render apontando para o repositório `mibel10/CostaLivre2` e selecione o arquivo `render.yaml`. Após o primeiro deploy, o jogo usa esse relay automaticamente. O anfitrião só precisa copiar e compartilhar o convite da sala.
 
 No plano gratuito, o Render suspende o serviço após 15 minutos sem tráfego. A próxima conexão pode precisar aguardar o serviço acordar. Para manter a conexão disponível continuamente, o relay precisa de hospedagem paga. [Limites do plano gratuito do Render](https://render.com/docs/free)
 

@@ -101,7 +101,7 @@ namespace CostaLivre
                         model.Body.Animate(HarborCharacter.Motion.Jump, progress: avatar.jumpPose);
                     else
                         model.Body.Animate(avatar.moving ? (avatar.running ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Walk)
-                            : HarborCharacter.Motion.Idle, HarborArsenal.GaitSpeed(avatar.equipped, avatar.running, false, avatar.crouched));
+                            : HarborCharacter.Motion.Idle, HarborArsenal.GaitSpeed(avatar.equipped, avatar.running, avatar.aiming, avatar.crouched));
                     if (avatar.crouched)
                         model.Body.CrouchPose();
                     DrawWeapon(model, avatar);
@@ -177,7 +177,7 @@ namespace CostaLivre
                     model.Body.HoldKnife(avatar.running && avatar.jumpPose < 0, avatar.crouched, swing);
                 }
                 else
-                    model.Body.HoldWeapon(false, 0, false);
+                    model.Body.HoldWeapon(avatar.aiming, 0, HarborArsenal.IsHeavy(avatar.equipped));
             }
             model.Mount.SetPositionAndRotation(model.Body.WeaponHand,
                 model.Body.Root.rotation * Quaternion.Euler(knife ? 20f : 0f, 0, 0));

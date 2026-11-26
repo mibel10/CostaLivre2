@@ -7,6 +7,7 @@ namespace CostaLivre
         private readonly HarborCharacter body;
         private readonly GameObject[] police;
         private readonly GameObject[][] options;
+        private readonly GameObject civilianDetails;
         private int current = -1;
         private bool isPolice;
 
@@ -14,6 +15,7 @@ namespace CostaLivre
         {
             this.body = body;
             police = art.PoliceUniform(body);
+            civilianDetails = BuildCivilianDetails(art, body);
             options = new[] { BuildHats(art, body), BuildAccessories(art, body) };
             Apply(0, false);
         }
@@ -26,12 +28,35 @@ namespace CostaLivre
             isPolice = policeRole;
             int textureIndex = policeRole ? 4 : outfit % 27;
             body.WearTexture(Resources.Load<Texture2D>($"Harbor/Wardrobe/look-{textureIndex}"));
+            civilianDetails.SetActive(!policeRole);
             foreach (GameObject part in police)
                 part.SetActive(policeRole);
             int[] selected = { outfit / 27 % 3, outfit / 81 % 3 };
             for (int category = 0; category < options.Length; category++)
                 for (int option = 0; option < options[category].Length; option++)
                     options[category][option].SetActive(!policeRole && selected[category] == option + 1);
+        }
+
+        private static GameObject BuildCivilianDetails(HarborBlockout art, HarborCharacter body)
+        {
+            Transform vest = Attach(body, body.Chest, "Tailored jacket details", new Vector3(0, 1.26f, 0.129f));
+            Color fabric = new(0.15f, 0.18f, 0.19f);
+            Color seam = new(0.27f, 0.29f, 0.29f);
+            Color metal = new(0.54f, 0.51f, 0.43f);
+            art.Part(vest, PrimitiveType.Cube, "Recessed front seam", new(0, -0.055f, 0.016f),
+                new(0.017f, 0.28f, 0.012f), fabric);
+            art.Part(vest, PrimitiveType.Cube, "Zipper pull", new(0, 0.073f, 0.027f),
+                new(0.011f, 0.024f, 0.012f), metal);
+            for (int side = -1; side <= 1; side += 2)
+            {
+                var collar = art.Part(vest, PrimitiveType.Cube, "Collar facing",
+                    new(side * 0.055f, 0.164f, 0.007f), new(0.045f, 0.096f, 0.024f), fabric).transform;
+                collar.localRotation = Quaternion.Euler(0, side * 9, side * -25);
+                var pocket = art.Part(vest, PrimitiveType.Cube, "Pocket welt",
+                    new(side * 0.105f, -0.098f, 0.007f), new(0.078f, 0.016f, 0.018f), seam).transform;
+                pocket.localRotation = Quaternion.Euler(0, side * 11, side * 15);
+            }
+            return vest.gameObject;
         }
 
         private static GameObject[] BuildHats(HarborBlockout art, HarborCharacter body)

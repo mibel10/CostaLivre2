@@ -56,6 +56,9 @@ namespace CostaLivre
         private readonly Transform leftCalf;
         private readonly Transform leftFoot;
         private Motion activeMotion;
+        private Motion previousMotion;
+        private float blendRemaining;
+        private const float BlendTime = 0.14f;
         private float clock;
 
         internal Vector3 WeaponHand => rightHand.position;
@@ -123,13 +126,25 @@ namespace CostaLivre
         {
             if (motion != activeMotion)
             {
+                if (blendRemaining > 0)
+                    mixer.SetInputWeight((int)previousMotion, 0);
                 bool sameGait = (activeMotion == Motion.Walk || activeMotion == Motion.Run)
                     && (motion == Motion.Walk || motion == Motion.Run);
                 if (!sameGait)
                     clock = 0;
-                mixer.SetInputWeight((int)activeMotion, 0);
+                previousMotion = activeMotion;
                 activeMotion = motion;
-                mixer.SetInputWeight((int)activeMotion, 1);
+                blendRemaining = progress < 0 && previousMotion <= Motion.Run && motion <= Motion.Run ? BlendTime : 0;
+                mixer.SetInputWeight((int)previousMotion, blendRemaining > 0 ? 1 : 0);
+                mixer.SetInputWeight((int)activeMotion, blendRemaining > 0 ? 0 : 1);
+            }
+
+            if (blendRemaining > 0)
+            {
+                blendRemaining = progress >= 0 ? 0 : Mathf.Max(0, blendRemaining - Time.unscaledDeltaTime);
+                float weight = Mathf.SmoothStep(0, 1, blendRemaining / BlendTime);
+                mixer.SetInputWeight((int)previousMotion, weight);
+                mixer.SetInputWeight((int)activeMotion, 1f - weight);
             }
 
             AnimationClip clip = clips[(int)motion];
@@ -187,6 +202,7 @@ namespace CostaLivre
             var properties = new MaterialPropertyBlock();
             skin.GetPropertyBlock(properties);
             properties.SetTexture("_BaseMap", texture);
+            properties.SetFloat("_Smoothness", 0.19f);
             skin.SetPropertyBlock(properties);
         }
 

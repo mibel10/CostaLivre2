@@ -188,6 +188,7 @@ namespace CostaLivre
         }
 
         internal float TopSpeed => topSpeed;
+        internal float Acceleration => engine;
         internal float ReverseSpeed => IsBike ? 3f : 7f;
         internal float MaximumTurnRate => 92f * steeringStrength;
 

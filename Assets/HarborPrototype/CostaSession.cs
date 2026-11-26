@@ -126,6 +126,9 @@ namespace CostaLivre
             internal float TakeoffHeight;
             internal float Stamina = HarborRun.FullStamina;
             internal float RecoverAfter;
+            internal float RollUntil;
+            internal float NextRoll;
+            internal bool ReportedRoll;
             internal bool SprintExhausted;
             internal float TravelSlack = 0.55f;
             internal float HeldUntil;
@@ -642,7 +645,14 @@ namespace CostaLivre
             if (avatar.vehicle < 0)
             {
                 float planar = new Vector2(movement.x, movement.z).magnitude;
-                bool allowedSprint = pose.running && !peer.SprintExhausted;
+                bool reportsRoll = Finite(pose.rollPose) && pose.rollPose >= 0;
+                bool startsRoll = reportsRoll && !peer.ReportedRoll && !pose.crouched && now >= peer.NextRoll
+                    && peer.Stamina >= 0.70f && Supported(avatar.pos);
+                bool rolling = reportsRoll && (startsRoll || now < peer.RollUntil);
+                if (!rolling)
+                    pose.rollPose = -1;
+                bool allowedSprint = pose.running && !rolling && !pose.crouched
+                    && !peer.SprintExhausted && peer.Stamina > 0;
                 float speed = Mathf.Max(FootSpeed(avatar, avatar.running && !peer.SprintExhausted, avatar.equipped),
                     FootSpeed(pose, allowedSprint, avatar.equipped));
                 float slack = Mathf.Min(0.55f, peer.TravelSlack + elapsed * speed - planar);
@@ -654,6 +664,14 @@ namespace CostaLivre
                 }
 
                 peer.TravelSlack = slack;
+                peer.ReportedRoll = reportsRoll;
+                if (startsRoll)
+                {
+                    peer.RollUntil = now + 0.75f;
+                    peer.NextRoll = now + 1.20f;
+                    peer.Stamina = Mathf.Max(0, peer.Stamina - 0.75f);
+                    peer.RecoverAfter = now + 0.75f;
+                }
                 if (!pose.running)
                     peer.SprintExhausted = false;
                 bool supported = Supported(pose.pos);
@@ -681,13 +699,13 @@ namespace CostaLivre
                 Vehicle car = hostCars[avatar.vehicle];
                 CostaVehicle rules = sceneVehicles[avatar.vehicle];
                 float speed = pose.held / 10f;
-                float speedLimit = Mathf.Min(rules.TopSpeed, Mathf.Abs(car.speed) + 20f * elapsed + 0.45f);
+                float speedLimit = Mathf.Min(rules.TopSpeed, Mathf.Abs(car.speed) + rules.Acceleration * elapsed + 0.45f);
                 float turn = Mathf.Abs(Mathf.DeltaAngle(car.yaw, pose.yaw));
                 float travel = Mathf.Max(Mathf.Abs(car.speed), Mathf.Abs(speed)) * elapsed;
                 float slack = Mathf.Min(0.65f, peer.TravelSlack + travel - distance);
                 if (Mathf.Abs(pose.pos.y) > 0.03f || speed < -rules.ReverseSpeed - 0.05f
                     || Mathf.Abs(speed) > speedLimit || turn > rules.MaximumTurnRate * elapsed + 3f
-                    || slack < 0 || !rules.ValidNetworkTravel(car.pos, car.yaw, pose.pos, pose.yaw, car.speed, speed))
+                    || slack < 0 || (moving || turn > 0.02f) && !rules.ValidNetworkTravel(car.pos, car.yaw, pose.pos, pose.yaw, car.speed, speed))
                 {
                     CorrectPose(peer, now);
                     return;
@@ -718,6 +736,8 @@ namespace CostaLivre
         private static void ResetMotion(Peer peer)
         {
             peer.AirborneSince = -1;
+            peer.RollUntil = 0;
+            peer.ReportedRoll = false;
             peer.TravelSlack = 0.55f;
         }
 

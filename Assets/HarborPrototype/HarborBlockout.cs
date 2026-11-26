@@ -32,6 +32,7 @@ namespace CostaLivre
         private Material water;
         private float waterDaylight = 1;
         private Material detailTemplate;
+        private HarborStreetLights streetLights;
         private bool ultra;
         private bool detailedSurfaces;
 
@@ -223,6 +224,7 @@ namespace CostaLivre
         internal void ReleaseMaterials()
         {
             Object.Destroy(water);
+            streetLights?.Release();
             if (signMaterial != null)
             {
                 Font.textureRebuilt -= RefreshSignAtlas;
@@ -302,7 +304,8 @@ namespace CostaLivre
                 float z = 7.5f * i + 2;
                 Box("Lamp column", new(23.3f, 2.7f, z), new(0.10f, 5.4f, 0.10f), steel);
                 Box("Lamp arm", new(22.7f, 5.37f, z), new(1.29f, 0.12f, 0.10f), steel);
-                Box("Lamp head", new(22.06f, 5.31f, z), new(0.34f, 0.11f, 0.22f), new Color(0.70f, 0.68f, 0.53f));
+                Box("Lamp head", new(22.06f, 5.31f, z), new(0.34f, 0.11f, 0.22f), steel);
+                StreetLampDiffuser(new Vector3(22.06f, 5.25f, z), new Vector3(0.27f, 0.025f, 0.17f));
             }
 
             Box("Pier beyond the parapet", new(29.5f, -0.30f, 12), new(9.5f, 0.58f, 17),
@@ -397,9 +400,23 @@ namespace CostaLivre
             return box;
         }
 
-        internal void BatchDecoration(string name, Vector3 position, Vector3 size, Color color)
+        internal void BatchDecoration(string name, Vector3 position, Vector3 size, Color color) =>
+            BatchDecoration(Box(name, position, size, color), position);
+
+        internal void StreetLampDiffuser(Vector3 position, Vector3 size)
         {
-            GameObject part = Box(name, position, size, color);
+            streetLights ??= new HarborStreetLights(root, shader);
+            GameObject part = Box("Street lamp diffuser", position, size, Color.gray);
+            part.GetComponent<MeshRenderer>().sharedMaterial = streetLights.Diffuser;
+            streetLights.Add(part.transform.position - Vector3.up * 0.08f);
+            BatchDecoration(part, position);
+        }
+
+        internal void UpdateStreetLights(bool night, Vector3 view, int budget) =>
+            streetLights?.Update(night, view, budget);
+
+        private void BatchDecoration(GameObject part, Vector3 position)
+        {
             var cell = new Vector2Int(Mathf.FloorToInt(position.x / 32f), Mathf.FloorToInt(position.z / 32f));
             var key = (cell, part.GetComponent<MeshRenderer>().sharedMaterial);
             if (!decoration.TryGetValue(key, out List<MeshFilter> pieces))

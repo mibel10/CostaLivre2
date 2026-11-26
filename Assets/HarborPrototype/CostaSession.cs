@@ -217,6 +217,7 @@ namespace CostaLivre
                     : HarborDaylight.Advance(HarborDaylight.StartHour, now - worldStart);
             }
         }
+        internal bool WorldIsNight => HarborDaylight.IsNight(!Hosting && hasWorldHour ? receivedWorldHour : WorldHour);
         internal string Status => status;
         internal string Notice { get; private set; } = "";
         internal int NoticeEvent { get; private set; }

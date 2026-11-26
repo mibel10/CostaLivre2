@@ -409,11 +409,9 @@ namespace CostaLivre
             menuStage.gameObject.SetActive(!pause);
             Time.timeScale = session?.Online == true ? 1 : 0;
             SetCursor(false);
+            ApplyWorldHour();
             if (!pause)
-            {
-                menu.SetWorldHour(null);
                 UpdateMenuPreview();
-            }
         }
 
         private void ReturnToMainMenu()
@@ -728,6 +726,8 @@ namespace CostaLivre
                 hour = session.Online ? session.WorldHour : HarborDaylight.Advance(HarborDaylight.StartHour, soloDaySeconds);
             menu.SetWorldHour(hour);
             harbor.SetWaterDaylight(hour ?? HarborDaylight.StartHour);
+            bool night = hour.HasValue && (session.Online ? session.WorldIsNight : HarborDaylight.IsNight(hour.Value));
+            harbor.UpdateStreetLights(night, followCamera.transform.position, menu.StreetLightBudget);
         }
 
         private void Update()

@@ -108,7 +108,7 @@ namespace CostaLivre
                 for (int z = 29; z < 165; z += 6)
                     Mark(new(x, 0.018f, z), new(0.11f, 0.03f, 2.5f));
                 for (int z = 35; z < 166; z += 24)
-                    Lamp(new(x - 5, 0, z));
+                    Lamp(new(x - 5, 0, z), Vector3.right);
             }
 
             foreach (float z in CrossStreets)
@@ -238,7 +238,7 @@ namespace CostaLivre
                 Mark(new Vector3(HighwayX, 0.02f, z), new Vector3(0.16f, 0.03f, 4f));
             foreach (int side in new[] { -1, 1 })
                 for (float z = HighwayStart + 8; z < HighwayEnd; z += 28)
-                    Lamp(new Vector3(HighwayX + side * 10.5f, 0, z));
+                    Lamp(new Vector3(HighwayX + side * 10.5f, 0, z), Vector3.left * side);
             art.Sign("RODOVIA COSTEIRA", new Vector3(HighwayX, 4.1f, HighwayStart + 5), 0.28f, Stone);
         }
 
@@ -271,6 +271,9 @@ namespace CostaLivre
                 float curbZ = z + side * 7.4f;
                 Sidewalk(area.xMin + 2f, HighwayArea.xMin - 0.65f, curbZ, district.Accent);
                 Sidewalk(HighwayArea.xMax + 0.65f, area.xMax - 2f, curbZ, district.Accent);
+                for (float x = area.xMin + 12f; x < area.xMax - 8f; x += 27f)
+                    if (Mathf.Abs(x - HighwayX) > 16f)
+                        Lamp(new Vector3(x, 0, curbZ), Vector3.back * side);
             }
 
             for (float x = area.xMin + 4; x < area.xMax - 3; x += 7)
@@ -482,6 +485,8 @@ namespace CostaLivre
                     new Vector3(0.4f, 3.4f, 0.5f), Brass, true);
                 for (int i = 0; i < 5; i++)
                     Tree(new Vector3(47 + side * 16, 0, 98 + i * 8.6f));
+                for (int i = 0; i < 3; i++)
+                    Lamp(new Vector3(47 + side * 13, 0.04f, 97 + i * 19), Vector3.left * side);
             }
 
             wheel = new GameObject("Ferris wheel").transform;
@@ -520,14 +525,15 @@ namespace CostaLivre
             art.Box("Countertop", point + Vector3.up * 0.98f, new Vector3(2.74f, 0.10f, 0.74f), Stone);
         }
 
-        private void Lamp(Vector3 point)
+        private void Lamp(Vector3 point, Vector3 arm)
         {
             Shape("Street lamp", PrimitiveType.Cylinder, point + Vector3.up * 2.35f,
                 new Vector3(0.13f, 2.35f, 0.13f), Glass);
-            art.BatchDecoration("Street lamp head", point + new Vector3(0.55f, 4.66f, 0),
-                new Vector3(1.1f, 0.16f, 0.39f), Glass);
-            art.BatchDecoration("Warm lamp diffuser", point + new Vector3(0.67f, 4.574f, 0),
-                new Vector3(0.68f, 0.034f, 0.26f), new Color(0.92f, 0.82f, 0.58f));
+            bool alongX = arm.x != 0;
+            art.BatchDecoration("Street lamp head", point + Vector3.up * 4.66f + arm * 0.55f,
+                alongX ? new Vector3(1.1f, 0.16f, 0.39f) : new Vector3(0.39f, 0.16f, 1.1f), Glass);
+            art.StreetLampDiffuser(point + Vector3.up * 4.574f + arm * 0.67f,
+                alongX ? new Vector3(0.68f, 0.034f, 0.26f) : new Vector3(0.26f, 0.034f, 0.68f));
         }
 
         private void Tree(Vector3 point)

@@ -23,6 +23,7 @@ namespace CostaLivre
         private static readonly int[] Distances = { 95, 155, 245, 360, 540 };
         private static readonly int[] Scales = { 50, 70, 85, 100, 100 };
         private static readonly int[] Textures = { 0, 1, 2, 3, 3 };
+        private static readonly int[] StreetLights = { 0, 3, 5, 7, 10 };
         private static readonly (int Distance, int Resolution, int Cascades)[] Shadows =
         {
             (0, 512, 1), (30, 1024, 1), (65, 2048, 2), (95, 2048, 4), (175, 4096, 4)
@@ -45,6 +46,7 @@ namespace CostaLivre
         internal bool FsrEnabled { get; private set; }
         internal bool IsCustom => ShadowQuality != Preset || TextureQuality != Textures[Preset] ||
             ResolutionPercent != Scales[Preset] || Distance != Distances[Preset] || FsrEnabled;
+        internal int StreetLightBudget => StreetLights[Preset];
         internal int ActualPercent => Mathf.Max(ResolutionPercent, MinActualPercent);
 
         internal HarborGraphics(Camera camera, Light sun, Volume volume)

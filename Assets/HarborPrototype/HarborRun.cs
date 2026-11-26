@@ -895,15 +895,16 @@ namespace CostaLivre
             pitch = Mathf.Clamp(pitch - cameraInput.y, -25f, 55f);
 
             city.Animate();
+            bool interaction = Pressed(interact, TouchControl.Use);
+            bool pendingVehicleSync = false;
             if (!session.Online)
             {
                 robberies.Refresh();
-                CoastIdleVehicles();
+                pendingVehicleSync = CoastIdleVehicles(defer: car != null && !interaction);
             }
             cargoPack.SetActive(CurrentBag.Count > 0 || state == RunState.Escape
                 || !session.Online && encounter.CarryingLoot);
             cityMap.CheckWaypoint(player.transform.position);
-            bool interaction = Pressed(interact, TouchControl.Use);
             if (interaction && car == null && !UsingContractObjective())
             {
                 if (IsPolice)
@@ -937,7 +938,7 @@ namespace CostaLivre
                 engineThrottle = steering.y;
                 float previousSpeed = car.Speed;
                 bool braking = Held(jump, TouchControl.Jump);
-                if (car.Drive(steering, braking))
+                if (car.Drive(steering, braking) || pendingVehicleSync)
                     Physics.SyncTransforms();
                 effects.Brake(previousSpeed, braking && Pressed(jump, TouchControl.Jump) ? 0 : car.Speed);
                 player.transform.position = car.Root.position;
@@ -1013,14 +1014,29 @@ namespace CostaLivre
             AnimatePolice();
         }
 
-        private void CoastIdleVehicles()
+        private bool CoastIdleVehicles(bool defer = false)
         {
             bool moved = false;
             foreach (CostaVehicle vehicle in cars)
-                if (vehicle != car && vehicle.Speed > 0.05f)
-                    moved |= vehicle.Drive(Vector2.zero, false);
-            if (moved)
+            {
+                if (vehicle == car || vehicle.Speed <= 0.05f)
+                    continue;
+
+                Vector3 before = vehicle.Root.position;
+                if (!vehicle.Drive(Vector2.zero, false))
+                    continue;
+                moved = true;
+                if (defer)
+                {
+                    // Include both collider extents, the driven car sweep and the idle car displacement.
+                    float reach = 6f + car.TopSpeed * Time.deltaTime + Vector3.Distance(before, vehicle.Root.position);
+                    if ((before - car.Root.position).sqrMagnitude <= reach * reach)
+                        defer = false;
+                }
+            }
+            if (moved && !defer)
                 Physics.SyncTransforms();
+            return moved && defer;
         }
 
         private void OpenOverlay(FieldOverlay screen)

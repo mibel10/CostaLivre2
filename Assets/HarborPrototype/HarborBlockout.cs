@@ -493,9 +493,16 @@ namespace CostaLivre
             part.transform.localPosition = position;
             part.transform.localScale = scale;
             Collider collider = part.GetComponent<Collider>();
-            collider.enabled = solid;
-            if (!solid && Application.isPlaying)
-                Object.Destroy(collider);
+            if (collider != null)
+            {
+                collider.enabled = solid;
+                if (!solid && Application.isPlaying)
+                    Object.Destroy(collider);
+            }
+            else if (solid)
+            {
+                throw new System.InvalidOperationException($"Missing collider for {shape} primitive '{name}'.");
+            }
 
             Renderer renderer = part.GetComponent<Renderer>();
             renderer.sharedMaterial = SolidMaterial(color);

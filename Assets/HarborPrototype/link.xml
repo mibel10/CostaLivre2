@@ -1,0 +1,6 @@
+<linker>
+    <assembly fullname="UnityEngine.PhysicsModule">
+        <!-- CreatePrimitive adds this collider in native code, outside the managed call graph. -->
+        <type fullname="UnityEngine.SphereCollider" preserve="all" />
+    </assembly>
+</linker>

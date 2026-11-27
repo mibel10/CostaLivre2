@@ -13,6 +13,65 @@ namespace CostaLivre
             public bool guard;
         }
 
+        [Serializable]
+        internal sealed class CityOpportunity
+        {
+            public int site;
+            public bool falseAlarm;
+        }
+
+        private CityOpportunity opportunity;
+        private float opportunityEnds;
+        private float nextOpportunity;
+        private bool nextFalseAlarm = true;
+        internal CityOpportunity Opportunity { get; private set; }
+
+        private void TickOpportunity(float now)
+        {
+            if (opportunity != null && now >= opportunityEnds)
+                EndOpportunity(now);
+            if (opportunity == null && CountPlayers() > 0)
+            {
+                if (nextOpportunity == 0)
+                    nextOpportunity = now + 45;
+                else if (now >= nextOpportunity)
+                {
+                    int first = UnityEngine.Random.Range(0, robbers.Length);
+                    for (int offset = 0; offset < robbers.Length; offset++)
+                    {
+                        int site = (first + offset) % robbers.Length;
+                        if (robbers[site] != null || !nextFalseAlarm && now < restock[site])
+                            continue;
+                        opportunity = new CityOpportunity { site = site, falseAlarm = nextFalseAlarm };
+                        opportunityEnds = now + 75;
+                        nextFalseAlarm = !nextFalseAlarm;
+                        break;
+                    }
+                    nextOpportunity = now + 8;
+                }
+            }
+            if (opportunity?.falseAlarm != true)
+                return;
+            foreach (Peer officer in peers)
+            {
+                if (!officer.Ready || !officer.Pose.police || !officer.Pose.playing || officer.Pose.vehicle >= 0
+                    || !Near(officer.Pose.pos, Entrance(opportunity.site), 4))
+                    continue;
+                officer.Credits += 325;
+                SetNotice(officer, 17);
+                EndOpportunity(now);
+                break;
+            }
+        }
+
+        private void EndOpportunity(float now)
+        {
+            opportunity = null;
+            nextOpportunity = now + 90;
+        }
+
+        private bool Vulnerable(int site) => opportunity != null && !opportunity.falseAlarm && opportunity.site == site;
+
         private Dispatch dispatch;
         private float dispatchEnds;
         private float nextDispatch;
@@ -74,8 +133,17 @@ namespace CostaLivre
         {
             point = default;
             title = "";
-            if (!Online || !Local.police)
+            if (!Online)
                 return false;
+            if (!Local.police)
+            {
+                if (Opportunity == null || Opportunity.falseAlarm || Bag.Count > 0)
+                    return false;
+                point = Entrance(Opportunity.site);
+                title = L("Vulnerable store: faster collection · ", "Loja vulnerável: coleta mais rápida · ")
+                    + CostaRobberies.Sites[Opportunity.site].Name;
+                return true;
+            }
             if (Evidence > 0)
             {
                 point = PoliceSpawn;
@@ -87,6 +155,12 @@ namespace CostaLivre
             {
                 point = Entrance(alarm);
                 title = L("Respond to alarm · ", "Atenda ao alarme · ") + CostaRobberies.Sites[alarm].Name;
+                return true;
+            }
+            if (Opportunity?.falseAlarm == true)
+            {
+                point = Entrance(Opportunity.site);
+                title = L("Check the reported alarm · ", "Verifique o alarme reportado · ") + CostaRobberies.Sites[Opportunity.site].Name;
                 return true;
             }
             if (PoliceDispatch == null)
@@ -103,6 +177,9 @@ namespace CostaLivre
             dispatch = PoliceDispatch = null;
             nextDispatch = dispatchEnds = 0;
             Evidence = 0;
+            opportunity = Opportunity = null;
+            nextOpportunity = opportunityEnds = 0;
+            nextFalseAlarm = true;
         }
     }
 }

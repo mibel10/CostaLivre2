@@ -123,6 +123,7 @@ namespace CostaLivre
             public bool[] sites;
             public bool[] alarms;
             public Dispatch dispatch;
+            public CityOpportunity opportunity;
             public Vector3 direction;
             public int[] scenery;
             public CostaTraffic.Car[] traffic;
@@ -146,6 +147,7 @@ namespace CostaLivre
             public bool[] sites;
             public bool[] alarms;
             public Dispatch dispatch;
+            public CityOpportunity opportunity;
             public int[] scenery;
             public CostaTraffic.Car[] traffic;
             public CostaTraffic.CityEvent cityEvent;
@@ -517,6 +519,7 @@ namespace CostaLivre
                 Sites = frame.sites;
                 Alarms = frame.alarms;
                 PoliceDispatch = frame.dispatch;
+                Opportunity = frame.opportunity;
                 Evidence = frame.evidence;
                 Local = null;
                 foreach (Avatar avatar in Players)
@@ -730,6 +733,7 @@ namespace CostaLivre
                 if (peer.Ready && peer.ArrestTarget != 0)
                     AdvanceArrest(peer, now);
 
+            TickOpportunity(now);
             TickDispatch(now);
 
             Vector3? chase = null;
@@ -792,6 +796,7 @@ namespace CostaLivre
             world.vehicles = hostCars;
             world.worldHour = WorldHour;
             world.dispatch = dispatch;
+            world.opportunity = opportunity;
             world.scenery = scenery?.Capture();
             world.traffic = traffic?.Cars;
             world.cityEvent = traffic?.Incident;
@@ -977,7 +982,7 @@ namespace CostaLivre
                 return;
             }
             robbers[site] = peer;
-            robberyEnds[site] = now + RobberyDuration;
+            robberyEnds[site] = now + (Vulnerable(site) ? 4.5f : RobberyDuration);
             SetNotice(peer, 13);
         }
 
@@ -1009,6 +1014,8 @@ namespace CostaLivre
                     continue;
                 }
                 restock[i] = now + 90;
+                if (Vulnerable(i))
+                    EndOpportunity(now);
                 RaiseHeat(collector, now, false);
                 BeginGesture(collector, HarborCharacter.Gesture.PickUp, now, CostaRobberies.PickupTarget(i));
                 SetNotice(collector, 5);
@@ -1639,6 +1646,7 @@ namespace CostaLivre
                 case 14: return L("Robbery interrupted.", "Roubo interrompido.");
                 case 15: return L("Police assignment complete. Reward paid.", "Ocorrência concluída. Recompensa recebida.");
                 case 16: return L("Recovered items delivered. Reward paid.", "Itens recuperados entregues. Recompensa recebida.");
+                case 17: return L("False alarm confirmed. Reward paid.", "Alarme falso verificado. Recompensa recebida.");
                 default: return "";
             }
         }

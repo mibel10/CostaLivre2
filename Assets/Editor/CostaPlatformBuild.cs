@@ -18,17 +18,11 @@ namespace CostaLivre.Editor
         [MenuItem("Costa Livre/Build/Linux (x64)")]
         public static void Linux() => Build(BuildTarget.StandaloneLinux64, "Builds/Linux/CostaLivre2.x86_64");
 
-        [MenuItem("Costa Livre/Build/Xbox Series X|S")]
-        public static void XboxSeries() => Build(BuildTarget.GameCoreXboxSeries, "Builds/XboxSeries");
-
-        [MenuItem("Costa Livre/Build/Xbox One")]
-        public static void XboxOne() => Build(BuildTarget.GameCoreXboxOne, "Builds/XboxOne");
-
         private static void Build(BuildTarget target, string defaultOutput)
         {
             BuildTargetGroup group = BuildPipeline.GetBuildTargetGroup(target);
             if (!BuildPipeline.IsBuildTargetSupported(group, target))
-                throw new InvalidOperationException($"Unity build support for {target} is unavailable. Xbox requires the approved platform module and Microsoft GDK on Windows.");
+                throw new InvalidOperationException($"Unity build support for {target} is unavailable.");
 
             string output = Environment.GetEnvironmentVariable("COSTA_BUILD_OUTPUT");
             output = Path.GetFullPath(string.IsNullOrWhiteSpace(output) ? defaultOutput : output);

@@ -7,7 +7,7 @@
     .\build.ps1 -Target all
 #>
 param(
-    [ValidateSet("menu", "android", "windows", "linux", "xbox", "xbox-series", "xbox-one", "all")]
+    [ValidateSet("menu", "android", "windows", "linux", "xbox", "all")]
     [string]$Target = "menu",
     [string]$UnityPath = ""
 )
@@ -105,14 +105,6 @@ function Build-XboxUwp {
     Write-Host "APPX gerado em: $pkgDir" -ForegroundColor Green
 }
 
-function Build-XboxSeries {
-    Invoke-UnityBuild "GameCoreXboxSeries" "CostaLivre.Editor.CostaPlatformBuild.XboxSeries" "build_xbox_series.log"
-}
-
-function Build-XboxOne {
-    Invoke-UnityBuild "GameCoreXboxOne" "CostaLivre.Editor.CostaPlatformBuild.XboxOne" "build_xbox_one.log"
-}
-
 if ($Target -eq "menu") {
     Write-Host "========================================" -ForegroundColor Yellow
     Write-Host "  COSTA LIVRE 2 - GERADOR DE BUILDS" -ForegroundColor Yellow
@@ -121,18 +113,14 @@ if ($Target -eq "menu") {
     Write-Host "2) Linux (x64)"
     Write-Host "3) Android (APK)"
     Write-Host "4) Xbox UWP Dev Mode (.appx)"
-    Write-Host "5) Xbox Series X|S (GDK)"
-    Write-Host "6) Xbox One (GDK)"
-    Write-Host "7) Todas as principais (Windows, Linux, Android, Xbox UWP)"
-    $choice = Read-Host "Escolha uma opcao [1-7]"
+    Write-Host "5) Todas as plataformas (Windows, Linux, Android, Xbox UWP)"
+    $choice = Read-Host "Escolha uma opcao [1-5]"
     $Target = switch ($choice) {
         "1" { "windows" }
         "2" { "linux" }
         "3" { "android" }
         "4" { "xbox" }
-        "5" { "xbox-series" }
-        "6" { "xbox-one" }
-        "7" { "all" }
+        "5" { "all" }
         default { Write-Host "Opcao invalida."; exit 1 }
     }
 }
@@ -142,8 +130,6 @@ switch ($Target) {
     "windows"     { Build-Windows }
     "linux"       { Build-Linux }
     "xbox"        { Build-XboxUwp }
-    "xbox-series" { Build-XboxSeries }
-    "xbox-one"    { Build-XboxOne }
     "all" {
         Build-Windows
         Build-Linux

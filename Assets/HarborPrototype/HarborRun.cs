@@ -1068,6 +1068,11 @@ namespace CostaLivre
                     return;
                 }
             }
+            if (interaction && session.CrewInteraction(player.transform.position, car != null) is int support && support >= 0)
+            {
+                session.Request("crew", support);
+                interaction = false;
+            }
             if (interaction && TryUseVehicle())
                 interaction = false;
             if (interaction && car == null && grounded && !UsingContractObjective()
@@ -2281,7 +2286,7 @@ namespace CostaLivre
                     1 => L("Stranded vehicle ahead", "Veículo avariado à frente"),
                     _ => L("Street delivery in progress", "Entrega em andamento na via")
                 };
-            hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? -1 : jobs.Remaining,
+            hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? session.CrewTask?.remaining ?? -1 : jobs.Remaining,
                 session.Online ? session.Local.wantedLevel : wantedLevel, notice, prompt, stamina / FullStamina,
                 session.Online ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat) : arrestProgress,
                 car != null ? car.Speed : -1, session.Online ? session.Local.health : encounter.Active ? encounter.Health : -1,
@@ -2316,6 +2321,14 @@ namespace CostaLivre
             if (car != null && !session.Online && encounter.Active && jobs.Current.Mode == CostaJobs.Action.DeliverVehicle
                 && car == cars[jobs.Current.Vehicle] && IsNear(target, jobs.Current.Radius))
                 return L("Slow down to deliver the vehicle", "Reduza a velocidade para entregar o veículo");
+            if (session.CrewInteraction(player.transform.position, car != null) >= 0)
+            {
+                if (session.CrewTask?.getaway == true)
+                    return L($"{use} Hand loot to driver", $"{use} Entregar saque ao motorista");
+                return car != null ? L($"{use} Join as driver", $"{use} Entrar como motorista")
+                    : L($"{use} Join as lookout", $"{use} Entrar como vigia");
+            }
+
             if (car != null)
                 return L($"{use} Exit", $"{use} Sair");
             if (!session.Online && encounter.Active)

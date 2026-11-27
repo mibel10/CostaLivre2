@@ -105,6 +105,7 @@ namespace CostaLivre
             public int id;
             public int credits;
             public int evidence;
+            public CrewOrder crew;
             public int weapons;
             public int notice;
             public bool hasWorldHour;
@@ -122,6 +123,7 @@ namespace CostaLivre
             public bool[] reloading;
             public bool[] sites;
             public bool[] alarms;
+            public int[] crewSlots;
             public Dispatch dispatch;
             public CityOpportunity opportunity;
             public Vector3 direction;
@@ -146,6 +148,7 @@ namespace CostaLivre
             public Vehicle[] vehicles;
             public bool[] sites;
             public bool[] alarms;
+            public int[] crewSlots;
             public Dispatch dispatch;
             public CityOpportunity opportunity;
             public int[] scenery;
@@ -159,6 +162,7 @@ namespace CostaLivre
             public int id;
             public int credits;
             public int evidence;
+            public CrewOrder crew;
             public int weapons;
             public int[] bag;
             public int equipSequence;
@@ -217,7 +221,7 @@ namespace CostaLivre
 
         private readonly List<Peer> peers = new();
         private readonly List<Avatar> active = new(MaxPlayers);
-        private readonly WorldSnapshot world = new() { sites = new bool[CostaRobberies.Sites.Length], alarms = new bool[CostaRobberies.Sites.Length] };
+        private readonly WorldSnapshot world = new() { sites = new bool[CostaRobberies.Sites.Length], alarms = new bool[CostaRobberies.Sites.Length], crewSlots = new int[CostaRobberies.Sites.Length] };
         private const float ResumeLifetime = 300f;
         private const int ResumeLimit = MaxPlayers * 4;
         private readonly Dictionary<string, (Peer State, float Expires)> disconnected = new();
@@ -521,6 +525,8 @@ namespace CostaLivre
                 PoliceDispatch = frame.dispatch;
                 Opportunity = frame.opportunity;
                 Evidence = frame.evidence;
+                CrewTask = frame.crew;
+                availableCrewSlots = frame.crewSlots;
                 Local = null;
                 foreach (Avatar avatar in Players)
                     if (avatar != null && avatar.id == identity)
@@ -705,6 +711,7 @@ namespace CostaLivre
 
             if (left)
                 Rebalance();
+            TickGetaways(now);
             TickRobberies(now);
 
             for (int i = 0; i < hostCars.Length; i++)
@@ -804,6 +811,8 @@ namespace CostaLivre
                 {
                 world.sites[i] = now >= restock[i];
                 world.alarms[i] = robbers[i] != null;
+                world.crewSlots[i] = robbers[i] == null ? 0
+                    : (crews[i].Lookout == null ? 1 : 0) | (crews[i].Driver == null ? 2 : 0);
             }
             byte[] shared = Encoding.UTF8.GetBytes(JsonUtility.ToJson(world));
 
@@ -815,6 +824,7 @@ namespace CostaLivre
                 snapshot.id = peer.Pose.id;
                 snapshot.credits = peer.Credits;
                 snapshot.evidence = peer.Evidence;
+                snapshot.crew = CrewState(peer, now);
                 snapshot.weapons = WeaponInventory(peer);
                 snapshot.bag = peer.Bag.Amounts;
                 for (int i = 0; i < snapshot.loaded.Length; i++)
@@ -895,6 +905,9 @@ namespace CostaLivre
                 case "outfit":
                     avatar.outfit = Mathf.Clamp(msg.index, 0, 242);
                     break;
+                case "crew":
+                    UseCrew(peer, msg.index, now);
+                    break;
                 case "loot":
                     StartRobbery(peer, msg.index, now);
                     break;
@@ -908,6 +921,7 @@ namespace CostaLivre
                         {
                             BeginGesture(peer, HarborCharacter.Gesture.Reach, now);
                             SetNotice(peer, 7);
+                            FinishGetaway(peer, msg.index, now);
                         }
                     }
                     break;
@@ -974,7 +988,7 @@ namespace CostaLivre
         private void StartRobbery(Peer peer, int site, float now)
         {
             if (site < 0 || site >= robbers.Length || now < restock[site]
-                || robbers[site] != null || !CanCollect(peer, site, now))
+                || robbers[site] != null || crews[site] != null || CrewIndex(peer) >= 0 || !CanCollect(peer, site, now))
                 return;
             if (!peer.Bag.CanLoot(site))
             {
@@ -982,6 +996,7 @@ namespace CostaLivre
                 return;
             }
             robbers[site] = peer;
+            crews[site] = new Crew { Collector = peer };
             robberyEnds[site] = now + (Vulnerable(site) ? 4.5f : RobberyDuration);
             SetNotice(peer, 13);
         }
@@ -1001,18 +1016,27 @@ namespace CostaLivre
                 if (!peers.Contains(collector) || !CanCollect(collector, i, now))
                 {
                     robbers[i] = null;
+                    crews[i] = null;
                     if (peers.Contains(collector))
                         SetNotice(collector, 14);
                     continue;
                 }
-                if (now < robberyEnds[i])
+                Crew crew = crews[i];
+                if (!CrewAvailable(crew.Lookout, now))
+                    crew.Lookout = null;
+                if (!CrewAvailable(crew.Driver, now))
+                    crew.Driver = null;
+                float assist = LookoutInPlace(crew, i, now) ? 2 : 0;
+                if (now < robberyEnds[i] - assist)
                     continue;
                 robbers[i] = null;
                 if (!collector.Bag.AddLoot(i))
                 {
+                    crews[i] = null;
                     SetNotice(collector, 6);
                     continue;
                 }
+                StartGetaway(i, now);
                 restock[i] = now + 90;
                 if (Vulnerable(i))
                     EndOpportunity(now);
@@ -1647,6 +1671,10 @@ namespace CostaLivre
                 case 15: return L("Police assignment complete. Reward paid.", "Ocorrência concluída. Recompensa recebida.");
                 case 16: return L("Recovered items delivered. Reward paid.", "Itens recuperados entregues. Recompensa recebida.");
                 case 17: return L("False alarm confirmed. Reward paid.", "Alarme falso verificado. Recompensa recebida.");
+                case 18: return L("Lookout assigned. Hold the entrance.", "Você é vigia. Cubra a entrada.");
+                case 19: return L("Driver assigned. Wait at the marked point.", "Você é motorista. Aguarde no ponto marcado.");
+                case 20: return L("Loot handed to getaway driver.", "Saque entregue ao motorista.");
+                case 21: return L("Crew sale complete. Bonus paid.", "Venda da equipe concluída. Bônus recebido.");
                 default: return "";
             }
         }

@@ -54,6 +54,22 @@ namespace CostaLivre
             return true;
         }
 
+        internal static bool FromSite(int site, int item) => item == -1 || Array.IndexOf(SiteContents[site], item) >= 0;
+
+        internal bool TransferLoot(int site, CostaBag recipient)
+        {
+            if (!recipient.CanLoot(site))
+                return false;
+            int first = SiteContents[site][0];
+            int last = SiteContents[site][^1];
+            int total = SiteContents[site].Length;
+            if (Amounts[first] < 1 || Amounts[last] < total - 1)
+                return false;
+            foreach (int item in SiteContents[site])
+                Sell(item);
+            return recipient.AddLoot(site);
+        }
+
         internal int Sell(int item)
         {
             if (item == -1)

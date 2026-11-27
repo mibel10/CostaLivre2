@@ -72,6 +72,204 @@ namespace CostaLivre
 
         private bool Vulnerable(int site) => opportunity != null && !opportunity.falseAlarm && opportunity.site == site;
 
+        [Serializable]
+        internal sealed class CrewOrder
+        {
+            public int site;
+            public int role;
+            public bool getaway;
+            public bool handoff;
+            public float remaining;
+        }
+
+        private sealed class Crew
+        {
+            internal Peer Collector;
+            internal Peer Lookout;
+            internal Peer Driver;
+            internal Peer Carrier;
+            internal float Ends;
+        }
+
+        private readonly Crew[] crews = new Crew[CostaRobberies.Sites.Length];
+        internal CrewOrder CrewTask { get; private set; }
+        private int[] availableCrewSlots;
+
+        private static Vector3 DriverSpot(int site) => Entrance(site) + new Vector3(7, 0, -7);
+
+        private bool CrewAvailable(Peer peer, float now) => peer != null && peers.Contains(peer) && peer.Ready
+            && peer.Pose.playing && !peer.Pose.police && now >= peer.HeldUntil && now >= peer.DoorUntil;
+
+        private int CrewIndex(Peer peer)
+        {
+            for (int i = 0; i < crews.Length; i++)
+                if (crews[i] != null && CrewRole(crews[i], peer) != 0)
+                    return i;
+            return -1;
+        }
+
+        private static int CrewRole(Crew crew, Peer peer) => crew.Collector == peer ? 1
+            : crew.Lookout == peer ? 2 : crew.Driver == peer ? 3 : 0;
+
+        private CrewOrder CrewState(Peer peer, float now)
+        {
+            int site = CrewIndex(peer);
+            if (site < 0)
+                return null;
+            Crew crew = crews[site];
+            bool getaway = crew.Carrier != null;
+            return new CrewOrder
+            {
+                site = site, role = CrewRole(crew, peer), getaway = getaway,
+                handoff = getaway && crew.Driver != null && crew.Carrier == crew.Collector,
+                remaining = Mathf.Max(0, (getaway ? crew.Ends : robberyEnds[site]) - now)
+            };
+        }
+
+        internal int CrewInteraction(Vector3 position, bool driving)
+        {
+            if (!Online || Local.police)
+                return -1;
+            if (CrewTask is { getaway: true, handoff: true, role: 1 } task)
+                return !driving && Near(position, DriverSpot(task.site), 11) ? task.site : -1;
+            if (CrewTask != null || availableCrewSlots == null)
+                return -1;
+            for (int i = 0; i < availableCrewSlots.Length; i++)
+                if ((availableCrewSlots[i] & (driving ? 2 : 1)) != 0 && Near(position, driving ? DriverSpot(i) : Entrance(i), driving ? 7 : 3))
+                    return i;
+            return -1;
+        }
+
+        private void UseCrew(Peer peer, int site, float now)
+        {
+            if (site < 0 || site >= crews.Length || crews[site] is not Crew crew || !CrewAvailable(peer, now))
+                return;
+            if (crew.Carrier != null)
+            {
+                if (crew.Carrier == peer && crew.Collector == peer && CrewAvailable(crew.Driver, now)
+                    && peer.Pose.vehicle < 0 && crew.Driver.Pose.vehicle >= 0
+                    && Near(crew.Driver.Pose.pos, DriverSpot(site), 8)
+                    && Near(peer.Pose.pos, crew.Driver.Pose.pos, 4)
+                    && CanHandOff(peer, crew.Driver)
+                    && peer.Bag.TransferLoot(site, crew.Driver.Bag))
+                {
+                    crew.Carrier = crew.Driver;
+                    RaiseHeat(crew.Driver, now, false);
+                    SetNotice(peer, 20);
+                    SetNotice(crew.Driver, 20);
+                }
+                return;
+            }
+            if (CrewIndex(peer) >= 0)
+                return;
+            if (peer.Pose.vehicle >= 0 && crew.Driver == null && Near(peer.Pose.pos, DriverSpot(site), 7))
+            {
+                crew.Driver = peer;
+                SetNotice(peer, 19);
+            }
+            else if (peer.Pose.vehicle < 0 && crew.Lookout == null && Near(peer.Pose.pos, Entrance(site), 3))
+            {
+                crew.Lookout = peer;
+                SetNotice(peer, 18);
+            }
+        }
+
+        private bool CanHandOff(Peer collector, Peer driver)
+        {
+            Vector3 from = collector.Pose.pos + Vector3.up * .87f;
+            Vector3 to = driver.Pose.pos + Vector3.up * .87f;
+            return !Physics.Linecast(from, to, out RaycastHit hit, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
+                || sceneVehicles[driver.Pose.vehicle].OwnsCollider(hit.collider);
+        }
+
+        private bool LookoutInPlace(Crew crew, int site, float now) =>
+            CrewAvailable(crew.Lookout, now) && crew.Lookout.Pose.vehicle < 0 && Near(crew.Lookout.Pose.pos, Entrance(site), 4);
+
+        private void StartGetaway(int site, float now)
+        {
+            Crew crew = crews[site];
+            if (!LookoutInPlace(crew, site, now))
+                crew.Lookout = null;
+            if (!CrewAvailable(crew.Driver, now) || crew.Driver.Pose.vehicle < 0
+                || !Near(crew.Driver.Pose.pos, DriverSpot(site), 8))
+                crew.Driver = null;
+            if (crew.Lookout == null && crew.Driver == null)
+            {
+                crews[site] = null;
+                return;
+            }
+            crew.Carrier = crew.Collector;
+            crew.Ends = now + 90;
+        }
+
+        private void TickGetaways(float now)
+        {
+            for (int i = 0; i < crews.Length; i++)
+            {
+                Crew crew = crews[i];
+                if (crew?.Carrier == null)
+                    continue;
+                if (now >= crew.Ends || !CrewAvailable(crew.Carrier, now))
+                {
+                    crews[i] = null;
+                    continue;
+                }
+                if (crew.Carrier != crew.Driver && crew.Driver != null && !CrewAvailable(crew.Driver, now))
+                    crew.Driver = null;
+            }
+        }
+
+        private void FinishGetaway(Peer seller, int item, float now)
+        {
+            for (int i = 0; i < crews.Length; i++)
+            {
+                Crew crew = crews[i];
+                if (crew?.Carrier != seller || !CostaBag.FromSite(i, item))
+                    continue;
+                foreach (Peer partner in peers)
+                {
+                    if (!CrewAvailable(partner, now) || (partner != crew.Collector && partner != crew.Lookout && partner != seller))
+                        continue;
+                    partner.Credits += 400;
+                    SetNotice(partner, 21);
+                }
+                crews[i] = null;
+                return;
+            }
+        }
+
+        private bool CrewActivity(out Vector3 point, out string title)
+        {
+            CrewOrder task = CrewTask;
+            point = default;
+            title = "";
+            if (task == null)
+                return false;
+            if (!task.getaway)
+            {
+                point = task.role == 1 ? CostaRobberies.Sites[task.site].Point
+                    : task.role == 2 ? Entrance(task.site) : DriverSpot(task.site);
+                title = task.role == 1 ? L("Collector: stay at the display", "Coletor: fique na vitrine")
+                    : task.role == 2 ? L("Lookout: cover the entrance", "Vigia: cubra a entrada")
+                    : L("Driver: keep the vehicle in position", "Motorista: mantenha o veículo no ponto");
+            }
+            else if (task.handoff && task.role != 2)
+            {
+                point = DriverSpot(task.site);
+                title = task.role == 1 ? L("Bring loot to the getaway driver", "Leve o saque até o motorista")
+                    : L("Wait for the collector in your vehicle", "Espere o coletor no veículo");
+            }
+            else
+            {
+                Vector3 first = CostaCity.Vendors[0];
+                Vector3 second = CostaCity.Vendors[1];
+                point = (Local.pos - first).sqrMagnitude < (Local.pos - second).sqrMagnitude ? first : second;
+                title = Local.carryingLoot ? L("Sell the crew loot", "Venda o saque da equipe")
+                    : L("Crew getaway in progress", "A equipe está em fuga");
+            }
+            return true;
+        }
+
         private Dispatch dispatch;
         private float dispatchEnds;
         private float nextDispatch;
@@ -137,6 +335,8 @@ namespace CostaLivre
                 return false;
             if (!Local.police)
             {
+                if (CrewActivity(out point, out title))
+                    return true;
                 if (Opportunity == null || Opportunity.falseAlarm || Bag.Count > 0)
                     return false;
                 point = Entrance(Opportunity.site);
@@ -177,6 +377,9 @@ namespace CostaLivre
             dispatch = PoliceDispatch = null;
             nextDispatch = dispatchEnds = 0;
             Evidence = 0;
+            Array.Clear(crews, 0, crews.Length);
+            CrewTask = null;
+            availableCrewSlots = null;
             opportunity = Opportunity = null;
             nextOpportunity = opportunityEnds = 0;
             nextFalseAlarm = true;

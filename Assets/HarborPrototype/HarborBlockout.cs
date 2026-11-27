@@ -31,6 +31,8 @@ namespace CostaLivre
         private readonly List<Mesh> models = new();
         private const float RenderCellSize = 24f;
         private readonly HashSet<GameObject> decoration = new();
+        private readonly List<(Vector3 Position, Vector3 Size, Material Material, ReflectionProbeUsage Reflections)> cubeDetails = new();
+        private Mesh cubeMesh;
         private bool collectingCity;
         private readonly List<NavMeshBuildSource> walkableGeometry = new();
         private HarborCharacter.Art characterArt;
@@ -519,6 +521,8 @@ namespace CostaLivre
             string surface = null, Vector2 tiling = default, bool bake = true, Finish finish = Finish.Standard)
         {
             GameObject box = Part(root, PrimitiveType.Cube, name, position, size, color, solid, finish);
+            if (cubeMesh == null)
+                cubeMesh = box.GetComponent<MeshFilter>().sharedMesh;
             if (surface != null)
             {
                 Renderer renderer = box.GetComponent<Renderer>();
@@ -548,8 +552,9 @@ namespace CostaLivre
         internal void MarkFootFloor(GameObject part, CostaAcousticScene.Floor floor) =>
             Acoustics.AddFloor(part.GetComponent<Renderer>().bounds, floor);
 
-        internal void BatchDecoration(string name, Vector3 position, Vector3 size, Color color, Finish finish = Finish.Standard) =>
-            decoration.Add(Box(name, position, size, color, finish: finish));
+        internal void BatchDecoration(Vector3 position, Vector3 size, Color color, Finish finish = Finish.Standard) =>
+            cubeDetails.Add((position, size, SolidMaterial(color, finish),
+                finish == Finish.Standard ? ReflectionProbeUsage.BlendProbes : ReflectionProbeUsage.BlendProbesAndSkybox));
 
         internal void StreetLampDiffuser(Vector3 position, Vector3 size)
         {
@@ -604,8 +609,8 @@ namespace CostaLivre
         {
             collectingCity = false;
             var groups = new Dictionary<(Vector2Int Cell, Material Material, ShadowCastingMode Shadow, bool ReceiveShadows,
-                ReflectionProbeUsage Reflections, LightProbeUsage LightProbes), List<MeshRenderer>>();
-            int total = decoration.Count;
+                ReflectionProbeUsage Reflections, LightProbeUsage LightProbes), List<(CombineInstance Source, MeshRenderer Original)>>();
+            int total = decoration.Count + cubeDetails.Count;
             int processed = 0;
             double deadline = Time.realtimeSinceStartupAsDouble + .004;
             foreach (GameObject part in decoration)
@@ -622,15 +627,23 @@ namespace CostaLivre
                 Material material = renderer.sharedMaterial;
                 if (material == null || material != wearMaterial && material.renderQueue >= (int)RenderQueue.Transparent)
                     continue;
-                Vector3 position = part.transform.localPosition;
-                var cell = new Vector2Int(Mathf.FloorToInt(position.x / RenderCellSize), Mathf.FloorToInt(position.z / RenderCellSize));
-                var key = (cell, material, renderer.shadowCastingMode, renderer.receiveShadows, renderer.reflectionProbeUsage,
-                    renderer.lightProbeUsage);
-                if (!groups.TryGetValue(key, out List<MeshRenderer> pieces))
-                    groups.Add(key, pieces = new List<MeshRenderer>());
-                pieces.Add(renderer);
+                Add(part.transform.localPosition, material, renderer.shadowCastingMode, renderer.receiveShadows,
+                    renderer.reflectionProbeUsage, renderer.lightProbeUsage, part.GetComponent<MeshFilter>().sharedMesh,
+                    Matrix4x4.TRS(part.transform.localPosition, part.transform.localRotation, part.transform.localScale), renderer);
+            }
+            foreach (var detail in cubeDetails)
+            {
+                if (Time.realtimeSinceStartupAsDouble >= deadline)
+                {
+                    yield return .36f * processed / total;
+                    deadline = Time.realtimeSinceStartupAsDouble + .004;
+                }
+                processed++;
+                Add(detail.Position, detail.Material, ShadowCastingMode.Off, true, detail.Reflections, LightProbeUsage.BlendProbes,
+                    cubeMesh, Matrix4x4.TRS(detail.Position, Quaternion.identity, detail.Size), null);
             }
             decoration.Clear();
+            cubeDetails.Clear();
 
             processed = 0;
             foreach (var entry in groups)
@@ -641,23 +654,19 @@ namespace CostaLivre
                     deadline = Time.realtimeSinceStartupAsDouble + .004;
                 }
                 processed++;
-                List<MeshRenderer> pieces = entry.Value;
-                if (pieces.Count < 2)
+                var pieces = entry.Value;
+                if (pieces.Count == 1 && pieces[0].Original != null)
                     continue;
 
                 var batch = new GameObject("Static city geometry");
                 batch.transform.SetParent(root, false);
                 batch.transform.localPosition = new Vector3(entry.Key.Cell.x * RenderCellSize, 0, entry.Key.Cell.y * RenderCellSize);
-                Matrix4x4 inverse = batch.transform.worldToLocalMatrix;
+                Matrix4x4 toCell = Matrix4x4.Translate(-batch.transform.localPosition);
                 var sources = new CombineInstance[pieces.Count];
                 for (int i = 0; i < pieces.Count; i++)
                 {
-                    MeshRenderer piece = pieces[i];
-                    sources[i] = new CombineInstance
-                    {
-                        mesh = piece.GetComponent<MeshFilter>().sharedMesh,
-                        transform = inverse * piece.transform.localToWorldMatrix
-                    };
+                    sources[i] = pieces[i].Source;
+                    sources[i].transform = toCell * sources[i].transform;
                 }
                 var mesh = new Mesh { name = "Static city geometry" };
                 mesh.CombineMeshes(sources);
@@ -678,8 +687,10 @@ namespace CostaLivre
                     lod.SetLODs(new[] { new LOD(.075f, new Renderer[] { renderer }) });
                     lod.RecalculateBounds();
                 }
-                foreach (MeshRenderer piece in pieces)
+                foreach (var (_, piece) in pieces)
                 {
+                    if (piece == null)
+                        continue;
                     // Keep the original collider and object identity for physics and surface queries.
                     if (piece.TryGetComponent(out Collider collider) && collider.enabled)
                     {
@@ -693,6 +704,16 @@ namespace CostaLivre
                         Object.Destroy(piece.gameObject);
                     }
                 }
+            }
+
+            void Add(Vector3 center, Material material, ShadowCastingMode shadow, bool receive, ReflectionProbeUsage reflections,
+                LightProbeUsage probes, Mesh mesh, Matrix4x4 local, MeshRenderer original)
+            {
+                var cell = new Vector2Int(Mathf.FloorToInt(center.x / RenderCellSize), Mathf.FloorToInt(center.z / RenderCellSize));
+                var key = (cell, material, shadow, receive, reflections, probes);
+                if (!groups.TryGetValue(key, out var pieces))
+                    groups.Add(key, pieces = new());
+                pieces.Add((new CombineInstance { mesh = mesh, transform = local }, original));
             }
         }
 

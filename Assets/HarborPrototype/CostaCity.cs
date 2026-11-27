@@ -335,10 +335,10 @@ namespace CostaLivre
         {
             float x = (left + right) * 0.5f;
             Vector3 center = new(x, .027f, z), size = new(right - left, .05f, 2.6f);
-            art.BatchDecoration("Stone pedestrian strip", center, size, Pavement);
+            art.BatchDecoration(center, size, Pavement);
             art.Acoustics.AddFloor(new Bounds(center, size), Floor.Stone);
             for (int side = -1; side <= 1; side += 2)
-                art.BatchDecoration("Colored paving edge", new Vector3(x, 0.054f, z + side * 1.02f),
+                art.BatchDecoration(new Vector3(x, 0.054f, z + side * 1.02f),
                     new Vector3(right - left, 0.012f, 0.055f), accent);
         }
 
@@ -350,9 +350,9 @@ namespace CostaLivre
             {
                 art.Box("Plaza bench", point + new Vector3(side * 7, 0.36f, 0), new Vector3(3, 0.72f, 1),
                     accent, true);
-                art.BatchDecoration("Timber bench seat", point + new Vector3(side * 7, 0.74f, 0),
+                art.BatchDecoration(point + new Vector3(side * 7, 0.74f, 0),
                     new Vector3(3.1f, 0.095f, 1.02f), new Color(0.39f, 0.26f, 0.16f));
-                art.BatchDecoration("Plaza brass inlay", point + new Vector3(0, 0.063f, side * 5.8f),
+                art.BatchDecoration(point + new Vector3(0, 0.063f, side * 5.8f),
                     new Vector3(22f, 0.014f, 0.10f), accent);
             }
         }
@@ -389,7 +389,7 @@ namespace CostaLivre
             {
                 for (int stripe = -4; stripe <= 4; stripe++)
                 {
-                    art.BatchDecoration("Pedestrian crossing", new Vector3(-30 + stripe * 0.82f, 0.022f, cross + 4.8f),
+                    art.BatchDecoration(new Vector3(-30 + stripe * 0.82f, 0.022f, cross + 4.8f),
                         new Vector3(0.45f, 0.03f, 2.7f), white);
                 }
             }
@@ -439,7 +439,7 @@ namespace CostaLivre
 
         private void Mark(Vector3 position, Vector3 size)
         {
-            art.BatchDecoration("Road paint", position, size, new Color(0.55f, 0.51f, 0.41f));
+            art.BatchDecoration(position, size, new Color(0.55f, 0.51f, 0.41f));
         }
 
         private void Venue(string name, Vector3 entry, float width, float depth, float height, Color color, Color trim, Floor floor = Floor.Stone)
@@ -478,9 +478,9 @@ namespace CostaLivre
                 float bay = wallX;
                 Color frame = Color.Lerp(Glass, trim, 0.33f);
                 for (int mullion = -1; mullion <= 1; mullion++)
-                    art.BatchDecoration("Window mullion", new Vector3(bay + mullion * wing * 0.23f, 1.67f, front - 0.273f),
+                    art.BatchDecoration(new Vector3(bay + mullion * wing * 0.23f, 1.67f, front - 0.273f),
                         new Vector3(0.065f, 1.45f, 0.048f), frame);
-                art.BatchDecoration("Storefront sill", new Vector3(bay, 0.91f, front - 0.29f),
+                art.BatchDecoration(new Vector3(bay, 0.91f, front - 0.29f),
                     new Vector3(wing * 0.78f, 0.08f, 0.16f), trim);
 
             }
@@ -523,9 +523,9 @@ namespace CostaLivre
                 for (float x = -width / 2 + 2; x < width / 2 - 0.7f; x += 2.75f)
                 {
                     float facade = center.z - depth / 2;
-                    art.BatchDecoration("Setback window", new Vector3(center.x + x, y, facade - 0.024f),
+                    art.BatchDecoration(new Vector3(center.x + x, y, facade - 0.024f),
                         new Vector3(1.54f, 1.32f, 0.049f), Glass, finish: HarborBlockout.Finish.Glass);
-                    art.BatchDecoration("Window sill", new Vector3(center.x + x, y - 0.65f, facade - 0.09f),
+                    art.BatchDecoration(new Vector3(center.x + x, y - 0.65f, facade - 0.09f),
                         new Vector3(1.68f, 0.11f, 0.23f), Pavement);
                 }
             }
@@ -593,7 +593,7 @@ namespace CostaLivre
             Shape("Street lamp", PrimitiveType.Cylinder, point + Vector3.up * 2.35f,
                 new Vector3(0.13f, 2.35f, 0.13f), Glass);
             bool alongX = arm.x != 0;
-            art.BatchDecoration("Street lamp head", point + Vector3.up * 4.66f + arm * 0.55f,
+            art.BatchDecoration(point + Vector3.up * 4.66f + arm * 0.55f,
                 alongX ? new Vector3(1.1f, 0.16f, 0.39f) : new Vector3(0.39f, 0.16f, 1.1f), Glass);
             art.StreetLampDiffuser(point + Vector3.up * 4.574f + arm * 0.67f,
                 alongX ? new Vector3(0.68f, 0.034f, 0.26f) : new Vector3(0.26f, 0.034f, 0.68f));

@@ -18,10 +18,10 @@ namespace CostaLivre
         {
             static double Smooth(double old,double next) => old == 0 ? next : old*.72 + next*.28;
             frame = Smooth(frame,frameMs);
+            if (now - cpuAt > 1.7) cpu = 0;
+            if (now - gpuAt > 1.7) gpu = 0;
             if (cpuMs > 0) { cpu = Smooth(cpu,cpuMs); cpuAt = now; }
-            else if (now - cpuAt > 1.7) cpu = 0;
             if (gpuMs > 0) { gpu = Smooth(gpu,gpuMs); gpuAt = now; }
-            else if (now - gpuAt > 1.7) gpu = 0;
             double budget=1000d/target;
             double work=Math.Max(cpu,gpu);
             Bottleneck=memory ? Pressure.Memory : gpu>budget*.8 && gpu>cpu*1.12 ? Pressure.Gpu

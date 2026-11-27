@@ -264,9 +264,9 @@ namespace CostaLivre
                 building.Doors = new[]
                 {
                     art.Part(root, PrimitiveType.Cube, "Left sliding glass", center + Vector3.left * span/4,
-                        new(span/2-.014f,2.57f,.085f), Glass, true, HarborBlockout.Finish.Glass).transform,
+                        new(span/2+.012f,2.57f,.085f), Glass, true, HarborBlockout.Finish.Glass).transform,
                     art.Part(root, PrimitiveType.Cube, "Right sliding glass", center + Vector3.right * span/4,
-                        new(span/2-.014f,2.57f,.085f), Glass, true, HarborBlockout.Finish.Glass).transform
+                        new(span/2+.012f,2.57f,.085f), Glass, true, HarborBlockout.Finish.Glass).transform
                 };
         }
 

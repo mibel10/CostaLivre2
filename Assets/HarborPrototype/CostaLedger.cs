@@ -26,6 +26,10 @@ namespace CostaLivre
             public long nextPropertyFee;
             public bool autoProperty;
             public int weapons;
+            public int properties;
+            public int completedJobs;
+            public int[] soloBag;
+            public bool soloMigrated;
             public Entry[] history = Array.Empty<Entry>();
             public CostaCampaign.Progress campaign;
             public long[] mods = new long[16];
@@ -41,12 +45,18 @@ namespace CostaLivre
         private readonly object gate = new();
         private Book book;
         private bool available;
+        private bool recovered;
         internal CostaLedger(string path)
         {
             file = path;
             available = TryRead(path, out book);
-            if ((!available || book == null) && File.Exists(path + ".old") && TryRead(path + ".old", out book))
-                available = true;
+            if ((!available || book == null) && File.Exists(path + ".old") && TryRead(path + ".old", out Book backup) && backup != null)
+            {
+                book = backup;
+                available = recovered = true;
+            }
+            if (!available)
+                book = null;
             book ??= new Book();
         }
 
@@ -60,10 +70,14 @@ namespace CostaLivre
                 result = JsonUtility.FromJson<Book>(File.ReadAllText(path));
                 if (result?.version != 1 || result.accounts == null)
                     return false;
+                var keys = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
                 foreach (Account a in result.accounts)
                     if (a == null || string.IsNullOrEmpty(a.key) || a.cash is < 0 or > Limit
                         || a.personal is < 0 or > Limit || a.business is < 0 or > Limit
-                        || a.mods?.Length != 16 || a.history == null || a.serial < 0)
+                        || a.mods?.Length != 16 || a.history == null || a.history.Length > 12 || a.serial < 0 || !keys.Add(a.key)
+                        || Array.Exists(a.history, entry => entry == null || string.IsNullOrEmpty(entry.id)
+                            || entry.utc < 0 || entry.utc > 253402300799L || !Enum.IsDefined(typeof(Operation), entry.operation))
+                        || a.soloMigrated && (a.soloBag == null || a.soloBag.Length != CostaBag.Catalog.Length))
                         return false;
                 return true;
             }
@@ -84,6 +98,45 @@ namespace CostaLivre
                 Array.Resize(ref book.accounts, book.accounts.Length + 1);
                 book.accounts[^1] = a;
                 return a;
+            }
+        }
+
+        internal void MigrateSolo(Account account, int weapons, int properties, int completed, int[] bag)
+        {
+            lock (gate)
+            {
+                if (account.soloMigrated)
+                    return;
+                account.weapons = weapons;
+                account.properties = properties;
+                account.completedJobs = completed;
+                account.soloBag = (int[])bag.Clone();
+                account.soloMigrated = true;
+                // The next successful transaction persists this migration with its data.
+            }
+        }
+
+        internal bool SaveSolo(Account account, int cashDelta = 0, int property = 0,
+            int completed = 0, int[] bag = null)
+        {
+            lock (gate)
+            {
+                long cash = (long)account.cash + cashDelta;
+                if (!available || !account.soloMigrated || cash is < 0 or > Limit
+                    || (account.properties & property) != 0 || (account.completedJobs & completed) != 0)
+                    return false;
+                var previous = (account.cash, account.properties, account.completedJobs, account.soloBag, account.history);
+                account.cash = (int)cash;
+                account.properties |= property;
+                account.completedJobs |= completed;
+                if (bag != null)
+                    account.soloBag = (int[])bag.Clone();
+                if (cashDelta != 0)
+                    Append(account, cashDelta > 0 ? Operation.Reward : Operation.Purchase, cashDelta, Guid.NewGuid().ToString("N"));
+                if (Write())
+                    return true;
+                (account.cash, account.properties, account.completedJobs, account.soloBag, account.history) = previous;
+                return false;
             }
         }
 
@@ -218,9 +271,10 @@ namespace CostaLivre
                     stream.Flush(true);
                 }
                 if (File.Exists(file))
-                    File.Replace(file + ".new", file, file + ".old");
+                    File.Replace(file + ".new", file, recovered ? null : file + ".old");
                 else
                     File.Move(file + ".new", file);
+                recovered = false;
                 return true;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

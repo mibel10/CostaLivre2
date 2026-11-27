@@ -100,9 +100,6 @@ namespace CostaLivre
 
         internal static readonly int[] Prices = { 3800, 7200, 12900 };
         private GameObject[] doors = System.Array.Empty<GameObject>();
-        private int completed = PlayerPrefs.GetInt("CostaCompleted", 0);
-        private int owned = PlayerPrefs.GetInt("CostaOwned", 0);
-        private int arsenal = PlayerPrefs.GetInt("CostaArsenal", 0);
         internal static readonly int[] WeaponPrices = { 1200, 2700, 3400, 4900, 6200 };
         private int stage;
         private float deadline;
@@ -110,9 +107,19 @@ namespace CostaLivre
         private string noticeEn = "";
         private string noticePt = "";
 
-        internal CostaBag Bag { get; } = CostaBag.Load();
+        internal CostaBag Bag { get; }
         internal readonly CostaLedger Ledger = new(System.IO.Path.Combine(Application.persistentDataPath,"CostaBank-v1.json"));
-        internal CostaLedger.Account Account => Ledger.Get("solo",PlayerPrefs.GetInt("CostaCredits",4500));
+        internal CostaLedger.Account Account { get; }
+
+        internal CostaJobs()
+        {
+            Bag = CostaBag.Load();
+            Account = Ledger.Get("solo", PlayerPrefs.GetInt("CostaCredits",4500));
+            Ledger.MigrateSolo(Account, PlayerPrefs.GetInt("CostaArsenal",0),
+                PlayerPrefs.GetInt("CostaOwned",0), PlayerPrefs.GetInt("CostaCompleted",0)
+                    | (PlayerPrefs.GetInt("CostaPortPaid",0) != 0 ? PortCompletion : 0), Bag.Amounts);
+            Bag.Replace(Account.soloBag);
+        }
         internal int DailyPropertyCost => ((Owned(0)?1:0)+(Owned(1)?1:0)+(Owned(2)?1:0))*100;
         internal static long BankDay => System.DateTimeOffset.UtcNow.ToUnixTimeSeconds()/86400;
         internal int Credits => Account.cash;
@@ -141,20 +148,17 @@ namespace CostaLivre
             door.GetComponent<UnityEngine.AI.NavMeshObstacle>().enabled = solid;
         }
 
-        internal bool Completed(int job) => (completed & (1 << job)) != 0;
-        internal bool Owned(int index) => (owned & (1 << index)) != 0;
+        internal bool Completed(int job) => (Account.completedJobs & (1 << job)) != 0;
+        internal bool Owned(int index) => (Account.properties & (1 << index)) != 0;
 
-        internal bool OwnsWeapon(int slot) => slot >= 0 && slot < WeaponPrices.Length && (arsenal & (1 << slot)) != 0;
+        internal bool OwnsWeapon(int slot) => slot >= 0 && slot < WeaponPrices.Length && (Account.weapons & (1 << slot)) != 0;
 
         internal bool BuyWeapon(int slot)
         {
             if (slot < 0 || slot >= WeaponPrices.Length || OwnsWeapon(slot) || Credits < WeaponPrices[slot])
                 return false;
 
-            if (!Ledger.Apply(Account,CostaLedger.Operation.Purchase,WeaponPrices[slot])) return false;
-            arsenal |= 1 << slot;
-            Save();
-            return true;
+            return Ledger.Apply(Account,CostaLedger.Operation.Purchase,WeaponPrices[slot],weapon:slot);
         }
 
         private float pausedAt;
@@ -211,17 +215,21 @@ namespace CostaLivre
             stage++;
             if (stage == job.Steps.Length)
             {
-                CompletionSerial++;
                 if (!Completed(Active))
                 {
-                    completed |= 1 << Active;
-                    Award(job.Reward);
+                    if (!Ledger.SaveSolo(Account, job.Reward, completed: 1 << Active))
+                    {
+                        Message("Reward could not be saved. Retry the contract.", "A recompensa não foi salva. Repita o contrato.");
+                        Select(-1);
+                        return;
+                    }
                     Message($"Job complete   + {Money(job.Reward)}", $"Missão concluída   + {Money(job.Reward)}");
                 }
                 else
                 {
                     Message("Job complete", "Missão concluída");
                 }
+                CompletionSerial++;
                 Select(-1);
             }
         }
@@ -238,7 +246,7 @@ namespace CostaLivre
 
         internal bool Buy(int index)
         {
-            if (Owned(index))
+            if (index < 0 || index >= Prices.Length || index >= doors.Length || Owned(index))
                 return false;
             if (Credits < Prices[index])
             {
@@ -246,10 +254,8 @@ namespace CostaLivre
                 return false;
             }
 
-            if (!Ledger.Apply(Account,CostaLedger.Operation.Purchase,Prices[index])) return false;
-            owned |= 1 << index;
+            if (!Ledger.SaveSolo(Account, -Prices[index], property: 1 << index)) return false;
             SetDoorObstacle(doors[index], false);
-            Save();
             Message($"Vila {index + 1:00} purchased", $"Vila {index + 1:00} comprada");
             return true;
         }
@@ -258,44 +264,41 @@ namespace CostaLivre
         {
             if (!Bag.AddLoot(site))
                 return false;
-            Save();
-            return true;
+            if (Ledger.SaveSolo(Account, bag: Bag.Amounts))
+                return true;
+            Bag.Replace(Account.soloBag);
+            Message("Backpack could not be saved.", "Não foi possível salvar a mochila.");
+            return false;
         }
 
         internal void ConfiscateLoot()
         {
             Bag.Clear();
-            Save();
+            if (!Ledger.SaveSolo(Account, bag: Bag.Amounts))
+                Bag.Replace(Account.soloBag);
         }
 
         internal void SellLoot(int item)
         {
+            if (Bag.PriceOfSale(item) <= 0)
+                return;
             int amount = Bag.Sell(item);
-            if (amount > 0)
-                Award(amount);
+            if (Ledger.SaveSolo(Account, amount, bag: Bag.Amounts))
+                return;
+            Bag.Replace(Account.soloBag);
+            Message("Sale failed. Your loot is still in the backpack.", "A venda falhou. O saque continua na mochila.");
         }
 
-        internal void Award(int cash)
-        {
-            if (!Ledger.Apply(Account,CostaLedger.Operation.Reward,cash)) return;
-            Save();
-        }
+        // The contract board has fewer than 31 entries. Keep the legacy port tutorial in its own bit.
+        private const int PortCompletion = int.MinValue;
+        internal bool FinishPort() => (Account.completedJobs & PortCompletion) != 0
+            || Ledger.SaveSolo(Account, 3200, completed: PortCompletion);
 
         private void Message(string en, string pt)
         {
             noticeEn = en;
             noticePt = pt;
             messageUntil = Time.time + 4.8f;
-        }
-
-        private void Save()
-        {
-            PlayerPrefs.SetInt("CostaCredits", Credits);
-            PlayerPrefs.SetInt("CostaOwned", owned);
-            PlayerPrefs.SetInt("CostaCompleted", completed);
-            PlayerPrefs.SetInt("CostaArsenal", arsenal);
-            PlayerPrefs.SetString("CostaBag", string.Join(",", Bag.Amounts));
-            PlayerPrefs.Save();
         }
 
         internal static bool Near(Vector3 position, Vector3 target, float radius)

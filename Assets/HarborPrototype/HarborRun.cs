@@ -1479,12 +1479,9 @@ namespace CostaLivre
                 escapeSeconds = Time.time - escapeStartedAt;
                 if (IsNear(HarborBlockout.Safehouse, InteractionRadius))
                 {
+                    if (!jobs.FinishPort())
+                        return;
                     effects.Play(Cue.Reward);
-                    if (PlayerPrefs.GetInt("CostaPortPaid", 0) == 0)
-                    {
-                        PlayerPrefs.SetInt("CostaPortPaid", 1);
-                        jobs.Award(3200);
-                    }
                     EndRun(RunState.Delivered);
                     return;
                 }

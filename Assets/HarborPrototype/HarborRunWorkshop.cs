@@ -74,6 +74,7 @@ namespace CostaLivre
             workshopCamera.enabled = redraw;
             if (!redraw)
                 return;
+            bool styleChanged = float.IsNaN(lastWorkshopHeading) || lastWorkshopBuild != build;
             lastWorkshopHeading = cameraOrbit;
             lastWorkshopPart = selectedPart;
             lastWorkshopBuild = build;
@@ -87,8 +88,11 @@ namespace CostaLivre
             float distance = selectedPart is Part.Hood or Part.Paint or Part.Color or >= Part.Engine and <= Part.Grip ? 5.4f : 4.05f;
             Vector3 eye = focus + Quaternion.Euler(0,cameraOrbit,0)*new Vector3(0,1.42f,distance);
             workshopCamera.transform.SetPositionAndRotation(eye,Quaternion.LookRotation(focus-eye,Vector3.up));
-            workshopModel.ApplyBuild(build);
-            SetWorkshopLayer(workshopModel.Root);
+            if (styleChanged)
+            {
+                workshopModel.ApplyBuild(build);
+                SetWorkshopLayer(workshopModel.Root);
+            }
         }
 
         private static void SetWorkshopLayer(Transform node)

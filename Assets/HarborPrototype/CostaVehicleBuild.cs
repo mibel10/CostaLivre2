@@ -73,7 +73,7 @@ namespace CostaLivre
                     case BuildPart.Wheels:
                         mesh.localScale = target.Scale * (1+level*.09f);
                         paintBlock.SetColor(BaseColor,level switch { 1 => new(.25f,.24f,.22f),2 => new(.61f,.44f,.23f),
-                            3 => new(.69f,.74f,.79f), _ => target.Mesh.sharedMaterial.GetColor(BaseColor) });
+                            3 => new(.69f,.74f,.79f), _ => target.Mesh.sharedMaterial.color });
                         break;
                     case BuildPart.Bumper:
                         mesh.localScale = Vector3.Scale(target.Scale,new Vector3(1 + level*.035f,1 + level*.30f,1+level*.22f));

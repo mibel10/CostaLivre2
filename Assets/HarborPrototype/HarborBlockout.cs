@@ -29,7 +29,9 @@ namespace CostaLivre
         private readonly List<(Color Color, Material Material)> asphalt = new();
         private float wetness;
         private readonly List<Mesh> models = new();
-        private readonly Dictionary<(Vector2Int Cell, Material Material), List<MeshFilter>> decoration = new();
+        private const float RenderCellSize = 24f;
+        private readonly HashSet<GameObject> decoration = new();
+        private bool collectingCity;
         private readonly List<NavMeshBuildSource> walkableGeometry = new();
         private HarborCharacter.Art characterArt;
         private Font signFont;
@@ -54,6 +56,7 @@ namespace CostaLivre
 
         internal void Build()
         {
+            collectingCity = true;
             Color road = new(0.58f, 0.62f, 0.65f);
             Color concrete = new(0.70f, 0.72f, 0.70f);
             Color water = new(0.10f, 0.21f, 0.25f);
@@ -521,6 +524,8 @@ namespace CostaLivre
                 Acoustics.AddAsphalt(box.GetComponent<Collider>());
             if (solid && (surface == "Steel" || surface == "Asphalt"))
                 Damage.Mark(box, surface == "Steel" ? CostaWorldDamage.Surface.Metal : CostaWorldDamage.Surface.Concrete, 0);
+            if (collectingCity && bake && Mathf.Max(size.x, size.z) <= RenderCellSize)
+                decoration.Add(box);
             if (solid && bake)
             {
                 walkableGeometry.Add(new NavMeshBuildSource
@@ -538,7 +543,7 @@ namespace CostaLivre
             Acoustics.AddFloor(part.GetComponent<Renderer>().bounds, floor);
 
         internal void BatchDecoration(string name, Vector3 position, Vector3 size, Color color, Finish finish = Finish.Standard) =>
-            BatchDecoration(Box(name, position, size, color, finish: finish), position);
+            decoration.Add(Box(name, position, size, color, finish: finish));
 
         internal void StreetLampDiffuser(Vector3 position, Vector3 size)
         {
@@ -546,7 +551,7 @@ namespace CostaLivre
             GameObject part = Box("Street lamp diffuser", position, size, Color.gray);
             part.GetComponent<MeshRenderer>().sharedMaterial = streetLights.Diffuser;
             streetLights.Add(part.transform.position - Vector3.up * 0.08f);
-            BatchDecoration(part, position);
+            decoration.Add(part);
         }
 
         internal void UpdateStreetLights(float night, Vector3 view, int budget) =>
@@ -586,57 +591,79 @@ namespace CostaLivre
             MeshRenderer renderer = patch.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = wearMaterial;
             renderer.shadowCastingMode = ShadowCastingMode.Off;
-            BatchDecoration(patch, position);
-        }
-
-        private void BatchDecoration(GameObject part, Vector3 position)
-        {
-            var cell = new Vector2Int(Mathf.FloorToInt(position.x / 32f), Mathf.FloorToInt(position.z / 32f));
-            var key = (cell, part.GetComponent<MeshRenderer>().sharedMaterial);
-            if (!decoration.TryGetValue(key, out List<MeshFilter> pieces))
-                decoration.Add(key, pieces = new List<MeshFilter>());
-            pieces.Add(part.GetComponent<MeshFilter>());
+            decoration.Add(patch);
         }
 
         internal IEnumerable<float> FinishDecoration()
         {
+            collectingCity = false;
+            var groups = new Dictionary<(Vector2Int Cell, Material Material, ShadowCastingMode Shadow, bool ReceiveShadows,
+                ReflectionProbeUsage Reflections, LightProbeUsage LightProbes), List<MeshRenderer>>();
+            int total = decoration.Count;
             int processed = 0;
-            double nextFrame = Time.realtimeSinceStartupAsDouble + 0.004;
-            foreach (var entry in decoration)
+            double deadline = Time.realtimeSinceStartupAsDouble + .004;
+            foreach (GameObject part in decoration)
             {
-                if (Time.realtimeSinceStartupAsDouble >= nextFrame)
+                if (Time.realtimeSinceStartupAsDouble >= deadline)
                 {
-                    yield return (float)processed / decoration.Count;
-                    nextFrame = Time.realtimeSinceStartupAsDouble + 0.004;
+                    yield return .36f * processed / total;
+                    deadline = Time.realtimeSinceStartupAsDouble + .004;
                 }
                 processed++;
-                List<MeshFilter> pieces = entry.Value;
+                if (!part.activeSelf || part.transform.parent != root || part.transform.childCount != 0
+                    || !part.TryGetComponent(out MeshRenderer renderer) || renderer.HasPropertyBlock())
+                    continue;
+                Material material = renderer.sharedMaterial;
+                if (material == null || material != wearMaterial && material.renderQueue >= (int)RenderQueue.Transparent)
+                    continue;
+                Vector3 position = part.transform.localPosition;
+                var cell = new Vector2Int(Mathf.FloorToInt(position.x / RenderCellSize), Mathf.FloorToInt(position.z / RenderCellSize));
+                var key = (cell, material, renderer.shadowCastingMode, renderer.receiveShadows, renderer.reflectionProbeUsage,
+                    renderer.lightProbeUsage);
+                if (!groups.TryGetValue(key, out List<MeshRenderer> pieces))
+                    groups.Add(key, pieces = new List<MeshRenderer>());
+                pieces.Add(renderer);
+            }
+            decoration.Clear();
+
+            processed = 0;
+            foreach (var entry in groups)
+            {
+                if (Time.realtimeSinceStartupAsDouble >= deadline)
+                {
+                    yield return .36f + .64f * processed / groups.Count;
+                    deadline = Time.realtimeSinceStartupAsDouble + .004;
+                }
+                processed++;
+                List<MeshRenderer> pieces = entry.Value;
                 if (pieces.Count < 2)
                     continue;
 
-                GameObject batch = new GameObject("Static city detail");
+                var batch = new GameObject("Static city geometry");
                 batch.transform.SetParent(root, false);
-                batch.transform.localPosition = new Vector3(entry.Key.Cell.x * 32f, 0, entry.Key.Cell.y * 32f);
+                batch.transform.localPosition = new Vector3(entry.Key.Cell.x * RenderCellSize, 0, entry.Key.Cell.y * RenderCellSize);
                 Matrix4x4 inverse = batch.transform.worldToLocalMatrix;
                 var sources = new CombineInstance[pieces.Count];
                 for (int i = 0; i < pieces.Count; i++)
                 {
-                    MeshFilter piece = pieces[i];
+                    MeshRenderer piece = pieces[i];
                     sources[i] = new CombineInstance
                     {
-                        mesh = piece.sharedMesh,
+                        mesh = piece.GetComponent<MeshFilter>().sharedMesh,
                         transform = inverse * piece.transform.localToWorldMatrix
                     };
                 }
-
-                var mesh = new Mesh { name = "Static city detail" };
+                var mesh = new Mesh { name = "Static city geometry" };
                 mesh.CombineMeshes(sources);
                 mesh.UploadMeshData(true);
                 models.Add(mesh);
                 batch.AddComponent<MeshFilter>().sharedMesh = mesh;
                 var renderer = batch.AddComponent<MeshRenderer>();
                 renderer.sharedMaterial = entry.Key.Material;
-                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                renderer.shadowCastingMode = entry.Key.Shadow;
+                renderer.receiveShadows = entry.Key.ReceiveShadows;
+                renderer.reflectionProbeUsage = entry.Key.Reflections;
+                renderer.lightProbeUsage = entry.Key.LightProbes;
                 if (entry.Key.Material == wearMaterial)
                 {
                     var lod = batch.AddComponent<LODGroup>();
@@ -645,13 +672,22 @@ namespace CostaLivre
                     lod.SetLODs(new[] { new LOD(.075f, new Renderer[] { renderer }) });
                     lod.RecalculateBounds();
                 }
-                foreach (MeshFilter piece in pieces)
+                foreach (MeshRenderer piece in pieces)
                 {
-                    piece.gameObject.SetActive(false);
-                    Object.Destroy(piece.gameObject);
+                    // Keep the original collider and object identity for physics and surface queries.
+                    if (piece.TryGetComponent(out Collider collider) && collider.enabled)
+                    {
+                        piece.enabled = false;
+                        Object.Destroy(piece);
+                        Object.Destroy(piece.GetComponent<MeshFilter>());
+                    }
+                    else
+                    {
+                        piece.gameObject.SetActive(false);
+                        Object.Destroy(piece.gameObject);
+                    }
                 }
             }
-            decoration.Clear();
         }
 
         private Material Surface(string surface, Color color, Vector2 tiling)

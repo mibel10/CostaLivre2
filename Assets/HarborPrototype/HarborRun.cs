@@ -307,6 +307,7 @@ namespace CostaLivre
             loadingPhase = L("Preparing vehicles and contracts", "Preparando veículos e missões");
             yield return 0.69f;
             traffic = new CostaTraffic(harbor, transform);
+            yield return .71f;
             venues = new CostaVenueLife(harbor, transform);
             jobs.AttachDoors(city.HouseDoors);
             city.UpdateHouseDoors(jobs, false, snap: true);
@@ -318,12 +319,13 @@ namespace CostaLivre
             bagPanel = new CostaBagPanel(harbor, transform);
             yield return 0.74f;
 
-            CreateWorldActors();
+            foreach (float progress in CreateWorldActors())
+                yield return progress;
             urbanAudio = new CostaUrbanAudio(transform, effects.WorldAudio, traffic.VehiclesForAudio, cars, venues);
             for (int floor = 0; floor < CostaFootstepBank.Floors; floor++)
             {
                 effects.WarmSteps(floor);
-                yield return Mathf.Lerp(.75f, .81f, (floor + 1f) / CostaFootstepBank.Floors);
+                yield return Mathf.Lerp(.79f, .81f, (floor + 1f) / CostaFootstepBank.Floors);
             }
             loadingPhase = L("Preparing city navigation", "Preparando a navegação da cidade");
             yield return 0.82f;
@@ -344,7 +346,7 @@ namespace CostaLivre
             yield return 1f;
         }
 
-        private void CreateWorldActors()
+        private IEnumerable<float> CreateWorldActors()
         {
             GameObject runner = new GameObject("Runner");
             runner.layer = LayerMask.NameToLayer("Ignore Raycast");
@@ -365,25 +367,28 @@ namespace CostaLivre
             arsenal = new HarborArsenal(harbor, playerModel, blockoutShader, jobs);
             cargo = harbor.Case();
 
-            cars = new CostaVehicle[]
-            {
-                new(harbor, transform, new Vector3(-30, 0, 27.5f), 0, new Color(0.34f, 0.36f, 0.39f)),
-                new(harbor, transform, new Vector3(-77, 0, 43), 0, new Color(0.30f, 0.36f, 0.31f)),
-                new(harbor, transform, new Vector3(18, 0, 44), 180, new Color(0.38f, 0.18f, 0.16f)),
-                new(harbor, transform, new Vector3(-61, 0, 93), 90, new Color(0.24f, 0.31f, 0.39f), true),
-                new(harbor, transform, new Vector3(-13, 0, -18), 90, new Color(0.34f, 0.41f, 0.47f)),
-                new(harbor, transform, new Vector3(65, 0, 104), 0, new Color(0.45f, 0.43f, 0.36f)),
-                new(harbor, transform, new Vector3(-40, 0, 51), 270, new Color(0.63f, 0.23f, 0.14f), style: CostaVehicle.Style.Super),
-                new(harbor, transform, new Vector3(59, 0, 87), 90, new Color(0.28f, 0.40f, 0.52f), style: CostaVehicle.Style.Track),
-                new(harbor, transform, new Vector3(-39, 0, 34), 90, new Color(0.64f, 0.64f, 0.58f), style: CostaVehicle.Style.Compact),
-                new(harbor, transform, new Vector3(-88, 0, 85), 90, new Color(0.18f, 0.23f, 0.25f), style: CostaVehicle.Style.Executive),
-                new(harbor, transform, new Vector3(-9, 0, 71), 90, new Color(0.31f, 0.45f, 0.39f)),
-                new(harbor, transform, new Vector3(-35, 0, 25.5f), 0, new Color(0.61f, 0.32f, 0.11f), style: CostaVehicle.Style.StreetBike),
-                new(harbor, transform, new Vector3(-78, 0, 115), 180, new Color(0.25f, 0.27f, 0.28f), style: CostaVehicle.Style.Cruiser),
-                new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[0].Center - 3), 90, new Color(0.36f, 0.52f, 0.57f)),
-                new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[1].Center - 3), 90, new Color(0.34f, 0.39f, 0.53f), style: CostaVehicle.Style.Executive),
-                new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[2].Center - 3), 90, new Color(0.65f, 0.22f, 0.35f), style: CostaVehicle.Style.Super)
-            };
+            yield return .75f;
+            cars = new CostaVehicle[16];
+            cars[0] = new(harbor, transform, new Vector3(-30, 0, 27.5f), 0, new Color(0.34f, 0.36f, 0.39f));
+            cars[1] = new(harbor, transform, new Vector3(-77, 0, 43), 0, new Color(0.30f, 0.36f, 0.31f));
+            cars[2] = new(harbor, transform, new Vector3(18, 0, 44), 180, new Color(0.38f, 0.18f, 0.16f));
+            cars[3] = new(harbor, transform, new Vector3(-61, 0, 93), 90, new Color(0.24f, 0.31f, 0.39f), true);
+            yield return .76f;
+            cars[4] = new(harbor, transform, new Vector3(-13, 0, -18), 90, new Color(0.34f, 0.41f, 0.47f));
+            cars[5] = new(harbor, transform, new Vector3(65, 0, 104), 0, new Color(0.45f, 0.43f, 0.36f));
+            cars[6] = new(harbor, transform, new Vector3(-40, 0, 51), 270, new Color(0.63f, 0.23f, 0.14f), style: CostaVehicle.Style.Super);
+            cars[7] = new(harbor, transform, new Vector3(59, 0, 87), 90, new Color(0.28f, 0.40f, 0.52f), style: CostaVehicle.Style.Track);
+            yield return .77f;
+            cars[8] = new(harbor, transform, new Vector3(-39, 0, 34), 90, new Color(0.64f, 0.64f, 0.58f), style: CostaVehicle.Style.Compact);
+            cars[9] = new(harbor, transform, new Vector3(-88, 0, 85), 90, new Color(0.18f, 0.23f, 0.25f), style: CostaVehicle.Style.Executive);
+            cars[10] = new(harbor, transform, new Vector3(-9, 0, 71), 90, new Color(0.31f, 0.45f, 0.39f));
+            cars[11] = new(harbor, transform, new Vector3(-35, 0, 25.5f), 0, new Color(0.61f, 0.32f, 0.11f), style: CostaVehicle.Style.StreetBike);
+            yield return .78f;
+            cars[12] = new(harbor, transform, new Vector3(-78, 0, 115), 180, new Color(0.25f, 0.27f, 0.28f), style: CostaVehicle.Style.Cruiser);
+            cars[13] = new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[0].Center - 3), 90, new Color(0.36f, 0.52f, 0.57f));
+            cars[14] = new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[1].Center - 3), 90, new Color(0.34f, 0.39f, 0.53f), style: CostaVehicle.Style.Executive);
+            cars[15] = new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[2].Center - 3), 90, new Color(0.65f, 0.22f, 0.35f), style: CostaVehicle.Style.Super);
+            yield return .79f;
 
             encounter = new CostaEncounter(harbor, transform, jobs, cars, effects);
             session = new CostaSession(cars, harbor.Damage, traffic);

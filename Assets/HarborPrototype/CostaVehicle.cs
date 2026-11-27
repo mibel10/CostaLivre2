@@ -33,6 +33,7 @@ namespace CostaLivre
         private float chassisPitch, chassisRoll;
         private float frontDamage, rearDamage;
         private float nextGroundSample;
+        private float settleUntil;
         private readonly float[] groundHeights;
         private readonly Renderer[] runningLights;
         private readonly MaterialPropertyBlock lampProperties = new();
@@ -421,6 +422,10 @@ namespace CostaLivre
             Vector3 previous = Root.position;
             Quaternion previousRotation = Root.rotation;
             Quaternion targetRotation = Quaternion.Euler(0, yaw, 0);
+            if (!snap && previous.Equals(position) && previousRotation.Equals(targetRotation)
+                && Mathf.Abs(velocity) <= .001f && Mathf.Abs(speed) <= .001f
+                && Mathf.Abs(lean) <= .001f && Time.unscaledTime >= settleUntil)
+                return false;
             Vector3 next = (position - previous).sqrMagnitude < 0.000001f
                 ? position : Vector3.Lerp(previous, position, blend);
             Quaternion rotation = Quaternion.Angle(previousRotation, targetRotation) < 0.05f
@@ -435,6 +440,8 @@ namespace CostaLivre
             float dt = Mathf.Max(Time.unscaledDeltaTime, .012f);
             float turnRate = Mathf.DeltaAngle(previousRotation.eulerAngles.y, rotation.eulerAngles.y) / dt;
             float acceleration = Mathf.Clamp((velocity - speed) / dt, -28, 15);
+            if (snap || changed || Mathf.Abs(velocity) > .001f || Mathf.Abs(acceleration) > .001f || Mathf.Abs(lean) > .001f)
+                settleUntil = Time.unscaledTime + .85f;
             speed = velocity;
             AnimateChassis(dt, turnRate, acceleration, IsBike ? lean : null, sample: changed);
             return changed;

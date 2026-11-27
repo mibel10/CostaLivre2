@@ -270,7 +270,8 @@ namespace CostaLivre
                 if (remote[i] == null)
                     continue;
                 bool spawn = !cars[i].Root.gameObject.activeSelf;
-                cars[i].Root.gameObject.SetActive(true);
+                if (spawn)
+                    cars[i].Root.gameObject.SetActive(true);
                 if (receivedTraffic || spawn)
                     collisionChanged |= cars[i].SetAuthoritativePose(remote[i].position, remote[i].yaw) || spawn;
                 cars[i].ApplyNetwork(remote[i].position, remote[i].yaw, remote[i].speed, spawn);

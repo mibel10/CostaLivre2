@@ -202,6 +202,7 @@ namespace CostaLivre
         private float sprintRecoveryDelay;
         private float nextPursuitUpdate;
         private float escapeStartedAt;
+        private float nextPortSave;
         private float escapeSeconds;
         private bool needsSprintRelease;
         private bool gamepad;
@@ -1488,6 +1489,9 @@ namespace CostaLivre
                 escapeSeconds = Time.time - escapeStartedAt;
                 if (IsNear(HarborBlockout.Safehouse, InteractionRadius))
                 {
+                    if (Time.unscaledTime < nextPortSave)
+                        return;
+                    nextPortSave = Time.unscaledTime + 1f;
                     if (!jobs.FinishPort())
                         return;
                     effects.Play(Cue.Reward);

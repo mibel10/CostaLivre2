@@ -291,8 +291,14 @@ namespace CostaLivre
 
         // The contract board has fewer than 31 entries. Keep the legacy port tutorial in its own bit.
         private const int PortCompletion = int.MinValue;
-        internal bool FinishPort() => (Account.completedJobs & PortCompletion) != 0
-            || Ledger.SaveSolo(Account, 3200, completed: PortCompletion);
+        internal bool FinishPort()
+        {
+            if ((Account.completedJobs & PortCompletion) != 0
+                || Ledger.SaveSolo(Account, 3200, completed: PortCompletion))
+                return true;
+            Message("Save failed. Retrying…", "Falha ao salvar. Tentando novamente…");
+            return false;
+        }
 
         private void Message(string en, string pt)
         {

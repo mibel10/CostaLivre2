@@ -306,6 +306,15 @@ namespace CostaLivre
                 pipeline = Object.Instantiate(authored);
                 pipeline.name = authored.name + " (runtime)";
                 pipeline.hideFlags = HideFlags.DontSave;
+#if UNITY_WSA
+                if (pipeline.gpuResidentDrawerMode != GPUResidentDrawerMode.Disabled
+                    || pipeline.gpuResidentDrawerEnableOcclusionCullingInCameras)
+                {
+                    pipeline.gpuResidentDrawerMode = GPUResidentDrawerMode.Disabled;
+                    pipeline.gpuResidentDrawerEnableOcclusionCullingInCameras = false;
+                }
+                pipeline.useSRPBatcher = false;
+#else
                 if (pipeline.gpuResidentDrawerMode != GPUResidentDrawerMode.Disabled
                     && (Application.isMobilePlatform || !SystemInfo.supportsComputeShaders
                         || !IGPUResidentRenderPipeline.IsGPUResidentDrawerSupportedByProjectConfiguration()
@@ -314,6 +323,7 @@ namespace CostaLivre
                     pipeline.gpuResidentDrawerMode = GPUResidentDrawerMode.Disabled;
                     pipeline.gpuResidentDrawerEnableOcclusionCullingInCameras = false;
                 }
+#endif
             }
             ApplySettings();
             if (pipeline != null)

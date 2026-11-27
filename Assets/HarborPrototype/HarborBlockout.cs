@@ -617,6 +617,34 @@ namespace CostaLivre
         internal IEnumerable<float> FinishDecoration()
         {
             collectingCity = false;
+#if UNITY_WSA
+            double deadline = Time.realtimeSinceStartupAsDouble + .004;
+            int processed = 0;
+            int total = cubeDetails.Count;
+            foreach (var detail in cubeDetails)
+            {
+                if (Time.realtimeSinceStartupAsDouble >= deadline)
+                {
+                    yield return total > 0 ? (float)processed / total : 1f;
+                    deadline = Time.realtimeSinceStartupAsDouble + .004;
+                }
+                processed++;
+                var piece = new GameObject("City detail");
+                piece.transform.SetParent(root, false);
+                piece.transform.localPosition = detail.Position;
+                piece.transform.localScale = detail.Size;
+                piece.AddComponent<MeshFilter>().sharedMesh = cubeMesh;
+                var renderer = piece.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = detail.Material;
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                renderer.receiveShadows = true;
+                renderer.reflectionProbeUsage = detail.Reflections;
+                renderer.lightProbeUsage = LightProbeUsage.BlendProbes;
+            }
+            decoration.Clear();
+            cubeDetails.Clear();
+            yield break;
+#else
             var groups = new Dictionary<(Vector2Int Cell, Material Material, ShadowCastingMode Shadow, bool ReceiveShadows,
                 ReflectionProbeUsage Reflections, LightProbeUsage LightProbes), List<(CombineInstance Source, MeshRenderer Original)>>();
             int total = decoration.Count + cubeDetails.Count;
@@ -724,6 +752,7 @@ namespace CostaLivre
                     groups.Add(key, pieces = new());
                 pieces.Add((new CombineInstance { mesh = mesh, transform = local }, original));
             }
+#endif
         }
 
         private Material Surface(string surface, Color color, Vector2 tiling)

@@ -74,7 +74,8 @@ namespace CostaLivre
                 if (!officer.Ready || !officer.Pose.police || !officer.Pose.playing || officer.Pose.vehicle >= 0
                     || !Near(officer.Pose.pos, Entrance(opportunity.site), 4))
                     continue;
-                officer.Credits += 325;
+                if (!Reward(officer,325))
+                    continue;
                 SetNotice(officer, 17);
                 EndOpportunity(now);
                 break;
@@ -252,7 +253,8 @@ namespace CostaLivre
                 {
                     if (!CrewAvailable(partner, now) || (partner != crew.Collector && partner != crew.Lookout && partner != seller))
                         continue;
-                    partner.Credits += 400;
+                    if (!Reward(partner,400))
+                        continue;
                     SetNotice(partner, 21);
                 }
                 crews[i] = null;
@@ -350,9 +352,11 @@ namespace CostaLivre
                     continue;
                 if (officer.Evidence > 0 && officer.Pose.vehicle < 0 && Near(officer.Pose.pos, PoliceSpawn, 5))
                 {
-                    officer.Credits += 600 + officer.Evidence * 125;
-                    officer.Evidence = 0;
-                    SetNotice(officer, 16);
+                    if (Reward(officer,600 + officer.Evidence * 125))
+                    {
+                        officer.Evidence = 0;
+                        SetNotice(officer,16);
+                    }
                 }
                 if (dispatch == null || officer.Evidence > 0 || officer.Pose.vehicle >= 0
                     || (dispatch.guard && robbers[dispatch.site] != null)
@@ -365,7 +369,8 @@ namespace CostaLivre
                     officer.DispatchSince = now;
                 if (now < officer.DispatchSince + (dispatch.guard ? 14 : 2))
                     continue;
-                officer.Credits += dispatch.guard ? 850 : 450;
+                if (!Reward(officer,dispatch.guard ? 850 : 450))
+                    continue;
                 SetNotice(officer, 15);
                 dispatch = null;
                 nextDispatch = now + 22;

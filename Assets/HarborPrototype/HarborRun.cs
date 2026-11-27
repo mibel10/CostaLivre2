@@ -11,9 +11,9 @@ using Cue = CostaLivre.CostaEffects.Cue;
 
 namespace CostaLivre
 {
-    public sealed class HarborRun : MonoBehaviour
+    public sealed partial class HarborRun : MonoBehaviour
     {
-        private enum FieldOverlay { None, Map, Shop, Bag, Vendor, Elevator }
+        private enum FieldOverlay { None, Map, Shop, Bag, Vendor, Elevator, Bank }
         private enum RunState { FindCargo, Escape, Delivered, Caught }
 
         private sealed class Guard
@@ -324,6 +324,7 @@ namespace CostaLivre
             cityMap = new CostaMap(city.Footprints);
             cityMap.Prepare();
             gunShop = new CostaGunShop();
+            BuildAtms();
             hud = new HarborHud(cityMap);
             bagPanel = new CostaBagPanel(harbor, transform);
             yield return 0.74f;
@@ -1058,6 +1059,12 @@ namespace CostaLivre
                 if (interaction && CurrentSeat >= 0)
                     UseInterior(CurrentSeat);
                 PositionCamera(false);
+                return;
+            }
+            if (interaction && car == null && CostaSession.AtBank(player.transform.position))
+            {
+                bankingMessage = "";
+                OpenOverlay(FieldOverlay.Bank);
                 return;
             }
             bool interiorAction = car == null && interaction && rollClock <= 0 && !UsingContractObjective()
@@ -2402,6 +2409,11 @@ namespace CostaLivre
                 cityMap.DrawFull(player.transform.position, yaw, MissionLocation(), closeOverlay);
                 return;
             }
+            if (overlay == FieldOverlay.Bank)
+            {
+                DrawBank();
+                return;
+            }
             if (overlay == FieldOverlay.Elevator)
             {
                 DrawElevator();
@@ -2540,6 +2552,8 @@ namespace CostaLivre
                     return $"{use} {jobs.Current.Title}";
             }
 
+            if (CostaSession.AtBank(player.transform.position))
+                return L($"{use} Bank ATM",$"{use} Caixa eletrônico");
             city.Interiors.FindAction(player.transform.position, CurrentSeat, CurrentLift, InteriorHour, out string interior, out _);
             if (interior.Length > 0)
                 return CurrentLift >= 0 ? interior : $"{use} {interior}";

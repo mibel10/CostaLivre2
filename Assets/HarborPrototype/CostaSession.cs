@@ -15,7 +15,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 12;
+        private const int Protocol = 13;
         private const float Interval = 0.083f;
         internal const int PoliceArmor = 50;
         internal const int MaxWanted = 6;
@@ -104,8 +104,11 @@ namespace CostaLivre
             public string type;
             public int protocol;
             public int index;
+            public int amount;
             public int id;
             public int credits;
+            public int bankPersonal, bankBusiness, transaction;
+            public CostaLedger.Entry[] bankHistory;
             public int evidence;
             public CrewOrder crew;
             public int weapons;
@@ -165,6 +168,8 @@ namespace CostaLivre
         {
             public int id;
             public int credits;
+            public int bankPersonal, bankBusiness, transaction;
+            public CostaLedger.Entry[] bankHistory;
             public int evidence;
             public CrewOrder crew;
             public int weapons;
@@ -186,7 +191,8 @@ namespace CostaLivre
             internal bool Ready;
             internal string ResumeKey;
             internal byte[] Challenge;
-            internal int Credits = 4500;
+            internal CostaLedger.Account Account;
+            internal int Credits => Account?.cash ?? 4500;
             internal int Evidence;
             internal float DispatchSince = -1;
             internal int Weapons;
@@ -401,6 +407,7 @@ namespace CostaLivre
                 if (host)
                 {
                     interiors?.UseLocalWorld(true);
+                    ledger = new CostaLedger(System.IO.Path.Combine(Application.persistentDataPath,"CostaLanBank-v1.json"));
                     bool relayed = useNoray || relay != null;
                     listener = new TcpListener(relayed ? IPAddress.Loopback : IPAddress.Any, relayed ? 0 : port);
                     listener.Start(MaxPlayers);
@@ -587,6 +594,10 @@ namespace CostaLivre
                     worldHourReceivedAt = Time.realtimeSinceStartupAsDouble;
                 }
                 Cash = frame.credits;
+                BankPersonal = frame.bankPersonal;
+                BankBusiness = frame.bankBusiness;
+                BankHistory = frame.bankHistory;
+                nextTransaction = Mathf.Max(nextTransaction,frame.transaction);
                 WeaponMask = frame.weapons;
                 EquipAcknowledged = frame.equipSequence;
                 Loaded = frame.loaded;
@@ -686,6 +697,7 @@ namespace CostaLivre
                             break;
                         }
                         peer.ResumeKey = resumeKey;
+                        peer.Account = ledger.Get(resumeKey);
                         peer.Challenge = null;
                         if (disconnected.TryGetValue(peer.ResumeKey, out var resume))
                         {
@@ -696,7 +708,6 @@ namespace CostaLivre
                             peer.Pose.playing = false;
                             peer.Pose.doorCar = -1;
                             peer.Pose.doorTime = 0;
-                            peer.Credits = saved.Credits;
                             peer.Evidence = saved.Evidence;
                             peer.Weapons = saved.Weapons;
                             peer.Bag.Replace(saved.Bag.Amounts);
@@ -862,6 +873,10 @@ namespace CostaLivre
                 var snapshot = peer.Snapshot;
                 snapshot.id = peer.Pose.id;
                 snapshot.credits = peer.Credits;
+                snapshot.bankPersonal = peer.Account.personal;
+                snapshot.bankBusiness = peer.Account.business;
+                snapshot.bankHistory = peer.Account.history;
+                snapshot.transaction = peer.Account.serial;
                 snapshot.evidence = peer.Evidence;
                 snapshot.crew = CrewState(peer, now);
                 snapshot.weapons = WeaponInventory(peer);
@@ -951,6 +966,9 @@ namespace CostaLivre
                 case "outfit":
                     avatar.outfit = Mathf.Clamp(msg.index, 0, 242);
                     break;
+                case "bank":
+                    ReceiveBank(peer,msg);
+                    break;
                 case "crew":
                     UseCrew(peer, msg.index, now);
                     break;
@@ -960,11 +978,10 @@ namespace CostaLivre
                 case "sell":
                     if (!avatar.police && avatar.vehicle < 0 && AtVendor(avatar.pos))
                     {
-                        int amount = peer.Bag.Sell(msg.index);
-                        peer.Credits += amount;
-
-                        if (amount > 0)
+                        int amount = peer.Bag.PriceOfSale(msg.index);
+                        if (Reward(peer,amount))
                         {
+                            peer.Bag.Sell(msg.index);
                             BeginGesture(peer, HarborCharacter.Gesture.Reach, now);
                             SetNotice(peer, 7);
                             FinishGetaway(peer, msg.index, now);
@@ -974,9 +991,8 @@ namespace CostaLivre
                 case "buy":
                     if (!avatar.police && avatar.vehicle < 0 && Near(avatar.pos, CostaCity.GunCounter, 2.35f)
                         && msg.index >= 0 && msg.index < CostaJobs.WeaponPrices.Length
-                        && (peer.Weapons & (1 << msg.index)) == 0 && peer.Credits >= CostaJobs.WeaponPrices[msg.index])
+                        && (peer.Weapons & (1 << msg.index)) == 0 && Purchase(peer,CostaJobs.WeaponPrices[msg.index]))
                     {
-                        peer.Credits -= CostaJobs.WeaponPrices[msg.index];
                         peer.Weapons |= 1 << msg.index;
                         SetNotice(peer, 8);
                     }
@@ -1814,6 +1830,9 @@ namespace CostaLivre
                 case 20: return L("Loot handed to getaway driver.", "Saque entregue ao motorista.");
                 case 21: return L("Crew sale complete. Bonus paid.", "Venda da equipe concluída. Bônus recebido.");
                 case 22: return L("Preparing the robbery. Stay near the display.", "Preparando o roubo. Fique perto da vitrine.");
+                case 36: return L("Transaction complete.", "Transação concluída.");
+                case 37: return L("Transaction declined.", "Transação recusada.");
+                case 38: return L("Bank transfer received.", "Transferência bancária recebida.");
                 default: return CostaInteriors.Notice(code);
             }
         }
@@ -1984,6 +2003,9 @@ namespace CostaLivre
             Bag.Clear();
             nextIdentity = 0;
             identity = 0;
+            ledger = null;
+            nextTransaction = BankPersonal = BankBusiness = 0;
+            BankHistory = null;
             nextPose = 0;
             nextSnapshot = 0;
             hasWorldHour = false;

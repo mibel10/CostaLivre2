@@ -111,7 +111,9 @@ namespace CostaLivre
         private string noticePt = "";
 
         internal CostaBag Bag { get; } = CostaBag.Load();
-        internal int Credits { get; private set; } = PlayerPrefs.GetInt("CostaCredits", 4500);
+        internal readonly CostaLedger Ledger = new(System.IO.Path.Combine(Application.persistentDataPath,"CostaBank-v1.json"));
+        internal CostaLedger.Account Account => Ledger.Get("solo",PlayerPrefs.GetInt("CostaCredits",4500));
+        internal int Credits => Account.cash;
         internal int Active { get; private set; } = -1;
         internal bool InProgress => Active >= 0;
         internal Step Current => List[Active].Steps[stage];
@@ -147,7 +149,7 @@ namespace CostaLivre
             if (slot < 0 || slot >= WeaponPrices.Length || OwnsWeapon(slot) || Credits < WeaponPrices[slot])
                 return false;
 
-            Credits -= WeaponPrices[slot];
+            if (!Ledger.Apply(Account,CostaLedger.Operation.Purchase,WeaponPrices[slot])) return false;
             arsenal |= 1 << slot;
             Save();
             return true;
@@ -242,7 +244,7 @@ namespace CostaLivre
                 return false;
             }
 
-            Credits -= Prices[index];
+            if (!Ledger.Apply(Account,CostaLedger.Operation.Purchase,Prices[index])) return false;
             owned |= 1 << index;
             SetDoorObstacle(doors[index], false);
             Save();
@@ -273,7 +275,7 @@ namespace CostaLivre
 
         internal void Award(int cash)
         {
-            Credits += cash;
+            if (!Ledger.Apply(Account,CostaLedger.Operation.Reward,cash)) return;
             Save();
         }
 

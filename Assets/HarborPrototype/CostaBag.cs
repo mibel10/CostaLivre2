@@ -75,6 +75,9 @@ namespace CostaLivre
             return recipient.AddLoot(site);
         }
 
+        internal int PriceOfSale(int item) => item == -1 ? Value
+            : item >= 0 && item < Amounts.Length && Amounts[item] > 0 ? Catalog[item].Price : 0;
+
         internal int Sell(int item)
         {
             if (item == -1)

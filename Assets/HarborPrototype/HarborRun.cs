@@ -2188,6 +2188,8 @@ namespace CostaLivre
                 return;
             }
 
+            if (cityMap != null)
+                cityMap.Alarms = session?.Alarms;
             DrawInterface();
             if (!inMenu && overlay == FieldOverlay.None)
                 transitions.Draw();
@@ -2341,6 +2343,10 @@ namespace CostaLivre
                     return L("This location is restocking", "Local repondo os itens");
                 if (!CurrentBag.CanLoot(robbery))
                     return L("Not enough room in the backpack", "Mochila sem espaço para o saque");
+                if (session.Online && session.Alarms?[robbery] == true)
+                    return L("Robbery in progress", "Roubo em andamento");
+                if (session.Online)
+                    return L($"{use} Start robbery", $"{use} Iniciar roubo");
                 string title = CostaRobberies.Sites[robbery].Name;
                 return L($"{use} Take loot · {title}", $"{use} Pegar saque · {title}");
             }

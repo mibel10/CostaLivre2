@@ -15,7 +15,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 10;
+        private const int Protocol = 11;
         private const float Interval = 0.083f;
         internal const int PoliceArmor = 50;
         internal const int MaxWanted = 6;
@@ -120,6 +120,7 @@ namespace CostaLivre
             public int[] loaded;
             public bool[] reloading;
             public bool[] sites;
+            public bool[] alarms;
             public Vector3 direction;
             public int[] scenery;
             public CostaTraffic.Car[] traffic;
@@ -141,6 +142,7 @@ namespace CostaLivre
             public Avatar[] players;
             public Vehicle[] vehicles;
             public bool[] sites;
+            public bool[] alarms;
             public int[] scenery;
             public CostaTraffic.Car[] traffic;
             public CostaTraffic.CityEvent cityEvent;
@@ -207,7 +209,7 @@ namespace CostaLivre
 
         private readonly List<Peer> peers = new();
         private readonly List<Avatar> active = new(MaxPlayers);
-        private readonly WorldSnapshot world = new() { sites = new bool[CostaRobberies.Sites.Length] };
+        private readonly WorldSnapshot world = new() { sites = new bool[CostaRobberies.Sites.Length], alarms = new bool[CostaRobberies.Sites.Length] };
         private const float ResumeLifetime = 300f;
         private const int ResumeLimit = MaxPlayers * 4;
         private readonly Dictionary<string, (Peer State, float Expires)> disconnected = new();
@@ -221,6 +223,9 @@ namespace CostaLivre
         private readonly ImpactEvent impactFrame = new();
         private int lastHarm;
         private int lastPressure;
+        private const float RobberyDuration = 8f;
+        private readonly Peer[] robbers = new Peer[CostaRobberies.Sites.Length];
+        private readonly float[] robberyEnds = new float[CostaRobberies.Sites.Length];
         private readonly float[] restock = new float[CostaRobberies.Sites.Length];
         private readonly int[] initialHomes;
         private TcpListener listener;
@@ -260,6 +265,7 @@ namespace CostaLivre
         internal bool[] Reloading { get; private set; }
         internal bool Online => Local != null && connection != null && !connection.Closed;
         internal bool Connecting => connecting != null || (connection != null && Local == null);
+        internal bool[] Alarms { get; private set; }
         internal bool Hosting => listener != null;
         internal string RelayAddress { get; private set; } = "";
         internal string RoomCode => norayRoom?.Code ?? internetRoom?.Code ?? "";
@@ -503,6 +509,7 @@ namespace CostaLivre
                 Players = frame.players;
                 Cars = frame.vehicles;
                 Sites = frame.sites;
+                Alarms = frame.alarms;
                 Local = null;
                 foreach (Avatar avatar in Players)
                     if (avatar != null && avatar.id == identity)
@@ -686,6 +693,7 @@ namespace CostaLivre
 
             if (left)
                 Rebalance();
+            TickRobberies(now);
 
             for (int i = 0; i < hostCars.Length; i++)
             {
@@ -776,7 +784,10 @@ namespace CostaLivre
             world.traffic = traffic?.Cars;
             world.cityEvent = traffic?.Incident;
             for (int i = 0; i < world.sites.Length; i++)
+                {
                 world.sites[i] = now >= restock[i];
+                world.alarms[i] = robbers[i] != null;
+            }
             byte[] shared = Encoding.UTF8.GetBytes(JsonUtility.ToJson(world));
 
             foreach (Peer peer in peers)
@@ -867,22 +878,7 @@ namespace CostaLivre
                     avatar.outfit = Mathf.Clamp(msg.index, 0, 242);
                     break;
                 case "loot":
-                    if (!avatar.police && avatar.vehicle < 0 && msg.index >= 0 && msg.index < restock.Length
-                        && Near(avatar.pos, CostaRobberies.Sites[msg.index].Point, 2.55f)
-                        && now >= restock[msg.index])
-                    {
-                        if (peer.Bag.AddLoot(msg.index))
-                        {
-                            restock[msg.index] = now + 90;
-                            RaiseHeat(peer, now, false);
-                            BeginGesture(peer, HarborCharacter.Gesture.PickUp, now, CostaRobberies.PickupTarget(msg.index));
-                            SetNotice(peer, 5);
-                        }
-                        else
-                        {
-                            SetNotice(peer, 6);
-                        }
-                    }
+                    StartRobbery(peer, msg.index, now);
                     break;
                 case "sell":
                     if (!avatar.police && avatar.vehicle < 0 && AtVendor(avatar.pos))
@@ -954,6 +950,55 @@ namespace CostaLivre
                         }
                     }
                     break;
+            }
+        }
+
+        private void StartRobbery(Peer peer, int site, float now)
+        {
+            if (site < 0 || site >= robbers.Length || now < restock[site]
+                || robbers[site] != null || !CanCollect(peer, site, now))
+                return;
+            if (!peer.Bag.CanLoot(site))
+            {
+                SetNotice(peer, 6);
+                return;
+            }
+            robbers[site] = peer;
+            robberyEnds[site] = now + RobberyDuration;
+            SetNotice(peer, 13);
+        }
+
+        private static bool CanCollect(Peer peer, int site, float now) =>
+            !peer.Pose.police && peer.Pose.playing && peer.Pose.vehicle < 0
+            && peer.Pose.rollPose < 0 && now >= peer.HeldUntil && now >= peer.DoorUntil
+            && Near(peer.Pose.pos, CostaRobberies.Sites[site].Point, 2.55f);
+
+        private void TickRobberies(float now)
+        {
+            for (int i = 0; i < robbers.Length; i++)
+            {
+                Peer collector = robbers[i];
+                if (collector == null)
+                    continue;
+                if (!peers.Contains(collector) || !CanCollect(collector, i, now))
+                {
+                    robbers[i] = null;
+                    if (peers.Contains(collector))
+                        SetNotice(collector, 14);
+                    continue;
+                }
+                if (now < robberyEnds[i])
+                    continue;
+                robbers[i] = null;
+                if (!collector.Bag.AddLoot(i))
+                {
+                    SetNotice(collector, 6);
+                    continue;
+                }
+                restock[i] = now + 90;
+                RaiseHeat(collector, now, false);
+                BeginGesture(collector, HarborCharacter.Gesture.PickUp, now, CostaRobberies.PickupTarget(i));
+                SetNotice(collector, 5);
             }
         }
 
@@ -1575,6 +1620,8 @@ namespace CostaLivre
                 case 10: return L("You were hit.", "Você foi atingido.");
                 case 11: return L("You respawned.", "Você voltou à cidade.");
                 case 12: return L("Clear your wanted status before joining police.", "Deixe de ser procurado antes de entrar na polícia.");
+                case 13: return L("Alarm triggered. Stay at the display to collect the loot.", "Alarme disparado. Fique na vitrine para pegar o saque.");
+                case 14: return L("Robbery interrupted.", "Roubo interrompido.");
                 default: return "";
             }
         }
@@ -1724,6 +1771,8 @@ namespace CostaLivre
             disconnected.Clear();
             expiredResumes.Clear();
             Array.Clear(restock, 0, restock.Length);
+            Array.Clear(robbers, 0, robbers.Length);
+            Alarms = null;
             scenery?.Reset();
             traffic?.Reset();
             trafficTarget = null;

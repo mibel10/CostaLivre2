@@ -149,6 +149,9 @@ namespace CostaLivre
                 ClearWaypoint();
         }
 
+        internal bool[] Alarms { get; set; }
+        private static readonly Color AlarmColor = new(1f, .28f, .22f);
+
         internal void DrawMini(Rect rect, Vector3 player, float heading, Vector3? objective)
         {
             if (Event.current.type != EventType.Repaint)
@@ -191,10 +194,23 @@ namespace CostaLivre
                 PinDot(destination, color, 8);
                 DrawAltitude(destination, target.y - player.y, color);
             }
+            for (int i = 0; Alarms != null && i < Mathf.Min(Alarms.Length, CostaRobberies.Sites.Length); i++)
+            {
+                if (!Alarms[i])
+                    continue;
+                Vector2 alarm = Rotated(projection.Point(CostaRobberies.Sites[i].Point), center, sine, cosine);
+                DrawAlarm(Constrain(alarm, size, 10));
+            }
             Vector2 north = Constrain(Rotated(center + Vector2.up * -size.y, center, sine, cosine), size, 9);
             Label(new Rect(north.x - 5, north.y - 8, 14, 16), "N", markerText, Text);
             PlayerArrow(center, 0);
             GUI.EndGroup();
+        }
+
+        private void DrawAlarm(Vector2 position)
+        {
+            PinDot(position, AlarmColor, 14);
+            Label(new Rect(position.x - 3, position.y - 8, 9, 16), "!", markerText, Frame);
         }
 
         private static Vector2 Rotated(Vector2 p, Vector2 center, float s, float c)
@@ -277,6 +293,16 @@ namespace CostaLivre
                 if (i >= Points.Length - CostaCity.Districts.Length || zoom > 4.7f || hit.Contains(input.mousePosition) || selected == i)
                     Label(new Rect(center.x + 8, center.y - 8, 168, 16), pin.Title, markerText, Text);
             }
+            for (int i = 0; Alarms != null && i < Mathf.Min(Alarms.Length, CostaRobberies.Sites.Length); i++)
+            {
+                if (!Alarms[i])
+                    continue;
+                Vector2 alarm = projection.Point(CostaRobberies.Sites[i].Point);
+                if (!Inside(alarm, size, 9))
+                    continue;
+                DrawAlarm(alarm);
+                Label(new Rect(alarm.x + 11, alarm.y - 25, 185, 16), CostaRobberies.Sites[i].Name, markerText, AlarmColor);
+            }
             PlayerArrow(projection.Point(player), heading);
             Label(new Rect(11, 8, 54, 24), "N ↑", small, Text);
             GUI.EndGroup();
@@ -291,6 +317,7 @@ namespace CostaLivre
             DrawLegend(lx, ly + 147, ColorFor(Kind.Safehouse), L("Safehouse", "Esconderijo"));
             DrawLegend(lx, ly + 174, Route, L("Your waypoint", "Seu marcador"));
             DrawLegend(lx, ly + 201, ColorFor(Kind.Vendor), L("Loot exchange", "Posto de venda"));
+            DrawLegend(lx, ly + 223, AlarmColor, L("Robbery in progress", "Roubo em andamento"));
             if (Waypoint.HasValue)
                 Label(new Rect(lx, ly + 238, legend.width - 30, 23), WaypointTitle, small, Route);
             else

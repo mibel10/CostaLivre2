@@ -9,6 +9,7 @@ namespace CostaLivre
 
         private sealed class Piece
         {
+            internal int Index;
             internal GameObject Object;
             internal int Limit;
             internal int Damage;
@@ -38,7 +39,7 @@ namespace CostaLivre
             indices.Add(collider, pieces.Count);
             pieces.Add(new Piece
             {
-                Object = target, Limit = durability, Material = surface, Collider = collider,
+                Index = pieces.Count, Object = target, Limit = durability, Material = surface, Collider = collider,
                 Rest = target.transform.localPosition, RestRotation = target.transform.localRotation,
                 Renderer = target.GetComponent<Renderer>()
             });
@@ -61,9 +62,12 @@ namespace CostaLivre
 
         internal int[] Capture()
         {
-            snapshot ??= new int[pieces.Count];
-            for (int i = 0; i < pieces.Count; i++)
-                snapshot[i] = pieces[i].Damage;
+            if (snapshot == null)
+            {
+                snapshot = new int[pieces.Count];
+                for (int i = 0; i < pieces.Count; i++)
+                    snapshot[i] = pieces[i].Damage;
+            }
             return snapshot;
         }
 
@@ -101,6 +105,8 @@ namespace CostaLivre
                 return;
             bool wasBroken = piece.Damage >= piece.Limit;
             piece.Damage = damage;
+            if (snapshot != null)
+                snapshot[piece.Index] = damage;
             bool intact = damage < piece.Limit;
             if (piece.Material == Surface.Wood)
             {

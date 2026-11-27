@@ -501,6 +501,7 @@ namespace CostaLivre
             if (connection == null)
                 return;
 
+            Frame presentation = null;
             for (int messages = 0; messages < 24 && connection.Receive(out string text); messages++)
             {
                 TrackNetwork(text,now);
@@ -586,12 +587,7 @@ namespace CostaLivre
                     continue;
 
                 if (!Hosting)
-                {
-                    interiors?.Read(frame.interiors);
-                    scenery?.Apply(frame.scenery);
-                    trafficTarget = frame.traffic;
-                    cityEventTarget = frame.cityEvent;
-                }
+                    presentation = frame;
                 if (frame.harmSequence != lastHarm)
                 {
                     lastHarm = frame.harmSequence;
@@ -628,6 +624,14 @@ namespace CostaLivre
                 Dispose();
                 status = L("Disconnected.", "Conexão encerrada.");
                 return;
+            }
+
+            if (presentation != null)
+            {
+                interiors?.Read(presentation.interiors);
+                scenery?.Apply(presentation.scenery);
+                trafficTarget = presentation.traffic;
+                cityEventTarget = presentation.cityEvent;
             }
 
             if (Online && now >= nextPing)

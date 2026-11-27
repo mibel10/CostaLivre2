@@ -2,8 +2,6 @@
 
 ## Segurança no terminal
 
-- Nunca execute `rm -rf` nem comandos equivalentes de exclusão recursiva forçada.
-- Antes de excluir qualquer arquivo ou pasta, informe o caminho absoluto de cada alvo e aguarde autorização explícita do usuário.
 - Use aspas em todos os caminhos passados ao shell, inclusive nas expansões de variáveis que contêm caminhos. Exemplo: `cd -- "/home/mibel/Costa Livre 2"`.
 
 ## Compatibilidade com o multiplayer

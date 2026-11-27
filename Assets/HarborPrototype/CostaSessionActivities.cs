@@ -372,9 +372,113 @@ namespace CostaLivre
             return true;
         }
 
+        private Peer patrol;
+        private int patrolRevision;
+
+        private void TickPatrol(float now, float delta)
+        {
+            Peer suspect = null;
+            int playing = 0;
+            bool humanOfficer = false;
+            foreach (Peer peer in peers)
+            {
+                if (!peer.Ready || !peer.Pose.playing)
+                    continue;
+                playing++;
+                humanOfficer |= peer.Pose.police;
+                if (!peer.Pose.police && peer.Pose.vehicle < 0 && now >= peer.HeldUntil
+                    && (peer.Pose.wantedLevel > 0 || Array.IndexOf(robbers, peer) >= 0)
+                    && (suspect == null || peer.Pose.wantedLevel > suspect.Pose.wantedLevel))
+                    suspect = peer;
+            }
+            if (humanOfficer || playing == 0)
+            {
+                patrol = null;
+                return;
+            }
+
+            int site = -1;
+            if (suspect != null)
+            {
+                float closest = 30 * 30;
+                for (int i = 0; i < robbers.Length; i++)
+                {
+                    float distance = (suspect.Pose.pos - Entrance(i)).sqrMagnitude;
+                    if (distance < closest)
+                    {
+                        closest = distance;
+                        site = i;
+                    }
+                }
+            }
+
+            Vector3 response = site >= 0 ? Entrance(site) + Vector3.back * 12 : PoliceSpawn;
+            if (patrol == null)
+            {
+                patrol = new Peer
+                {
+                    Pose = new Avatar
+                    {
+                        id = -1, name = "Patrulha NPC", police = true, playing = true, equipped = 0,
+                        pos = PoliceSpawn, revision = ++patrolRevision
+                    }
+                };
+            }
+            Avatar avatar = patrol.Pose;
+            if (suspect != null && site >= 0 && (avatar.pos - response).sqrMagnitude > 40 * 40 && Supported(response))
+            {
+                bool observed = false;
+                foreach (Peer peer in peers)
+                    if (peer.Ready && peer.Pose.playing
+                        && ((peer.Pose.pos - response).sqrMagnitude < 18 * 18 || (peer.Pose.pos - avatar.pos).sqrMagnitude < 24 * 24))
+                        observed = true;
+                if (!observed)
+                {
+                    avatar.pos = response;
+                    avatar.revision = ++patrolRevision;
+                }
+            }
+
+            if (suspect != null && ArrestTarget(patrol, suspect.Pose.id, now) != null)
+            {
+                avatar.moving = avatar.running = false;
+                BeginArrest(patrol, suspect.Pose.id, now);
+                AdvanceArrest(patrol, now);
+                return;
+            }
+            patrol.ArrestTarget = 0;
+            avatar.arrestProgress = 0;
+
+            Vector3 destination = suspect == null ? PoliceSpawn
+                : ClearArrestLine(avatar.pos, suspect.Pose.pos) || site < 0 ? suspect.Pose.pos : Entrance(site);
+            Vector3 desired = destination - avatar.pos;
+            desired.y = 0;
+            avatar.moving = avatar.running = false;
+            if (desired.sqrMagnitude < .25f || delta <= 0)
+                return;
+            float angle = Mathf.Atan2(desired.x, desired.z) * Mathf.Rad2Deg;
+            float travel = Mathf.Min(desired.magnitude, Mathf.Min(delta, .1f) * (suspect == null ? 2.1f : 4.3f));
+            for (int i = 0; i < 5; i++)
+            {
+                float offset = i == 0 ? 0 : ((i + 1) / 2) * 34 * (i % 2 == 0 ? -1 : 1);
+                Vector3 direction = Quaternion.Euler(0, angle + offset, 0) * Vector3.forward;
+                Vector3 next = avatar.pos + direction * travel;
+                if (!Supported(next) || Physics.SphereCast(avatar.pos + Vector3.up * .86f, .34f,
+                    direction, Mathf.Max(travel, .6f), Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    continue;
+                avatar.pos = next;
+                avatar.yaw = angle + offset;
+                avatar.moving = true;
+                avatar.running = suspect != null;
+                break;
+            }
+        }
+
         private void ResetDispatch()
         {
             dispatch = PoliceDispatch = null;
+            patrol = null;
+            patrolRevision = 0;
             nextDispatch = dispatchEnds = 0;
             Evidence = 0;
             Array.Clear(crews, 0, crews.Length);

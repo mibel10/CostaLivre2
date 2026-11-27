@@ -116,7 +116,7 @@ namespace CostaLivre
             bool police = session.Local.police;
             string role = police ? L("Police", "Policial") : L("Criminal", "Criminoso");
             Label(new Rect(x + 8, row - 4, 369, 33),
-                $"{role}   ·   {L("Police", "Policiais")} {session.PoliceCount}/{session.PoliceLimit}   ·   {session.Players.Length} {L("players", "jogadores")}",
+                $"{role}   ·   {L("Police", "Policiais")} {session.PoliceCount}/{session.PoliceLimit}   ·   {session.HumanCount} {L("players", "jogadores")}",
                 labels, Gold);
             if (Button(new Rect(x + 8, row + 31, 213, 31),
                 police ? L("Become criminal", "Virar criminoso") : L("Join police", "Virar policial"),

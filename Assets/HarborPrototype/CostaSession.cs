@@ -308,12 +308,22 @@ namespace CostaLivre
             {
                 int total = 0;
                 foreach (Avatar player in Players)
-                    if (player.police) total++;
+                    if (player.id > 0 && player.police) total++;
                 return total;
             }
         }
-        internal int PoliceLimit => AllowedPolice(Players.Length);
-        internal static int AllowedPolice(int players) => Mathf.Min(4, Mathf.Max(0, players) * 3 / 10);
+        internal int HumanCount
+        {
+            get
+            {
+                int count = 0;
+                foreach (Avatar player in Players)
+                    if (player.id > 0) count++;
+                return count;
+            }
+        }
+        internal int PoliceLimit => AllowedPolice(HumanCount);
+        internal static int AllowedPolice(int players) => players < 2 ? 0 : Mathf.Clamp(players * 3 / 10, 1, 4);
 
         internal CostaSession(CostaVehicle[] vehicles, CostaWorldDamage scenery = null, CostaTraffic traffic = null)
         {
@@ -504,7 +514,7 @@ namespace CostaLivre
                     continue;
                 }
                 if (frame == null || frame.type != "state" || frame.protocol != Protocol || frame.players == null
-                    || frame.players.Length > MaxPlayers || frame.vehicles == null || frame.vehicles.Length != sceneVehicles.Length
+                    || frame.players.Length > MaxPlayers + 1 || frame.vehicles == null || frame.vehicles.Length != sceneVehicles.Length
                     || Array.Exists(frame.players, avatar => avatar == null || avatar.vehicle < -1 || avatar.vehicle >= sceneVehicles.Length
                         || avatar.doorCar < -1 || avatar.doorCar >= sceneVehicles.Length
                         || avatar.wantedLevel < 0 || avatar.wantedLevel > MaxWanted)
@@ -740,6 +750,7 @@ namespace CostaLivre
                 if (peer.Ready && peer.ArrestTarget != 0)
                     AdvanceArrest(peer, now);
 
+            TickPatrol(now, delta);
             TickOpportunity(now);
             TickDispatch(now);
 
@@ -795,6 +806,8 @@ namespace CostaLivre
                     peer.Pose.gestureProgress = Mathf.InverseLerp(peer.GestureStarted, peer.GestureEnds, now);
                 active.Add(peer.Pose);
             }
+            if (patrol != null)
+                active.Add(patrol.Pose);
             if (active.Count == 0)
                 return;
             if (world.players?.Length != active.Count)
@@ -1522,7 +1535,8 @@ namespace CostaLivre
 
             officer.ArrestTarget = 0;
             officer.Pose.arrestProgress = 0;
-            officer.Evidence += target.Bag.Count;
+            if (officer.Wire != null)
+                officer.Evidence += target.Bag.Count;
             target.Bag.Clear();
             target.Pose.wantedLevel = 0;
             target.Pose.arrestThreat = 0;
@@ -1647,7 +1661,7 @@ namespace CostaLivre
 
         private static void SetNotice(Peer peer, int code)
         {
-            peer.Wire.Send(JsonUtility.ToJson(new Frame { type = "notice", protocol = Protocol, notice = code }));
+            peer.Wire?.Send(JsonUtility.ToJson(new Frame { type = "notice", protocol = Protocol, notice = code }));
         }
 
         private static string FormatNotice(int code)

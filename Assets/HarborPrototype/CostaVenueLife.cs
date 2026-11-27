@@ -77,7 +77,7 @@ namespace CostaLivre
             {
                 case 0:
                     Seating(nook, Green);
-                    art.MarkFootFloor(art.Box("Reception rug", nook + new Vector3(0,.037f,.78f), new(3.2f,.014f,2.5f),
+                    art.MarkFootFloor(art.Box("Reception rug", nook + new Vector3(0,.048f,.78f), new(3.2f,.014f,2.5f),
                         new Color(.48f,.27f,.23f)), CostaAcousticScene.Floor.Carpet);
                     break;
                 case 1:

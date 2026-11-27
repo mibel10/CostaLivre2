@@ -475,10 +475,10 @@ namespace CostaLivre
             float wing = (width - opening) / 2;
             art.Wear(1, new Vector3(entry.x + width * 0.32f, 0.073f, front - 1.15f),
                 new Vector2(2.8f, 1.7f), Quaternion.Euler(90, 0, 0));
-            art.MarkFootFloor(art.Box("Entrance paving", new(entry.x, .035f, front - 1.4f),
+            art.MarkFootFloor(art.Box("Entrance paving", new(entry.x, .040f, front - 1.4f),
                 new(width + 2.5f, .07f, 3.2f), Pavement, false, "Concrete", new Vector2(width / 2, 2)), Floor.Stone);
             Color floorColor = floor == Floor.Wood ? new(.44f,.30f,.21f) : new(.70f,.67f,.59f);
-            art.MarkFootFloor(art.Box("Lobby floor", center + Vector3.up * .016f, new(width - .6f,.03f,depth - .6f),
+            art.MarkFootFloor(art.Box("Lobby floor", center + Vector3.up * .024f, new(width - .6f,.03f,depth - .6f),
                 floorColor, false, floor == Floor.Wood ? null : "Concrete", new Vector2(width / 3, depth / 3)), floor);
 
             for (int side = -1; side <= 1; side += 2)
@@ -510,10 +510,10 @@ namespace CostaLivre
             }
 
             art.Box("Lobby back", center + new Vector3(0, 1.65f, depth / 2 - 0.21f),
-                new Vector3(width, 3.3f, 0.42f), color, true, "Concrete", new Vector2(width / 2.4f, 2));
+                new Vector3(width - 0.84f, 3.3f, 0.42f), color, true, "Concrete", new Vector2(width / 2.4f, 2));
             if (plan == null || !plan.Vertical)
-                art.Box(name, center + new Vector3(0, (3.3f + height) / 2, 0),
-                    new Vector3(width, height - 3.3f, depth), color, true, "Concrete", new Vector2(width / 2.4f, height / 2));
+                art.Box(name, center + new Vector3(0, (3.306f + height) / 2, 0),
+                    new Vector3(width, height - 3.306f, depth), color, true, "Concrete", new Vector2(width / 2.4f, height / 2));
             else
             {
                 float facadeHeight = height - 3.3f;
@@ -583,7 +583,7 @@ namespace CostaLivre
                 for (float x = -width / 2 + 2; x < width / 2 - 0.7f; x += 2.75f)
                 {
                     float facade = center.z - depth / 2;
-                    art.BatchDecoration(new Vector3(center.x + x, y, facade - 0.024f),
+                    art.BatchDecoration(new Vector3(center.x + x, y, facade - 0.030f),
                         new Vector3(1.54f, 1.32f, 0.049f), Glass, finish: HarborBlockout.Finish.Glass);
                     art.BatchDecoration(new Vector3(center.x + x, y - 0.65f, facade - 0.09f),
                         new Vector3(1.68f, 0.11f, 0.23f), Pavement);

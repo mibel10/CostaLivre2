@@ -184,7 +184,7 @@ namespace CostaLivre
             {
                 if (x1 - x0 <= .04f || z1 - z0 <= .04f)
                     return;
-                GameObject floor = Solid("Interior floor slab", new((x0+x1)/2,y-.11f,(z0+z1)/2),
+                GameObject floor = Solid("Interior floor slab", new((x0+x1)/2,y-.114f,(z0+z1)/2),
                     new(x1-x0,.22f,z1-z0), level == p.Levels ? Metal : Linen);
                 if (level < p.Levels)
                     art.MarkFootFloor(floor, p.Purpose is CostaInteriorPlan.Use.Apartment or CostaInteriorPlan.Use.Hotel
@@ -206,7 +206,7 @@ namespace CostaLivre
                 Solid("Terrace parapet", new(p.Entry.x + side * (p.Width/2-.14f), y+.52f, (p.Front+p.Back)/2),
                     new(.28f,1.04f,p.Depth), p.Accent);
                 Solid("Terrace parapet", new(p.Entry.x, y+.52f, (p.Front+p.Back)/2 + side * (p.Depth/2-.14f)),
-                    new(p.Width,1.04f,.28f), p.Accent);
+                    new(p.Width - 0.56f,1.04f,.28f), p.Accent);
             }
         }
 

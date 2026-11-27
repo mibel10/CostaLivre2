@@ -1034,7 +1034,7 @@ namespace CostaLivre
 
             if (Pressed(shoulderSwap, TouchControl.Shoulder))
                 shoulderSide = -shoulderSide;
-            city.Animate();
+            city.Animate(followCamera.transform.position, followCamera.farClipPlane);
             city.UpdateHouseDoors(jobs, session.Online);
             bool interaction = Pressed(interact, TouchControl.Use);
             bool pendingVehicleSync = false;

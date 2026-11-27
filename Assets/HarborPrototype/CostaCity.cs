@@ -80,6 +80,7 @@ namespace CostaLivre
         private readonly HarborBlockout art;
         private readonly Transform root;
         private Transform wheel;
+        private float wheelAngle;
         private readonly Transform[] gondolas = new Transform[8];
 
         internal readonly List<Rect> Footprints = new();
@@ -372,11 +373,16 @@ namespace CostaLivre
             }
         }
 
-        internal void Animate()
+        internal void Animate(Vector3 observer, float drawDistance)
         {
             if (wheel == null)
                 return;
-            wheel.Rotate(Vector3.forward, Time.deltaTime * 7f, Space.Self);
+            wheelAngle = Mathf.Repeat(wheelAngle + Time.deltaTime * 7f, 360f);
+            // Reflections can still see the wheel from a nearby capture outside the camera frustum.
+            float visibleRange = Mathf.Max(200f, drawDistance + 16f);
+            if ((observer - wheel.position).sqrMagnitude > visibleRange * visibleRange)
+                return;
+            wheel.localRotation = Quaternion.AngleAxis(wheelAngle, Vector3.forward);
             foreach (Transform gondola in gondolas)
                 gondola.rotation = Quaternion.identity;
         }

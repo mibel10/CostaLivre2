@@ -159,27 +159,25 @@ namespace CostaLivre
                 yield return null;
             }
 
-            bool furnishedBefore = level == 0 && p.HasOriginalLobby;
-            {
-                Vector3 chair = p.Chair(level);
-                Decor(room, "Upholstered back", chair + new Vector3(0,.56f,.27f), new(.64f,.64f,.12f), p.Accent);
-                Decor(room, "Chair frame", chair + Vector3.up * .09f, new(.56f,.18f,.53f), Metal);
-                Vector3 screen = p.Computer(level) + new Vector3(.54f,1.28f,.61f);
-                Decor(room, "Computer panel", screen, new(.48f,.33f,.09f), Metal);
-                room.Screen = Decor(room, "Powered display", screen + Vector3.back * .055f, new(.42f,.26f,.022f), Glass);
-                Decor(room, "Keyboard", screen + new Vector3(0,-.31f,-.20f), new(.30f,.025f,.10f), Metal);
-                if (!furnishedBefore)
-                {
-                    Furnish(room, p, level, false);
-                    yield return null;
-                    Furnish(room, p, level, true);
-                }
-            }
-
             if (building.Cab != null)
             {
                 room.FloorNumber = Indicator(room.Visuals, p, level);
                 building.IndicatorFloor = -2;
+            }
+
+            Vector3 chair = p.Chair(level);
+            Decor(room, "Upholstered back", chair + new Vector3(0,.56f,.27f), new(.64f,.64f,.12f), p.Accent);
+            Decor(room, "Chair frame", chair + Vector3.up * .09f, new(.56f,.18f,.53f), Metal);
+            Vector3 screen = p.Computer(level) + new Vector3(.54f,1.28f,.61f);
+            Decor(room, "Computer panel", screen, new(.48f,.33f,.09f), Metal);
+            room.Screen = Decor(room, "Powered display", screen + Vector3.back * .055f, new(.42f,.26f,.022f), Glass);
+            Decor(room, "Keyboard", screen + new Vector3(0,-.31f,-.20f), new(.30f,.025f,.10f), Metal);
+            if (level != 0 || !p.HasOriginalLobby)
+            {
+                yield return null;
+                Furnish(room, p, level, false);
+                yield return null;
+                Furnish(room, p, level, true);
             }
         }
 
@@ -249,6 +247,13 @@ namespace CostaLivre
             int phase = Mathf.FloorToInt(hour * 7 + p.Entry.x * .02f) & 3;
             if (room.Visitor == null)
             {
+                if (visitorWardrobe != null)
+                {
+                    if (!visitorWardrobe.isDone)
+                        return;
+                    visitorTexture = visitorWardrobe.asset as Texture2D;
+                    visitorWardrobe = null;
+                }
                 if (!NavMesh.SamplePosition(entry, out NavMeshHit point, .9f, NavMesh.AllAreas))
                     return;
                 Visitor visitor = visitors.Count > 0 ? visitors.Pop() : CreateVisitor();
@@ -289,7 +294,8 @@ namespace CostaLivre
         private Visitor CreateVisitor()
         {
             HarborCharacter body = art.Person("Visitante", root, Vector3.zero, Color.white);
-            body.WearTexture(Resources.Load<Texture2D>("Harbor/Wardrobe/look-6"));
+            body.WearTexture(visitorTexture);
+            body.Root.gameObject.SetActive(false);
             NavMeshAgent agent = body.Root.gameObject.AddComponent<NavMeshAgent>();
             agent.radius = .30f;
             agent.speed = 1.36f;

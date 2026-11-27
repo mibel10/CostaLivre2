@@ -28,6 +28,8 @@ namespace CostaLivre
         private float nextEviction;
         private AudioSource ambience;
         private ResourceRequest[] ambienceRequests;
+        private ResourceRequest visitorWardrobe;
+        private Texture2D visitorTexture;
         private int ambienceZone = -1;
 
         private sealed class RoomSet
@@ -85,6 +87,7 @@ namespace CostaLivre
 
         internal IEnumerable<float> BuildStructure()
         {
+            visitorWardrobe = Resources.LoadAsync<Texture2D>("Harbor/Wardrobe/look-6");
             ambienceRequests = new[]
             {
                 Resources.LoadAsync<AudioClip>("Harbor/CityAudio/Wind"),

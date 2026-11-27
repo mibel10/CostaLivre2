@@ -193,6 +193,12 @@ namespace CostaLivre
                 new Bounds(new Vector3(-37, 3, 361), new Vector3(238, 46, 864)));
         }
 
+        internal void ReleaseNavigationSources()
+        {
+            walkableGeometry.Clear();
+            walkableGeometry.TrimExcess();
+        }
+
         internal HarborCharacter Person(string name, Transform parent, Vector3 position, Color tint)
         {
             return new HarborCharacter(characterArt ??= new HarborCharacter.Art(), name, parent, position, Surface("Walker", tint, Vector2.one));

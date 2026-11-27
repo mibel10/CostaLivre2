@@ -334,6 +334,7 @@ namespace CostaLivre
                 yield return Mathf.Lerp(0.82f, 0.95f, navigationBuild.progress);
 
             navigationBuild = null;
+            harbor.ReleaseNavigationSources();
             navMeshInstance = NavMesh.AddNavMeshData(navMesh);
             for (int i = 0; i < guards.Length; i++)
                 AddGuard(i);

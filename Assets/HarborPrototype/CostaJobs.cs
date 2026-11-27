@@ -113,6 +113,8 @@ namespace CostaLivre
         internal CostaBag Bag { get; } = CostaBag.Load();
         internal readonly CostaLedger Ledger = new(System.IO.Path.Combine(Application.persistentDataPath,"CostaBank-v1.json"));
         internal CostaLedger.Account Account => Ledger.Get("solo",PlayerPrefs.GetInt("CostaCredits",4500));
+        internal int DailyPropertyCost => ((Owned(0)?1:0)+(Owned(1)?1:0)+(Owned(2)?1:0))*100;
+        internal static long BankDay => System.DateTimeOffset.UtcNow.ToUnixTimeSeconds()/86400;
         internal int Credits => Account.cash;
         internal int Active { get; private set; } = -1;
         internal bool InProgress => Active >= 0;

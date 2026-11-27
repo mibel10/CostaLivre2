@@ -13,7 +13,7 @@ namespace CostaLivre
 {
     public sealed partial class HarborRun : MonoBehaviour
     {
-        private enum FieldOverlay { None, Map, Shop, Bag, Vendor, Elevator, Bank }
+        private enum FieldOverlay { None, Map, Shop, Bag, Vendor, Elevator, Bank, Workshop, Campaign }
         private enum RunState { FindCargo, Escape, Delivered, Caught }
 
         private sealed class Guard
@@ -325,6 +325,7 @@ namespace CostaLivre
             cityMap.Prepare();
             gunShop = new CostaGunShop();
             BuildAtms();
+            harbor.Sign("OFICINA COSTEIRA",CostaBuildTuning.CityWorkshop+new Vector3(0,2.2f,3),.18f,new(.82f,.91f,.83f));
             hud = new HarborHud(cityMap);
             bagPanel = new CostaBagPanel(harbor, transform);
             yield return 0.74f;
@@ -400,10 +401,13 @@ namespace CostaLivre
             cars[15] = new(harbor, transform, new Vector3(-45, 0, CostaCity.Districts[2].Center - 3), 90, new Color(0.65f, 0.22f, 0.35f), style: CostaVehicle.Style.Super);
             yield return .79f;
 
+            for (int i=0;i<cars.Length;i++)
+                cars[i].ApplyBuild(jobs.Account.mods[i]);
             encounter = new CostaEncounter(harbor, transform, jobs, cars, effects);
             session = new CostaSession(cars, harbor.Damage, traffic, city.Interiors)
             {
-                InteriorEffects = effects
+                InteriorEffects = effects,
+                Campaign = CostaCampaign.Load()
             };
             onlinePanel.AttachSession(session);
             remotes = new CostaRemoteView(harbor, transform, effects);
@@ -627,6 +631,7 @@ namespace CostaLivre
             encounter?.Dispose();
             atmosphere?.Release();
             venues?.Release();
+            ReleaseWorkshop();
             city?.Interiors.Release();
             traffic?.Release();
             harbor?.ReleaseMaterials();
@@ -714,6 +719,11 @@ namespace CostaLivre
                 if (wasOnline)
                 {
                     wasOnline = false;
+                    for (int i=0;i<cars.Length;i++)
+                    {
+                        cars[i].Root.gameObject.SetActive(true);
+                        cars[i].ApplyBuild(jobs.Account.mods[i]);
+                    }
                     enteredOnlineWorld = false;
                     equipSequence = 0;
                     queuedEquip = -1;
@@ -821,7 +831,15 @@ namespace CostaLivre
             bool syncCars = joined;
             for (int i = 0; i < cars.Length; i++)
             {
+                bool relevant = session.CarRelevant(i);
+                if (!session.Hosting && cars[i].Root.gameObject.activeSelf != relevant)
+                {
+                    cars[i].Root.gameObject.SetActive(relevant);
+                    syncCars = true;
+                }
+                if (!relevant) continue;
                 CostaSession.Vehicle vehicle = session.Cars[i];
+                cars[i].ApplyBuild(vehicle.tune);
                 if (i != avatar.vehicle || netRevision != avatar.revision)
                     syncCars |= cars[i].ApplyNetwork(vehicle.pos, vehicle.yaw, vehicle.speed, joined || i == avatar.vehicle, vehicle.lean);
                 cars[i].SetDamage(new Vector2(vehicle.frontDamage, vehicle.rearDamage));
@@ -931,6 +949,7 @@ namespace CostaLivre
             if (worldReady)
             {
                 TickNetwork();
+                UpdatePropertyBilling();
                 if (!session.Online && !inMenu && overlay == FieldOverlay.None)
                     soloDaySeconds += Time.deltaTime;
                 ApplyWorldHour();
@@ -974,6 +993,7 @@ namespace CostaLivre
 
             if (overlay != FieldOverlay.None)
             {
+                if (overlay == FieldOverlay.Workshop) UpdateWorkshopCamera();
                 if (Pressed(openMenu, TouchControl.Menu) || (overlay == FieldOverlay.Map && Pressed(mapKey, TouchControl.Map))
                     || (overlay == FieldOverlay.Bag && Pressed(bagKey, TouchControl.Bag)))
                     CloseOverlay();
@@ -1065,6 +1085,16 @@ namespace CostaLivre
             {
                 bankingMessage = "";
                 OpenOverlay(FieldOverlay.Bank);
+                return;
+            }
+            if (interaction && CanOpenWorkshop())
+            {
+                OpenWorkshop();
+                return;
+            }
+            if (interaction && CanOpenCampaign())
+            {
+                OpenOverlay(FieldOverlay.Campaign);
                 return;
             }
             bool interiorAction = car == null && interaction && rollClock <= 0 && !UsingContractObjective()
@@ -1250,6 +1280,7 @@ namespace CostaLivre
 
         private void CloseOverlay()
         {
+            if (overlay == FieldOverlay.Workshop) ReleaseWorkshop();
             if (overlay != FieldOverlay.None)
                 effects.Play(Cue.PanelClose, 0.27f);
             bagPanel?.Hide();
@@ -1293,7 +1324,7 @@ namespace CostaLivre
                 playerBody.Sit();
                 arsenal.SetVisible(false);
             }
-            interiors.Stream(player.transform.position,hour,running || pauseMenu,menu.GraphicsPreset <= 1,
+            interiors.Stream(player.transform.position,hour,running || pauseMenu,menu.GraphicsPreset <= 1 || menu.AdaptiveWorldTier >= 2,
                 running && overlay == FieldOverlay.None ? 1 : 0);
         }
 
@@ -1751,7 +1782,7 @@ namespace CostaLivre
             float distance = 3.25f * 3.25f;
             for (int i = 0; i < cars.Length; i++)
             {
-                if (session.Online && session.Cars[i].driver != 0)
+                if (session.Online && (!session.CarRelevant(i) || session.Cars[i].driver != 0))
                     continue;
                 if (!session.Online && encounter.Active && encounter.ReservesVehicle(i))
                     continue;
@@ -2406,7 +2437,18 @@ namespace CostaLivre
             }
             if (overlay == FieldOverlay.Map)
             {
-                cityMap.DrawFull(player.transform.position, yaw, MissionLocation(), closeOverlay);
+                cityMap.DrawFull(player.transform.position, yaw, MissionLocation(), closeOverlay,
+                    session.Campaign != null ? () => OpenOverlay(FieldOverlay.Campaign) : null);
+                return;
+            }
+            if (overlay == FieldOverlay.Campaign)
+            {
+                DrawCampaign();
+                return;
+            }
+            if (overlay == FieldOverlay.Workshop)
+            {
+                DrawWorkshop();
                 return;
             }
             if (overlay == FieldOverlay.Bank)
@@ -2462,6 +2504,8 @@ namespace CostaLivre
                 objective = encounter.Active ? encounter.Status : jobs.Current.Title;
             else if (session.TryActivity(out _, out string activity))
                 objective = activity;
+            else if (CurrentBag.Count == 0 && session.Campaign != null && CampaignProgress is { node: not null })
+                objective = session.Campaign.Current(CampaignProgress).Title;
             else if (CurrentBag.Count > 0)
                 objective = L("Sell loot at a fence", "Venda o saque num receptador");
 
@@ -2500,6 +2544,9 @@ namespace CostaLivre
                 return encounter.Active ? encounter.Location(player.transform.position) : jobs.Current.Point;
             if (session.TryActivity(out Vector3 activity, out _))
                 return activity;
+            if (CurrentBag.Count == 0 && session.Campaign != null && !cityMap.Waypoint.HasValue
+                && CostaCampaign.TryPoint(session.Campaign.Current(CampaignProgress).anchor,out Vector3 campaign))
+                return campaign;
             if (CurrentBag.Count == 0 || cityMap.Waypoint.HasValue)
                 return null;
             Vector3 point = player.transform.position;
@@ -2528,6 +2575,10 @@ namespace CostaLivre
                     : L($"{use} Join as lookout", $"{use} Entrar como vigia");
             }
 
+            if (CanOpenCampaign())
+                return L($"{use} Campaign",$"{use} Campanha");
+            if (CanOpenWorkshop())
+                return L($"{use} Workshop",$"{use} Oficina");
             if (car != null)
                 return L($"{use} Exit", $"{use} Sair");
             if (!session.Online && encounter.Active)

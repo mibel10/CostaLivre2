@@ -15,7 +15,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 13;
+        private const int Protocol = 14;
         private const float Interval = 0.083f;
         internal const int PoliceArmor = 50;
         internal const int MaxWanted = 6;
@@ -82,6 +82,7 @@ namespace CostaLivre
             public float yaw;
             public float speed;
             public int driver;
+            public long tune;
             public float lean;
             public float frontDamage;
             public float rearDamage;
@@ -104,11 +105,14 @@ namespace CostaLivre
             public string type;
             public int protocol;
             public int index;
+            public int pong;
             public int amount;
+            public long option;
             public int id;
             public int credits;
             public int bankPersonal, bankBusiness, transaction;
             public CostaLedger.Entry[] bankHistory;
+            public CostaCampaign.Progress campaign;
             public int evidence;
             public CrewOrder crew;
             public int weapons;
@@ -122,6 +126,9 @@ namespace CostaLivre
             public Avatar pose;
             public Avatar[] players;
             public Vehicle[] vehicles;
+            public int[] vehicleIds, visibleCars;
+            public int humans, policeCount;
+            public RosterEntry[] roster;
             public int[] bag;
             public int equipSequence;
             public int[] loaded;
@@ -150,8 +157,8 @@ namespace CostaLivre
             public int protocol = Protocol;
             public bool hasWorldHour = true;
             public float worldHour;
-            public Avatar[] players;
-            public Vehicle[] vehicles;
+            public int humans, policeCount;
+            public RosterEntry[] roster;
             public bool[] sites;
             public CostaInteriors.State[] interiors;
             public bool[] alarms;
@@ -167,9 +174,14 @@ namespace CostaLivre
         private sealed class PlayerSnapshot
         {
             public int id;
+            public int pong;
+            public Avatar[] players;
+            public Vehicle[] vehicles;
+            public int[] vehicleIds, visibleCars;
             public int credits;
             public int bankPersonal, bankBusiness, transaction;
             public CostaLedger.Entry[] bankHistory;
+            public CostaCampaign.Progress campaign;
             public int evidence;
             public CrewOrder crew;
             public int weapons;
@@ -187,6 +199,10 @@ namespace CostaLivre
         private sealed class Peer
         {
             internal CostaWire Wire;
+            internal readonly RosterEntry Roster=new();
+            internal uint VisibleCars;
+            internal float NextFullCars;
+            internal readonly CarStamp[] CarStamps = new CarStamp[32];
             internal Avatar Pose;
             internal bool Ready;
             internal string ResumeKey;
@@ -217,6 +233,7 @@ namespace CostaLivre
             internal float HeatUntil;
             internal float NextCrime;
             internal float NextInteriorUse;
+            internal float NextPayroll;
             internal float NextTreatment;
             internal int ArrestTarget;
             internal float ArrestStarted;
@@ -318,26 +335,8 @@ namespace CostaLivre
 
         internal int NoticeEvent => noticeEvents.TryDequeue(out int code) ? code : 0;
         internal string CurrentNotice => Time.realtimeSinceStartup < noticeUntil ? Notice : "";
-        internal int PoliceCount
-        {
-            get
-            {
-                int total = 0;
-                foreach (Avatar player in Players)
-                    if (player.id > 0 && player.police) total++;
-                return total;
-            }
-        }
-        internal int HumanCount
-        {
-            get
-            {
-                int count = 0;
-                foreach (Avatar player in Players)
-                    if (player.id > 0) count++;
-                return count;
-            }
-        }
+        internal int PoliceCount => networkPolice;
+        internal int HumanCount => networkHumans;
         internal int PoliceLimit => AllowedPolice(HumanCount);
         internal static int AllowedPolice(int players) => players < 2 ? 0 : Mathf.Clamp(players * 3 / 10, 1, 4);
 
@@ -417,6 +416,7 @@ namespace CostaLivre
                     for (int i = 0; i < hostCars.Length; i++)
                     {
                         hostCars[i] = new Vehicle { pos = sceneVehicles[i].Home, yaw = initialHomes[i] };
+                        sceneVehicles[i].ApplyBuild(0);
                         sceneVehicles[i].SetAuthoritativePose(hostCars[i].pos, hostCars[i].yaw);
                     }
                     Physics.SyncTransforms();
@@ -499,6 +499,7 @@ namespace CostaLivre
 
             while (connection.Receive(out string text))
             {
+                TrackNetwork(text,now);
                 Frame frame = Parse(text);
                 if (frame != null && frame.protocol == Protocol && frame.type == "full")
                 {
@@ -533,11 +534,11 @@ namespace CostaLivre
                     continue;
                 }
                 if (frame == null || frame.type != "state" || frame.protocol != Protocol || frame.players == null
-                    || frame.players.Length > MaxPlayers + 1 || frame.vehicles == null || frame.vehicles.Length != sceneVehicles.Length
+                    || frame.players.Length > MaxPlayers + 1 || !ValidVehicleSlice(frame) || frame.roster?.Length != frame.humans
                     || Array.Exists(frame.players, avatar => avatar == null || avatar.vehicle < -1 || avatar.vehicle >= sceneVehicles.Length
                         || avatar.doorCar < -1 || avatar.doorCar >= sceneVehicles.Length
                         || avatar.wantedLevel < 0 || avatar.wantedLevel > MaxWanted || !CostaInteriors.ValidRider(avatar.lift, avatar.seat))
-                    || Array.Exists(frame.vehicles, vehicle => vehicle == null)
+                    || Array.Exists(frame.vehicles, vehicle => vehicle == null || !CostaBuildTuning.Valid(vehicle.tune))
                     || interiors != null && !CostaInteriors.Valid(frame.interiors)
                     || frame.sites?.Length != restock.Length || frame.alarms?.Length != restock.Length
                     || frame.crewSlots?.Length != restock.Length
@@ -554,7 +555,12 @@ namespace CostaLivre
 
                 identity = frame.id;
                 Players = frame.players;
-                Cars = frame.vehicles;
+                ReceiveVehicleSlice(frame);
+                if (frame.pong == nextPingSequence && pingSent > 0)
+                {
+                    NetworkRoundTrip = (now-pingSent)*1000f;
+                    pingSent = 0;
+                }
                 Sites = frame.sites;
                 Alarms = frame.alarms;
                 PoliceDispatch = frame.dispatch?.active == true ? frame.dispatch : null;
@@ -597,6 +603,7 @@ namespace CostaLivre
                 BankPersonal = frame.bankPersonal;
                 BankBusiness = frame.bankBusiness;
                 BankHistory = frame.bankHistory;
+                Narrative = frame.campaign;
                 nextTransaction = Mathf.Max(nextTransaction,frame.transaction);
                 WeaponMask = frame.weapons;
                 EquipAcknowledged = frame.equipSequence;
@@ -612,6 +619,13 @@ namespace CostaLivre
                 Dispose();
                 status = L("Disconnected.", "Conexão encerrada.");
                 return;
+            }
+
+            if (Online && now >= nextPing)
+            {
+                nextPing=now+2;
+                pingSent=now;
+                Request("ping",++nextPingSequence);
             }
 
             if (Online && localPose != null && now >= nextPose)
@@ -698,6 +712,7 @@ namespace CostaLivre
                         }
                         peer.ResumeKey = resumeKey;
                         peer.Account = ledger.Get(resumeKey);
+                        peer.Weapons = peer.Account.weapons;
                         peer.Challenge = null;
                         if (disconnected.TryGetValue(peer.ResumeKey, out var resume))
                         {
@@ -717,6 +732,7 @@ namespace CostaLivre
                             peer.HeatUntil = saved.HeatUntil;
                             peer.NextCrime = saved.NextCrime;
                             peer.NextTreatment = saved.NextTreatment;
+                            peer.NextPayroll = saved.NextPayroll;
                             peer.Pose.arrestProgress = 0;
                             peer.RespawnProtection = saved.RespawnProtection;
                             Array.Copy(saved.UsedRounds, peer.UsedRounds, peer.UsedRounds.Length);
@@ -757,6 +773,7 @@ namespace CostaLivre
             if (left)
                 Rebalance();
             TickInteriors(now, delta);
+            TickPayroll(now);
             TickGetaways(now);
             TickRobberies(now);
 
@@ -846,10 +863,7 @@ namespace CostaLivre
                 active.Add(patrol.Pose);
             if (active.Count == 0)
                 return;
-            if (world.players?.Length != active.Count)
-                world.players = new Avatar[active.Count];
-            active.CopyTo(world.players);
-            world.vehicles = hostCars;
+            IndexEntities();
             world.worldHour = WorldHour;
             world.interiors = interiors?.States;
             world.dispatch = dispatch;
@@ -864,8 +878,10 @@ namespace CostaLivre
                 world.crewSlots[i] = robbers[i] == null ? 0
                     : (crews[i].Lookout == null ? 1 : 0) | (crews[i].Driver == null ? 2 : 0);
             }
+            UpdateRoster();
+            world.humans = CountPlayers();
+            world.policeCount = CountPolice();
             byte[] shared = Encoding.UTF8.GetBytes(JsonUtility.ToJson(world));
-
             foreach (Peer peer in peers)
             {
                 if (!peer.Ready)
@@ -876,6 +892,7 @@ namespace CostaLivre
                 snapshot.bankPersonal = peer.Account.personal;
                 snapshot.bankBusiness = peer.Account.business;
                 snapshot.bankHistory = peer.Account.history;
+                snapshot.campaign = peer.Account.campaign;
                 snapshot.transaction = peer.Account.serial;
                 snapshot.evidence = peer.Evidence;
                 snapshot.crew = CrewState(peer, now);
@@ -886,6 +903,7 @@ namespace CostaLivre
                     snapshot.loaded[i] = HarborArsenal.ShotRules(i).magazine - peer.UsedRounds[i];
                     snapshot.reloading[i] = peer.ReloadEnds[i] > 0;
                 }
+                FilterSnapshot(peer,now);
                 peer.Wire.SendState(shared, JsonUtility.ToJson(snapshot));
             }
         }
@@ -912,6 +930,11 @@ namespace CostaLivre
         private void Handle(Peer peer, Frame msg, float now)
         {
             Avatar avatar = peer.Pose;
+            if (msg.type == "ping")
+            {
+                peer.Snapshot.pong = msg.index;
+                return;
+            }
             if (msg.type == "pose")
             {
                 if (msg.pose != null && msg.pose.revision == avatar.revision)
@@ -966,6 +989,12 @@ namespace CostaLivre
                 case "outfit":
                     avatar.outfit = Mathf.Clamp(msg.index, 0, 242);
                     break;
+                case "campaign":
+                    ReceiveCampaign(peer,msg);
+                    break;
+                case "workshop":
+                    ReceiveWorkshop(peer,msg);
+                    break;
                 case "bank":
                     ReceiveBank(peer,msg);
                     break;
@@ -991,7 +1020,7 @@ namespace CostaLivre
                 case "buy":
                     if (!avatar.police && avatar.vehicle < 0 && Near(avatar.pos, CostaCity.GunCounter, 2.35f)
                         && msg.index >= 0 && msg.index < CostaJobs.WeaponPrices.Length
-                        && (peer.Weapons & (1 << msg.index)) == 0 && Purchase(peer,CostaJobs.WeaponPrices[msg.index]))
+                        && (peer.Weapons & (1 << msg.index)) == 0 && Purchase(peer,CostaJobs.WeaponPrices[msg.index],msg.index))
                     {
                         peer.Weapons |= 1 << msg.index;
                         SetNotice(peer, 8);
@@ -1021,6 +1050,11 @@ namespace CostaLivre
                             && vehicle.TryBoard(avatar.pos, car.pos, Quaternion.Euler(0, car.yaw, 0), out int side, out Vector3 step))
                         {
                             car.driver = avatar.id;
+                            if (sceneVehicles[msg.index].Customizable && peer.Account.mods[msg.index] != 0)
+                            {
+                                car.tune = peer.Account.mods[msg.index];
+                                sceneVehicles[msg.index].ApplyBuild(car.tune);
+                            }
                             car.speed = 0;
                             avatar.vehicle = msg.index;
                             StartDoorMotion(peer, msg.index, side, avatar.pos, step, car, now, CostaVehicleMotion.EnterTime);
@@ -1291,7 +1325,7 @@ namespace CostaLivre
                 Vehicle car = hostCars[avatar.vehicle];
                 CostaVehicle rules = sceneVehicles[avatar.vehicle];
                 float speed = pose.held / 10f;
-                float acceleration = Mathf.Sign(speed) != Mathf.Sign(car.speed) ? CostaVehicle.BrakeAcceleration
+                float acceleration = Mathf.Sign(speed) != Mathf.Sign(car.speed) ? rules.BrakePower
                     : rules.Acceleration;
                 float speedLimit = Mathf.Min(rules.TopSpeed, Mathf.Abs(car.speed) + acceleration * elapsed + 0.45f);
                 float turn = Mathf.Abs(Mathf.DeltaAngle(car.yaw, pose.yaw));
@@ -1696,6 +1730,7 @@ namespace CostaLivre
         {
             ReleaseVehicle(peer);
             peer.Pose.police = police;
+            if (police && peer.NextPayroll == 0) peer.NextPayroll = Time.realtimeSinceStartup+300;
             peer.Pose.seat = peer.Pose.lift = -1;
             peer.DispatchSince = -1;
             peer.Pose.equipped = police ? 0 : HarborArsenal.Knife;
@@ -1833,6 +1868,8 @@ namespace CostaLivre
                 case 36: return L("Transaction complete.", "Transação concluída.");
                 case 37: return L("Transaction declined.", "Transação recusada.");
                 case 38: return L("Bank transfer received.", "Transferência bancária recebida.");
+                case 40: return L("Police salary deposited.","Salário policial depositado.");
+                case 39: return L("Campaign checkpoint saved.","Progresso da campanha salvo.");
                 default: return CostaInteriors.Notice(code);
             }
         }
@@ -1978,8 +2015,6 @@ namespace CostaLivre
                 peer.Wire.Dispose();
             peers.Clear();
             active.Clear();
-            world.players = null;
-            world.vehicles = null;
             disconnected.Clear();
             expiredResumes.Clear();
             Array.Clear(restock, 0, restock.Length);
@@ -1998,6 +2033,7 @@ namespace CostaLivre
             Pressure = null;
             Players = Array.Empty<Avatar>();
             Cars = null;
+            ResetInterest();
             Sites = null;
             Local = null;
             Bag.Clear();
@@ -2006,6 +2042,7 @@ namespace CostaLivre
             ledger = null;
             nextTransaction = BankPersonal = BankBusiness = 0;
             BankHistory = null;
+            Narrative = null;
             nextPose = 0;
             nextSnapshot = 0;
             hasWorldHour = false;

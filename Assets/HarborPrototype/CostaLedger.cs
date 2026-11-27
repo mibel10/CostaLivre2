@@ -7,7 +7,7 @@ namespace CostaLivre
     internal sealed class CostaLedger
     {
         internal const int Limit = 1000000000;
-        internal enum Operation { Deposit, Withdraw, ToBusiness, ToPersonal, Transfer, Reward, Purchase, Workshop }
+        internal enum Operation { Deposit, Withdraw, ToBusiness, ToPersonal, Transfer, Reward, Purchase, Workshop, Payroll, PropertyFee }
         [Serializable] internal sealed class Entry
         {
             public string id;
@@ -23,7 +23,11 @@ namespace CostaLivre
             public int personal;
             public int business;
             public int serial;
+            public long nextPropertyFee;
+            public bool autoProperty;
+            public int weapons;
             public Entry[] history = Array.Empty<Entry>();
+            public CostaCampaign.Progress campaign;
             public long[] mods = new long[16];
         }
 
@@ -84,7 +88,7 @@ namespace CostaLivre
         }
 
         internal bool Apply(Account account, Operation op, int amount, int serial = 0, Account target = null,
-            int vehicle = -1, long build = 0, bool fromBank = false)
+            int vehicle = -1, long build = 0, bool fromBank = false, int weapon = -1)
         {
             lock (gate)
             {
@@ -104,17 +108,21 @@ namespace CostaLivre
                             return false;
                         personal -= amount; break;
                     case Operation.Reward: cash += amount; break;
+                    case Operation.Payroll: personal += amount; break;
                     case Operation.Workshop:
                         if (vehicle < 0 || vehicle >= account.mods.Length || build < 0)
                             return false;
                         if (fromBank) personal -= amount; else cash -= amount;
                         break;
-                    case Operation.Purchase: cash -= amount; break;
+                    case Operation.Purchase:
+                        if (weapon >= 31 || weapon >= 0 && (account.weapons & (1 << weapon)) != 0) return false;
+                        cash -= amount;
+                        break;
                     default: return false;
                 }
                 if (cash is < 0 or > Limit || personal is < 0 or > Limit || business is < 0 or > Limit)
                     return false;
-                var prev = (account.cash, account.personal, account.business, account.serial, account.history);
+                var prev = (account.cash, account.personal, account.business, account.serial, account.history, account.weapons);
                 long oldMod = op == Operation.Workshop ? account.mods[vehicle] : 0;
                 Entry[] targetHistory = target?.history;
                 string id = Guid.NewGuid().ToString("N");
@@ -124,6 +132,8 @@ namespace CostaLivre
                 Append(account, op, op is Operation.Transfer or Operation.Purchase or Operation.Workshop ? -amount : amount, id);
                 if (op == Operation.Workshop)
                     account.mods[vehicle] = build;
+                if (op == Operation.Purchase && weapon >= 0)
+                    account.weapons |= 1 << weapon;
                 if (op == Operation.Transfer)
                 {
                     target.personal += amount;
@@ -131,7 +141,7 @@ namespace CostaLivre
                 }
                 if (Write())
                     return true;
-                (account.cash, account.personal, account.business, account.serial, account.history) = prev;
+                (account.cash, account.personal, account.business, account.serial, account.history, account.weapons) = prev;
                 if (op == Operation.Workshop)
                     account.mods[vehicle] = oldMod;
                 if (op == Operation.Transfer)
@@ -139,6 +149,50 @@ namespace CostaLivre
                     target.personal -= amount;
                     target.history = targetHistory;
                 }
+                return false;
+            }
+        }
+
+        internal bool PropertyBilling(Account account, int amount, long day, bool? automatic = null)
+        {
+            lock(gate)
+            {
+                if (!available || !Array.Exists(book.accounts,a => a == account)) return false;
+                var prior = (account.autoProperty, account.nextPropertyFee,account.personal,account.history);
+                if (automatic.HasValue)
+                {
+                    if (automatic.Value == account.autoProperty) return true;
+                    account.autoProperty=automatic.Value;
+                    if (account.autoProperty && account.nextPropertyFee==0) account.nextPropertyFee=day+1;
+                }
+                else
+                {
+                    if(!account.autoProperty || amount<=0 || day<account.nextPropertyFee || account.personal<amount)
+                        return false;
+                    account.personal-=amount;
+                    account.nextPropertyFee=day+1;
+                    Append(account,Operation.PropertyFee,-amount,Guid.NewGuid().ToString("N"));
+                }
+                if(Write()) return true;
+                (account.autoProperty,account.nextPropertyFee,account.personal,account.history)=prior;
+                return false;
+            }
+        }
+
+        internal bool SaveCampaign(Account account,string expected,int serial,CostaCampaign.Progress progress,int reward)
+        {
+            lock (gate)
+            {
+                if (!available || account.campaign?.node != expected || serial < 0 || serial != 0 && serial <= account.serial
+                    || !Array.Exists(book.accounts,a => a == account) || reward < 0 || account.cash > Limit-reward)
+                    return false;
+                var previous = (account.campaign, account.cash, account.serial, account.history);
+                account.campaign = progress;
+                account.cash += reward;
+                if (serial != 0) account.serial = serial;
+                if (reward > 0) Append(account,Operation.Reward,reward,Guid.NewGuid().ToString("N"));
+                if (Write()) return true;
+                (account.campaign, account.cash, account.serial, account.history) = previous;
                 return false;
             }
         }

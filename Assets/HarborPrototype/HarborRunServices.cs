@@ -70,6 +70,14 @@ namespace CostaLivre
                 if (CostaUi.Button(new Rect(319,178,274,30),L("Send from personal","Transferir da conta pessoal"),serviceButton))
                     BankAction(CostaLedger.Operation.Transfer,recipient.id);
             }
+            if (!online && jobs.DailyPropertyCost > 0)
+            {
+                string automatic = account.autoProperty ? L("Auto-pay on","Débito automático ligado")
+                    : L("Auto-pay off","Débito automático desligado");
+                if (CostaUi.Button(new Rect(18,178,575,30),automatic+$" · ${jobs.DailyPropertyCost}/{L("day","dia")}",serviceButton))
+                    if (!jobs.Ledger.PropertyBilling(account,0,CostaJobs.BankDay,!account.autoProperty))
+                        bankingMessage = L("Transaction declined","Transação recusada");
+            }
             GUI.Label(new Rect(18,214,575,26), online ? session.CurrentNotice : bankingMessage ?? "");
             var history = online ? session.BankHistory : account.history;
             GUI.Label(new Rect(18,245,575,24),L("Recent transactions","Transações recentes"));
@@ -92,6 +100,8 @@ namespace CostaLivre
             CostaLedger.Operation.ToBusiness => L("To business","Para empresa"),
             CostaLedger.Operation.ToPersonal => L("To personal","Para conta pessoal"),
             CostaLedger.Operation.Reward => L("Reward","Recompensa"),
+            CostaLedger.Operation.Payroll => L("Salary","Salário"),
+            CostaLedger.Operation.PropertyFee => L("Property fee","Taxa de imóvel"),
             CostaLedger.Operation.Workshop => L("Workshop","Oficina"),
             _ => L("Purchase","Compra")
         };
@@ -103,6 +113,16 @@ namespace CostaLivre
             else
                 bankingMessage = jobs.Ledger.Apply(jobs.Account,op,bankingAmount)
                     ? L("Transaction complete","Transação concluída") : L("Transaction declined","Transação recusada");
+        }
+
+        private float nextPropertyCheck;
+        private void UpdatePropertyBilling()
+        {
+            float now = Time.unscaledTime;
+            if (now<nextPropertyCheck || session.Online) return;
+            nextPropertyCheck=now+30;
+            if(jobs.DailyPropertyCost>0 && jobs.Ledger.PropertyBilling(jobs.Account,jobs.DailyPropertyCost,CostaJobs.BankDay))
+                bankingMessage=L("Property fee paid","Taxa de imóvel paga");
         }
 
         private void BuildAtms()

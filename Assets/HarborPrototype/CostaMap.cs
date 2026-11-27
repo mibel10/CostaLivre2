@@ -239,7 +239,7 @@ namespace CostaLivre
             Label(new Rect(p.x + 4, p.y - 11, 15, 15), relative > 0 ? "↑" : "↓", markerText, color);
         }
 
-        internal void DrawFull(Vector3 player, float heading, Vector3? objective, System.Action close)
+        internal void DrawFull(Vector3 player, float heading, Vector3? objective, System.Action close, System.Action journal = null)
         {
             EnsureStyles();
             Matrix4x4 previous = GUI.matrix;
@@ -252,6 +252,9 @@ namespace CostaLivre
             Label(new Rect(28, 13, 490, 36), L("Coastal Region  /  Map", "Região Costeira  /  Mapa"), title, Text);
             if (Button(new Rect(width - 132, 18, 105, 29), L("Close", "Fechar"), false))
                 close();
+
+            if (journal != null && Button(new Rect(width-250,18,105,29),L("Journal","Diário"),false))
+                journal();
 
             Rect board = new(27, 62, width - 299, height - 104);
             Rect legend = new(board.xMax + 17, 62, 254, board.height);

@@ -127,6 +127,10 @@ namespace CostaLivre
                 session.Dispose();
                 return;
             }
+            if (session.NetworkRoundTrip > 0)
+                Label(new Rect(x+8,row+134,365,21),
+                    $"RTT {session.NetworkRoundTrip:0} ms · {session.NetworkBytesPerSecond/1024f:0.0} KiB/s · "
+                    + $"{session.NetworkEntities} {L("entities","entidades")}",labels,Gold);
             if (session.RoomCode.Length > 0)
             {
                 Label(new Rect(x + 8, row + 70, 210, 25), L("ROOM ", "SALA ") + session.RoomCode, labels, Gold);

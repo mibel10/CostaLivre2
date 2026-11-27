@@ -37,10 +37,12 @@ namespace CostaLivre
         private readonly float originalNormalBias;
         private Material skybox;
         private bool worldActive;
+        private readonly bool supportsAtmosphere;
 
         internal HarborDaylight(Light sun)
         {
             this.sun = sun;
+            supportsAtmosphere = HarborAtmosphereFeature.Supported;
             if (sun != null)
             {
                 originalRotation = sun.transform.rotation;
@@ -113,7 +115,7 @@ namespace CostaLivre
                 Color.Lerp(haze, new Color(0.68f, 0.49f, 0.40f), sunset * (1 - weather.Clouds) * 0.7f), skyLight);
             RenderSettings.fogColor = haze;
             RenderSettings.fogDensity = 0.0038f + weather.Mist * 0.006f + weather.Rain * 0.0034f;
-            bool volumetric = HarborAtmosphereFeature.Supported && preset >= 2;
+            bool volumetric = supportsAtmosphere && preset >= 2;
             if (RenderSettings.fog == volumetric)
                 RenderSettings.fog = !volumetric;
             Shader.SetGlobalColor(MistColor, haze);

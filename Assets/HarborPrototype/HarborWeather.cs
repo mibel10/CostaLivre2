@@ -51,6 +51,8 @@ namespace CostaLivre
         private float nextCapture;
         private float lastWet = -1;
         private int previousBudget = -1;
+        private int rainPreset = -1;
+        private int rainLevel = -1;
         private Vector3 priorCenter;
         private float rainRange;
 
@@ -68,18 +70,34 @@ namespace CostaLivre
                 CreateRain();
             if (rain != null)
             {
-                Vector3 center = camera.transform.position;
-                if ((center - priorCenter).sqrMagnitude > rainRange * rainRange)
-                    rain.Clear();
-                priorCenter = center;
-                rain.transform.position = center + Vector3.up * 12;
+                int level = hour.HasValue && weather.Rain > .015f ? Mathf.Max(1, Mathf.RoundToInt(weather.Rain * 48)) : 0;
                 var emission = rain.emission;
-                emission.rateOverTime = (preset >= 3 ? 970 : preset == 2 ? 580 : 300) * weather.Rain;
-                emission.enabled = hour.HasValue && weather.Rain > 0.015f;
-                if (emission.enabled && !rain.isPlaying)
-                    rain.Play();
-                else if (!hour.HasValue && rain.isPlaying)
-                    rain.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                if (rainPreset != preset)
+                {
+                    rainPreset = preset;
+                    rainLevel = -1;
+                    var collision = rain.collision;
+                    collision.quality = preset >= 2 ? ParticleSystemCollisionQuality.Medium : ParticleSystemCollisionQuality.Low;
+                }
+                if (rainLevel != level)
+                {
+                    rainLevel = level;
+                    emission.rateOverTime = (preset >= 3 ? 970 : preset == 2 ? 580 : 300) * level / 48f;
+                    emission.enabled = level > 0;
+                }
+                if (level > 0)
+                {
+                    Vector3 center = camera.transform.position;
+                    if ((center - priorCenter).sqrMagnitude > rainRange * rainRange)
+                        rain.Clear();
+                    priorCenter = center;
+                    rain.transform.position = center + Vector3.up * 12;
+                    if (!rain.isPlaying)
+                        rain.Play();
+                }
+                else if (rain.isEmitting || !hour.HasValue && rain.isPlaying)
+                    rain.Stop(true, hour.HasValue ? ParticleSystemStopBehavior.StopEmitting
+                        : ParticleSystemStopBehavior.StopEmittingAndClear);
             }
 
             UpdateReflections(hour.HasValue && preset >= 3, camera.transform.position, preset);
@@ -175,7 +193,7 @@ namespace CostaLivre
             capturing = nearest;
             lastCaptured = nearest;
             captureId = capturing.RenderProbe();
-            nextCapture = now + 8;
+            nextCapture = now + (preset >= 4 ? 10 : 16);
         }
 
         private void CreateProbes()

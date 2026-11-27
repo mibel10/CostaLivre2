@@ -208,7 +208,6 @@ namespace CostaLivre
         {
             if (!inGameplay)
             {
-                if (budget.Reset()) ApplyDynamic();
                 observed=cursor=0;
                 nextGpuCheck=0;
                 return;

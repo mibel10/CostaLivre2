@@ -11,7 +11,7 @@ using static CostaLivre.CostaText;
 
 namespace CostaLivre
 {
-    internal sealed class CostaSession : IDisposable
+    internal sealed partial class CostaSession : IDisposable
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
@@ -104,6 +104,7 @@ namespace CostaLivre
             public int index;
             public int id;
             public int credits;
+            public int evidence;
             public int weapons;
             public int notice;
             public bool hasWorldHour;
@@ -121,6 +122,7 @@ namespace CostaLivre
             public bool[] reloading;
             public bool[] sites;
             public bool[] alarms;
+            public Dispatch dispatch;
             public Vector3 direction;
             public int[] scenery;
             public CostaTraffic.Car[] traffic;
@@ -143,6 +145,7 @@ namespace CostaLivre
             public Vehicle[] vehicles;
             public bool[] sites;
             public bool[] alarms;
+            public Dispatch dispatch;
             public int[] scenery;
             public CostaTraffic.Car[] traffic;
             public CostaTraffic.CityEvent cityEvent;
@@ -153,6 +156,7 @@ namespace CostaLivre
         {
             public int id;
             public int credits;
+            public int evidence;
             public int weapons;
             public int[] bag;
             public int equipSequence;
@@ -173,6 +177,8 @@ namespace CostaLivre
             internal string ResumeKey;
             internal byte[] Challenge;
             internal int Credits = 4500;
+            internal int Evidence;
+            internal float DispatchSince = -1;
             internal int Weapons;
             internal float LastPacket;
             internal float LastPose;
@@ -510,6 +516,8 @@ namespace CostaLivre
                 Cars = frame.vehicles;
                 Sites = frame.sites;
                 Alarms = frame.alarms;
+                PoliceDispatch = frame.dispatch;
+                Evidence = frame.evidence;
                 Local = null;
                 foreach (Avatar avatar in Players)
                     if (avatar != null && avatar.id == identity)
@@ -647,6 +655,7 @@ namespace CostaLivre
                             peer.Pose.doorCar = -1;
                             peer.Pose.doorTime = 0;
                             peer.Credits = saved.Credits;
+                            peer.Evidence = saved.Evidence;
                             peer.Weapons = saved.Weapons;
                             peer.Bag.Replace(saved.Bag.Amounts);
                             peer.HeldUntil = saved.HeldUntil;
@@ -721,6 +730,8 @@ namespace CostaLivre
                 if (peer.Ready && peer.ArrestTarget != 0)
                     AdvanceArrest(peer, now);
 
+            TickDispatch(now);
+
             Vector3? chase = null;
             int strongest = 0;
             foreach (Peer peer in peers)
@@ -780,6 +791,7 @@ namespace CostaLivre
             active.CopyTo(world.players);
             world.vehicles = hostCars;
             world.worldHour = WorldHour;
+            world.dispatch = dispatch;
             world.scenery = scenery?.Capture();
             world.traffic = traffic?.Cars;
             world.cityEvent = traffic?.Incident;
@@ -797,6 +809,7 @@ namespace CostaLivre
                 var snapshot = peer.Snapshot;
                 snapshot.id = peer.Pose.id;
                 snapshot.credits = peer.Credits;
+                snapshot.evidence = peer.Evidence;
                 snapshot.weapons = WeaponInventory(peer);
                 snapshot.bag = peer.Bag.Amounts;
                 for (int i = 0; i < snapshot.loaded.Length; i++)
@@ -1478,6 +1491,7 @@ namespace CostaLivre
 
             officer.ArrestTarget = 0;
             officer.Pose.arrestProgress = 0;
+            officer.Evidence += target.Bag.Count;
             target.Bag.Clear();
             target.Pose.wantedLevel = 0;
             target.Pose.arrestThreat = 0;
@@ -1498,6 +1512,7 @@ namespace CostaLivre
         {
             ReleaseVehicle(peer);
             peer.Pose.police = police;
+            peer.DispatchSince = -1;
             peer.Pose.equipped = police ? 0 : HarborArsenal.Knife;
             peer.Pose.health = 100;
             peer.Pose.armor = police ? PoliceArmor : 0;
@@ -1622,6 +1637,8 @@ namespace CostaLivre
                 case 12: return L("Clear your wanted status before joining police.", "Deixe de ser procurado antes de entrar na polícia.");
                 case 13: return L("Alarm triggered. Stay at the display to collect the loot.", "Alarme disparado. Fique na vitrine para pegar o saque.");
                 case 14: return L("Robbery interrupted.", "Roubo interrompido.");
+                case 15: return L("Police assignment complete. Reward paid.", "Ocorrência concluída. Recompensa recebida.");
+                case 16: return L("Recovered items delivered. Reward paid.", "Itens recuperados entregues. Recompensa recebida.");
                 default: return "";
             }
         }
@@ -1773,6 +1790,7 @@ namespace CostaLivre
             Array.Clear(restock, 0, restock.Length);
             Array.Clear(robbers, 0, robbers.Length);
             Alarms = null;
+            ResetDispatch();
             scenery?.Reset();
             traffic?.Reset();
             trafficTarget = null;

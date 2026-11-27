@@ -2258,6 +2258,8 @@ namespace CostaLivre
                 objective = escaping ? L("Reach the safehouse", "Vá ao esconderijo") : L("Retrieve the case", "Recolha a maleta");
             else if (!session.Online && jobs.InProgress)
                 objective = encounter.Active ? encounter.Status : jobs.Current.Title;
+            else if (session.TryActivity(out _, out string activity))
+                objective = activity;
             else if (CurrentBag.Count > 0)
                 objective = L("Sell loot at a fence", "Venda o saque num receptador");
 
@@ -2292,6 +2294,8 @@ namespace CostaLivre
                 return state == RunState.Escape ? HarborBlockout.Safehouse : HarborBlockout.Cargo;
             if (!session.Online && jobs.InProgress)
                 return encounter.Active ? encounter.Location(player.transform.position) : jobs.Current.Point;
+            if (session.TryActivity(out Vector3 activity, out _))
+                return activity;
             if (CurrentBag.Count == 0 || cityMap.Waypoint.HasValue)
                 return null;
             Vector3 point = player.transform.position;

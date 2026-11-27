@@ -5,6 +5,7 @@ namespace CostaLivre
 {
     public sealed partial class HarborRun
     {
+        private GUIStyle campaignProse;
         private CostaCampaign.Progress CampaignProgress => session.Online ? session.Narrative : jobs.Account.campaign;
 
         private bool CanOpenCampaign() => session.Campaign != null
@@ -19,8 +20,8 @@ namespace CostaLivre
             DrawServiceFrame(L("COASTAL RECORD · JOURNAL","REGISTRO DO LITORAL · DIÁRIO"),474);
             GUI.Label(new Rect(18,51,570,25),$"{L("Act","Ato")} {node.act}  ·  {node.speaker}   ·   "
                 +$"{L("Trust","Confiança")}  Lia {progress?.journalist ?? 0}   Rui {progress?.mechanic ?? 0}   Célia {progress?.inspector ?? 0}");
-            var prose = new GUIStyle(GUI.skin.label) { wordWrap = true, fontSize = 16 };
-            GUI.Label(new Rect(18,89,555,75),node.Title,prose);
+            campaignProse ??= new GUIStyle(GUI.skin.label) { wordWrap = true, fontSize = 16 };
+            GUI.Label(new Rect(18,89,555,75),node.Title,campaignProse);
             if (node.ending == 0)
             {
                 bool atCheckpoint = CanOpenCampaign();

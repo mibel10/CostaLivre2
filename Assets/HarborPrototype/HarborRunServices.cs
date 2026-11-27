@@ -38,6 +38,29 @@ namespace CostaLivre
             GUI.matrix = savedServiceMatrix;
         }
 
+        private CostaLedger.Entry[] drawnBankHistory;
+        private bool drawnBankLanguage;
+        private readonly string[] bankRows = new string[7];
+
+        private void CacheBankRows(CostaLedger.Entry[] history)
+        {
+            if (ReferenceEquals(history,drawnBankHistory) && drawnBankLanguage == CostaText.Portuguese)
+                return;
+            drawnBankHistory = history;
+            drawnBankLanguage = CostaText.Portuguese;
+            Array.Clear(bankRows,0,bankRows.Length);
+            if (history == null)
+                return;
+            for (int row = 0; row < bankRows.Length && row < history.Length; row++)
+            {
+                var entry = history[history.Length-1-row];
+                if (entry == null || string.IsNullOrEmpty(entry.id) || entry.utc is < 0 or > 253402300799L)
+                    continue;
+                bankRows[row] = $"{DateTimeOffset.FromUnixTimeSeconds(entry.utc).ToLocalTime():HH:mm}  ·  "
+                    + BankLabel(entry.operation) + $"  ·  ${entry.amount:N0}  ·  {entry.id.Substring(0,Math.Min(7,entry.id.Length))}";
+            }
+        }
+
         private void DrawBank()
         {
             DrawServiceFrame(L("COASTAL BANK","BANCO COSTEIRO"),434);
@@ -81,14 +104,9 @@ namespace CostaLivre
             GUI.Label(new Rect(18,214,575,26), online ? session.CurrentNotice : bankingMessage ?? "");
             var history = online ? session.BankHistory : account.history;
             GUI.Label(new Rect(18,245,575,24),L("Recent transactions","Transações recentes"));
-            if (history != null)
-                for (int row=0; row<7 && row<history.Length; row++)
-                {
-                    var entry = history[history.Length-1-row];
-                    if (entry == null || string.IsNullOrEmpty(entry.id)) continue;
-                    GUI.Label(new Rect(18,274+row*20,575,20),$"{DateTimeOffset.FromUnixTimeSeconds(entry.utc).ToLocalTime():HH:mm}  ·  "
-                        +BankLabel(entry.operation)+$"  ·  ${entry.amount:N0}  ·  {entry.id.Substring(0,Math.Min(7,entry.id.Length))}");
-                }
+            CacheBankRows(history);
+            for (int row = 0; row < bankRows.Length && bankRows[row] != null; row++)
+                GUI.Label(new Rect(18,274+row*20,575,20),bankRows[row]);
             EndServiceFrame();
         }
 

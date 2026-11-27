@@ -1,5 +1,11 @@
 # Instruções do projeto Costa Livre 2
 
+## Segurança no terminal
+
+- Nunca execute `rm -rf` nem comandos equivalentes de exclusão recursiva forçada.
+- Antes de excluir qualquer arquivo ou pasta, informe o caminho absoluto de cada alvo e aguarde autorização explícita do usuário.
+- Use aspas em todos os caminhos passados ao shell, inclusive nas expansões de variáveis que contêm caminhos. Exemplo: `cd -- "/home/mibel/Costa Livre 2"`.
+
 ## Compatibilidade com o multiplayer
 
 Planeje toda mudança considerando como ela afeta o multiplayer. Ao alterar ações de jogadores ou estado compartilhado, preserve a validação pelo anfitrião e a sincronização entre os clientes. Verifique o comportamento alterado em uma sessão com anfitrião e cliente quando a mudança afetar a partida em rede.

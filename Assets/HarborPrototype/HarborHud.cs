@@ -16,6 +16,7 @@ namespace CostaLivre
         private GUIStyle small;
         private GUIStyle centered;
         private GUIStyle resultTitle;
+        private GUIStyle speedStyle;
         private readonly GUIContent measure = new();
         private readonly string[] slotLabels = new string[3];
         private (int Heavy, bool HeavyOwned, bool PistolOwned, bool Portuguese, bool Keys)? slotState;
@@ -36,9 +37,9 @@ namespace CostaLivre
             Matrix4x4 old = GUI.matrix;
             Begin(out float width, out float height);
 
-            map.DrawMini(new Rect(18, 39, 132, 100), player, heading, destination);
+            map.DrawMini(new Rect(18, 39, 152, 112), player, heading, destination);
 
-            float statusX = touch ? 166 : width - 277;
+            float statusX = touch ? 186 : width - 277;
             float statusY = 18;
             if (wantedLevel > 0)
             {
@@ -58,27 +59,31 @@ namespace CostaLivre
                 Chip(statusX, statusY, status, Paper, 258);
             }
 
-            int meters = (speed >= 0 || stamina < 0.99f ? 1 : 0)
-                + (health >= 0 && health < 100 ? 1 : 0) + (armor >= 0 ? 1 : 0);
-            float meterY = touch ? 146 : height - 26 - meters * 27;
+            bool showStamina = speed < 0 && stamina < 0.99f;
+            bool showHealth = health >= 0;
+            bool showArmor = armor >= 0;
+            float stackHeight = (speed >= 0 ? 50 : 0) + (showStamina ? 27 : 0) + (showHealth ? 29 : 0) + (showArmor ? 27 : 0);
+            float meterY = touch ? 158 : height - 24 - stackHeight;
             if (speed >= 0)
             {
-                Chip(18, meterY, $"{speed * 3.6f:0} km/h", Paper, 123);
-                meterY += 27;
+                DrawSpeedometer(18, meterY, speed);
+                meterY += 50;
             }
-            else if (stamina < 0.99f)
+            else if (showStamina)
             {
                 DrawMeter(18, meterY, L("Stamina", "Fôlego"), stamina, HarborBlockout.Mint);
                 meterY += 27;
             }
-            if (health >= 0 && health < 100)
+            if (showHealth)
             {
-                DrawMeter(18, meterY, L($"Health {health}", $"Vida {health}"), health / 100f, Danger);
-                meterY += 27;
+                Color hpColor = health > 55 ? new Color(0.42f, 0.80f, 0.54f)
+                    : health > 25 ? HarborBlockout.Amber : Danger;
+                DrawMeter(18, meterY, L($"Health {health}", $"Vida {health}"), health / 100f, hpColor, 152, 26);
+                meterY += 29;
             }
-            if (armor >= 0)
+            if (showArmor)
                 DrawMeter(18, meterY, L($"Armor {armor}", $"Colete {armor}"),
-                    armor / (float)CostaSession.PoliceArmor, HarborBlockout.Mint);
+                    armor / (float)CostaSession.PoliceArmor, HarborBlockout.Mint, 152, 24);
 
             if (speed < 0)
             {
@@ -114,12 +119,23 @@ namespace CostaLivre
             GUI.matrix = old;
         }
 
-        private void DrawMeter(float x, float y, string text, float progress, Color color)
+        private void DrawSpeedometer(float x, float y, float speed)
         {
-            Box(new Rect(x, y, 117, 24), Panel);
-            Label(new Rect(x + 7, y, 103, 20), text, small, Paper);
-            Box(new Rect(x + 7, y + 19, 103, 2), Edge);
-            Box(new Rect(x + 7, y + 19, 103 * Mathf.Clamp01(progress), 2), color);
+            float kmh = speed * 3.6f;
+            Box(new Rect(x, y, 152, 46), Panel);
+            Label(new Rect(x + 10, y + 3, 86, 32), $"{kmh:0}", speedStyle, Paper);
+            Label(new Rect(x + 96, y + 11, 48, 22), "km/h", small, Muted);
+            Box(new Rect(x + 10, y + 38, 132, 4), Edge);
+            Box(new Rect(x + 10, y + 38, 132 * Mathf.Clamp01(kmh / 160f), 4),
+                kmh > 110f ? Danger : HarborBlockout.Amber);
+        }
+
+        private void DrawMeter(float x, float y, string text, float progress, Color color, float meterWidth = 117, float meterHeight = 24)
+        {
+            Box(new Rect(x, y, meterWidth, meterHeight), Panel);
+            Label(new Rect(x + 7, y, meterWidth - 14, meterHeight - 4), text, small, Paper);
+            Box(new Rect(x + 7, y + meterHeight - 5, meterWidth - 14, 3), Edge);
+            Box(new Rect(x + 7, y + meterHeight - 5, (meterWidth - 14) * Mathf.Clamp01(progress), 3), color);
         }
 
         private float TextWidth(string text, float maxWidth)
@@ -224,6 +240,7 @@ namespace CostaLivre
                 small = MakeStyle(12, FontStyle.Bold, TextAnchor.MiddleLeft);
                 centered = MakeStyle(12, FontStyle.Bold, TextAnchor.MiddleCenter);
                 resultTitle = MakeStyle(37, FontStyle.Bold, TextAnchor.MiddleLeft);
+                speedStyle = MakeStyle(25, FontStyle.Bold, TextAnchor.MiddleLeft);
             }
 
             float scale = Mathf.Min(Screen.width / 840f, Screen.height / 520f, 1.5f);

@@ -175,7 +175,9 @@ namespace CostaLivre
             Vector2 center = size * .5f;
             var projection = new Projection(new Vector2(player.x, player.z), size, Mathf.Min(size.x, size.y) / 82f);
             Matrix4x4 before = GUI.matrix;
-            GUIUtility.RotateAroundPivot(-miniHeading, center);
+            GUI.matrix = before
+                * Matrix4x4.TRS(center, Quaternion.Euler(0, 0, -miniHeading), Vector3.one)
+                * Matrix4x4.TRS(-center, Quaternion.identity, Vector3.one);
             Fill(new Rect(-size.x, -size.y, size.x * 3, size.y * 3), Water);
             GUI.DrawTexture(projection.Area(MapBounds), mapBase);
             Vector3? goal = Waypoint ?? objective;

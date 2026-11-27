@@ -223,7 +223,12 @@ namespace CostaLivre
             Application.runInBackground = true;
             touch = new CostaTouch();
             BindControls();
+#if UNITY_WSA
+            followCamera.nearClipPlane = 0.18f;
+            followCamera.useOcclusionCulling = false;
+#else
             followCamera.nearClipPlane = 0.07f;
+#endif
             followCamera.cullingMask &= ~CostaItemPreview.Mask;
             sun.cullingMask &= ~CostaItemPreview.Mask;
             menu = new HarborMenu(bindings, padBindings, followCamera, sun, volume);
@@ -1166,6 +1171,8 @@ namespace CostaLivre
             if (car != null)
             {
                 Vector2 steering = MovementInput();
+                if (!touch.Down(TouchControl.Move) && Gamepad.current != null && move.activeControl?.device is not Keyboard)
+                    steering.y = shoot.ReadValue<float>() - aim.ReadValue<float>();
                 engineThrottle = steering.y;
                 float previousSpeed = car.Speed;
                 bool braking = Held(jump, TouchControl.Jump);
@@ -2542,7 +2549,7 @@ namespace CostaLivre
             hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? session.ActivityTime : jobs.Remaining,
                 session.Online ? session.Local.wantedLevel : wantedLevel, notice, prompt, stamina / FullStamina,
                 session.Online ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat) : arrestProgress,
-                car != null ? car.Speed : -1, session.Online ? session.Local.health : encounter.Active ? encounter.Health : -1,
+                car != null ? car.Speed : -1, session.Online ? session.Local.health : encounter.Health,
                 IsPolice ? session.Local.armor : -1, arsenal, CostaTouch.Available, gamepad);
         }
 

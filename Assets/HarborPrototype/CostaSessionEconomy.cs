@@ -65,10 +65,15 @@ namespace CostaLivre
                 return;
             Peer recipient = msg.index == (int)CostaLedger.Operation.Transfer
                 ? peers.Find(other => other.Ready && other.Pose.id == msg.id) : null;
-            bool success = ledger.Apply(peer.Account,(CostaLedger.Operation)msg.index,msg.amount,msg.transaction,recipient?.Account);
-            SetNotice(peer,success ? 36 : 37);
-            if (success && recipient != null)
-                SetNotice(recipient,38);
+            bool accepted = ledger.BeginBank(peer.Account,(CostaLedger.Operation)msg.index,msg.amount,msg.transaction,
+                recipient?.Account, success =>
+                {
+                    SetNotice(peer,success ? 36 : 37);
+                    if (success && recipient != null)
+                        SetNotice(recipient,38);
+                });
+            if (!accepted)
+                SetNotice(peer,ledger.BankWritePending ? 41 : 37);
         }
 
         internal CostaCampaign Campaign { get; set; }
@@ -120,6 +125,7 @@ namespace CostaLivre
 
         private void TickPayroll(float now)
         {
+            if (ledger.BankWritePending) return;
             foreach (Peer peer in peers)
             {
                 if(!peer.Ready || !peer.Pose.playing || !peer.Pose.police || peer.NextPayroll<=0 || now<peer.NextPayroll)

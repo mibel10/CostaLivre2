@@ -465,7 +465,10 @@ namespace CostaLivre
                 return;
             }
             if (listener != null)
+            {
+                ledger.FinishBank();
                 TickHost(now, delta, elapsed);
+            }
             TickClient(now, localPose);
             if (Online && !Hosting)
                 traffic?.Present(trafficTarget, cityEventTarget, WorldHour);
@@ -1884,6 +1887,7 @@ namespace CostaLivre
                 case 36: return L("Transaction complete.", "Transação concluída.");
                 case 37: return L("Transaction declined.", "Transação recusada.");
                 case 38: return L("Bank transfer received.", "Transferência bancária recebida.");
+                case 41: return L("Bank is saving another operation. Try again.", "O banco está salvando outra operação. Tente novamente.");
                 case 40: return L("Police salary deposited.","Salário policial depositado.");
                 case 39: return L("Campaign checkpoint saved.","Progresso da campanha salvo.");
                 default: return CostaInteriors.Notice(code);
@@ -2055,6 +2059,7 @@ namespace CostaLivre
             Bag.Clear();
             nextIdentity = 0;
             identity = 0;
+            ledger?.FinishBank(wait:true);
             ledger = null;
             nextTransaction = BankPersonal = BankBusiness = 0;
             StaminaRefill = 0;

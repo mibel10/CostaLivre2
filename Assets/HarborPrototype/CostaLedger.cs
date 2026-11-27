@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace CostaLivre
@@ -46,6 +47,12 @@ namespace CostaLivre
         private Book book;
         private bool available;
         private bool recovered;
+        private Task<bool> bankWrite;
+        private byte[] stagedBytes;
+        private bool staging;
+        private Action<bool> publishBank;
+        internal bool BankWritePending => bankWrite != null;
+
         internal CostaLedger(string path)
         {
             file = path;
@@ -122,7 +129,7 @@ namespace CostaLivre
             lock (gate)
             {
                 long cash = (long)account.cash + cashDelta;
-                if (!available || !account.soloMigrated || cash is < 0 or > Limit
+                if (!available || bankWrite != null || !account.soloMigrated || cash is < 0 or > Limit
                     || (account.properties & property) != 0 || (account.completedJobs & completed) != 0)
                     return false;
                 var previous = (account.cash, account.properties, account.completedJobs, account.soloBag, account.history);
@@ -140,12 +147,81 @@ namespace CostaLivre
             }
         }
 
+        // Prepare on the simulation thread. Only immutable bytes reach the I/O worker.
+        internal bool BeginBank(Account account, Operation operation, int amount, int serial,
+            Account target, Action<bool> completion)
+        {
+            lock (gate)
+            {
+                if (bankWrite != null || operation is < Operation.Deposit or > Operation.Transfer)
+                    return false;
+
+                var before = new BalanceState(account);
+                BalanceState targetBefore = target == null ? default : new BalanceState(target);
+                staging = true;
+                bool accepted;
+                try { accepted = Apply(account,operation,amount,serial,target); }
+                finally { staging = false; }
+                if (!accepted)
+                    return false;
+                var after = new BalanceState(account);
+                BalanceState targetAfter = target == null ? default : new BalanceState(target);
+                before.Restore(account);
+                if (target != null) targetBefore.Restore(target);
+                byte[] bytes = stagedBytes;
+                stagedBytes = null;
+                bool preserveBackup = recovered;
+                bankWrite = Task.Run(() => WriteBytes(bytes,preserveBackup));
+                publishBank = success =>
+                {
+                    if (success)
+                    {
+                        after.Restore(account);
+                        if (target != null) targetAfter.Restore(target);
+                        recovered = false;
+                    }
+                    completion(success);
+                };
+                return true;
+            }
+        }
+
+        internal void FinishBank(bool wait = false)
+        {
+            lock (gate)
+            {
+                if (bankWrite == null || !wait && !bankWrite.IsCompleted)
+                    return;
+                bool success = bankWrite.GetAwaiter().GetResult();
+                bankWrite = null;
+                Action<bool> publish = publishBank;
+                publishBank = null;
+                publish(success);
+            }
+        }
+
+        private readonly struct BalanceState
+        {
+            private readonly int cash, personal, business, serial;
+            private readonly Entry[] history;
+            internal BalanceState(Account account)
+            {
+                cash = account.cash; personal = account.personal; business = account.business;
+                serial = account.serial; history = account.history;
+            }
+            internal void Restore(Account account)
+            {
+                account.cash = cash; account.personal = personal; account.business = business;
+                account.serial = serial; account.history = history;
+            }
+        }
+
         internal bool Apply(Account account, Operation op, int amount, int serial = 0, Account target = null,
             int vehicle = -1, long build = 0, bool fromBank = false, int weapon = -1)
         {
             lock (gate)
             {
-                if (!available || amount <= 0 || amount > Limit || serial < 0
+                if (!available || bankWrite != null || amount <= 0 || amount > Limit || serial < 0
                     || serial != 0 && serial <= account.serial || !Array.Exists(book.accounts,a => a == account))
                     return false;
                 int cash = account.cash, personal = account.personal, business = account.business;
@@ -210,7 +286,7 @@ namespace CostaLivre
         {
             lock(gate)
             {
-                if (!available || !Array.Exists(book.accounts,a => a == account)) return false;
+                if (!available || bankWrite != null || !Array.Exists(book.accounts,a => a == account)) return false;
                 var prior = (account.autoProperty, account.nextPropertyFee,account.personal,account.history);
                 if (automatic.HasValue)
                 {
@@ -236,7 +312,7 @@ namespace CostaLivre
         {
             lock (gate)
             {
-                if (!available || account.campaign?.node != expected || serial < 0 || serial != 0 && serial <= account.serial
+                if (!available || bankWrite != null || account.campaign?.node != expected || serial < 0 || serial != 0 && serial <= account.serial
                     || !Array.Exists(book.accounts,a => a == account) || reward < 0 || account.cash > Limit-reward)
                     return false;
                 var previous = (account.campaign, account.cash, account.serial, account.history);
@@ -261,23 +337,35 @@ namespace CostaLivre
 
         private bool Write()
         {
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(book));
+            if (staging)
+            {
+                stagedBytes = bytes;
+                return true;
+            }
+            if (!WriteBytes(bytes,recovered))
+                return false;
+            recovered = false;
+            return true;
+        }
+
+        private bool WriteBytes(byte[] bytes, bool preserveBackup)
+        {
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(file));
                 using (var stream = new FileStream(file + ".new", FileMode.Create, FileAccess.Write, FileShare.None))
                 {
-                    byte[] bytes = System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(book));
                     stream.Write(bytes, 0, bytes.Length);
                     stream.Flush(true);
                 }
                 if (File.Exists(file))
-                    File.Replace(file + ".new", file, recovered ? null : file + ".old");
+                    File.Replace(file + ".new", file, preserveBackup ? null : file + ".old");
                 else
                     File.Move(file + ".new", file);
-                recovered = false;
                 return true;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
             {
                 Debug.LogWarning("Costa Ledger could not save: " + ex.GetType().Name);
                 return false;

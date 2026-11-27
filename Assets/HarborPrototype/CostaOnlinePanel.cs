@@ -12,8 +12,9 @@ namespace CostaLivre
         private string ip = "127.0.0.1";
         private string port = "7777";
         private bool internet = true;
-        private const string DefaultRelay = "https://costalivre2-mibel10-relay.onrender.com";
-        private string relay = PlayerPrefs.GetString("CostaRelayAddress", DefaultRelay);
+        private const string OldDefaultRelay = "https://costalivre2-mibel10-relay.onrender.com";
+        private string relay = PlayerPrefs.GetString("CostaRelayAddress", "");
+        private string ConfiguredRelay => relay == OldDefaultRelay ? "" : relay.Trim();
         private bool showServer;
         private string inputError = "";
         private string invite = "";
@@ -64,7 +65,7 @@ namespace CostaLivre
                 if (internet)
                 {
                     Label(new Rect(x + 8, row + 109, 225, 24), showServer
-                        ? L("ROOM SERVER ADDRESS", "ENDEREÇO DO SERVIDOR")
+                        ? L("OPTIONAL SERVER URL", "URL OPCIONAL DO SERVIDOR")
                         : L("ROOM CODE OR INVITE", "CÓDIGO OU CONVITE DA SALA"), labels, Muted);
                     if (Button(new Rect(x + 245, row + 108, 125, 25), showServer
                         ? L("Back to invite", "Voltar ao convite") : L("Server", "Servidor"), !connecting))
@@ -132,7 +133,7 @@ namespace CostaLivre
                 if (Button(new Rect(x + 222, row + 69, 148, 28),
                     Time.unscaledTime < copiedUntil ? L("Copied", "Copiado") : L("Copy invite", "Copiar convite"), true))
                 {
-                    GUIUtility.systemCopyBuffer = session.RelayAddress + "/join/" + session.RoomCode;
+                    GUIUtility.systemCopyBuffer = session.RoomInvite;
                     copiedUntil = Time.unscaledTime + 2f;
                 }
             }
@@ -195,10 +196,15 @@ namespace CostaLivre
                 {
                     if (!SaveServer())
                         return;
-                    endpoint = relay;
+                    endpoint = relay.Length == 0 ? CostaNorayRoom.Service : relay;
                     address = "";
                 }
-                else if (!CostaInternetRoom.TryInvite(invite, relay, out endpoint, out address))
+                else if (CostaNorayRoom.TryCode(invite.Trim(), out _))
+                {
+                    endpoint = CostaNorayRoom.Service;
+                    address = invite.Trim();
+                }
+                else if (!CostaInternetRoom.TryInvite(invite, ConfiguredRelay, out endpoint, out address))
                 {
                     inputError = L("Paste a valid room invitation.", "Cole um convite de sala válido.");
                     return;
@@ -211,8 +217,8 @@ namespace CostaLivre
 
         private bool SaveServer()
         {
-            string address = string.IsNullOrWhiteSpace(relay) ? DefaultRelay : relay.Trim();
-            if (!CostaInternetRoom.TryEndpoint(address, out _))
+            string address = ConfiguredRelay;
+            if (address.Length > 0 && !CostaInternetRoom.TryEndpoint(address, out _))
             {
                 inputError = L("Enter a valid HTTPS server address.", "Informe um endereço HTTPS válido.");
                 return false;

@@ -12,7 +12,8 @@ namespace CostaLivre
 {
     internal sealed class CostaWire : IDisposable
     {
-        private const int Limit = 32768;
+        internal const int Limit = 32768;
+        private readonly bool datagram;
         private readonly TcpClient client;
         private readonly NetworkStream stream;
         private readonly ClientWebSocket websocket;
@@ -26,6 +27,8 @@ namespace CostaLivre
         private int closed;
 
         internal bool Closed => Volatile.Read(ref closed) != 0;
+
+        internal CostaWire() => datagram = true;
 
         internal CostaWire(TcpClient client)
         {
@@ -81,7 +84,8 @@ namespace CostaLivre
             }
 
             outgoing.Enqueue(Encode(text, length));
-            pending.Release();
+            if (!datagram)
+                pending.Release();
         }
 
         internal void SendState(byte[] shared, string personal)
@@ -103,12 +107,18 @@ namespace CostaLivre
             if (Interlocked.Exchange(ref latestState, frame) == null)
             {
                 outgoing.Enqueue(null);
-                pending.Release();
+                if (!datagram)
+                    pending.Release();
             }
         }
 
         internal async Task Reject(string text)
         {
+            if (datagram)
+            {
+                Dispose();
+                return;
+            }
             try
             {
                 await WriteFrame(Encode(text, Encoding.UTF8.GetByteCount(text))).ConfigureAwait(false);
@@ -120,6 +130,31 @@ namespace CostaLivre
             {
                 Dispose();
             }
+        }
+
+        internal bool TakeOutgoing(out byte[] frame)
+        {
+            while (outgoing.TryDequeue(out frame))
+            {
+                if (frame == null)
+                    frame = Interlocked.Exchange(ref latestState, null);
+                else
+                    Interlocked.Decrement(ref outCount);
+                if (frame != null)
+                    return true;
+            }
+            return false;
+        }
+
+        internal bool ReceiveDatagram(byte[] frame, int size)
+        {
+            if (Closed || size <= 4 || size > Limit + 4)
+                return false;
+            int length = (frame[0] << 24) | (frame[1] << 16) | (frame[2] << 8) | frame[3];
+            if (length != size - 4 || Interlocked.Increment(ref inCount) > 96)
+                return false;
+            incoming.Enqueue(Encoding.UTF8.GetString(frame, 4, length));
+            return true;
         }
 
         private Task WriteFrame(byte[] frame) => websocket == null
@@ -202,15 +237,8 @@ namespace CostaLivre
                 while (!Closed)
                 {
                     await pending.WaitAsync(cancel.Token).ConfigureAwait(false);
-                    if (outgoing.TryDequeue(out byte[] frame))
-                    {
-                        if (frame == null)
-                            frame = Interlocked.Exchange(ref latestState, null);
-                        else
-                            Interlocked.Decrement(ref outCount);
-                        if (frame != null)
-                            await WriteFrame(frame).ConfigureAwait(false);
-                    }
+                    if (TakeOutgoing(out byte[] frame))
+                        await WriteFrame(frame).ConfigureAwait(false);
                 }
             }
             catch (Exception exception) when (NetworkException(exception))

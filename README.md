@@ -77,9 +77,9 @@ Referências dos modelos e chips. [Snapdragon 778G](https://www.qualcomm.com/sma
 
 No menu **Multiplayer → Internet**, o anfitrião informa o nome e clica em **Criar sala**. Depois, usa **Copiar convite** e manda o link aos amigos. Os convidados colam o link ou código em **Código ou convite da sala** e clicam em **Entrar na sala**. Todos usam a mesma versão da build. A sessão dura enquanto o anfitrião estiver conectado.
 
-O relay oficial do projeto pode rodar gratuitamente no Render, sem depender do seu computador. Crie um Blueprint no Render apontando para o repositório `mibel10/CostaLivre2` e selecione o arquivo `render.yaml`. Informe a URL HTTPS que o Render gerar em **Multiplayer → Salas pela internet → Servidor** e selecione **Salvar servidor**. O anfitrião só precisa configurar o endereço uma vez. O convite completo leva esse endereço, então os amigos podem colá-lo direto. Para entrar com apenas o código curto, os dois lados precisam ter o mesmo servidor configurado.
+As salas pela internet usam automaticamente o Noray público da Fox's Sake Studio, o mesmo serviço usado no Costa Livre original. Copie o convite que começa com `CL2N-` e envie a quem vai jogar. O serviço público é destinado a testes e tem limites e disponibilidade próprios. Os convites são específicos da versão Unity do jogo. [Hospedagem Noray](https://foxssake.github.io/netfox/latest/hosting/)
 
-No plano gratuito, o Render suspende o serviço após 15 minutos sem tráfego. A próxima conexão pode precisar aguardar o serviço acordar. Para manter a conexão disponível continuamente, o relay precisa de hospedagem paga. [Limites do plano gratuito do Render](https://render.com/docs/free)
+Para usar um relay WebSocket próprio, informe a URL em **Multiplayer → Salas pela internet → Servidor**. O repositório fornece um Blueprint `render.yaml` para o Render. Limpe o campo e salve para voltar ao Noray. Convites completos de um relay WebSocket também continuam funcionando.
 
 Para desenvolvimento local, o relay está em `Server/relay`. Execute:
 

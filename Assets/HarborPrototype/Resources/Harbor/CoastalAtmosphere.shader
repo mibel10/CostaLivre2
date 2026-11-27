@@ -25,14 +25,15 @@ Shader "Hidden/CostaLivre/CoastalAtmosphere"
             return LinearEyeDepth(SampleSceneDepth(uv), _ZBufferParams);
         }
 
-        float3 WorldPoint(float2 uv)
+        float3 WorldPoint(float2 uv, float depth)
         {
-            float depth = SampleSceneDepth(uv);
             #if !UNITY_REVERSED_Z
                 depth = lerp(UNITY_NEAR_CLIP_VALUE, 1, depth);
             #endif
             return ComputeWorldSpacePosition(uv, depth, UNITY_MATRIX_I_VP);
         }
+
+        float3 WorldPoint(float2 uv) { return WorldPoint(uv, SampleSceneDepth(uv)); }
 
         float4 Meter(Varyings input) : SV_Target
         {
@@ -62,7 +63,7 @@ Shader "Hidden/CostaLivre/CoastalAtmosphere"
             if (_CostaMeterParams.x > 0.5)
             {
                 // Bilateral upsampling avoids halos where the half resolution fog crosses silhouettes.
-                float2 texel = 2 * rcp(_ScaledScreenParams.xy);
+                float2 texel = _CostaMeterParams.yz;
                 float2 pixel = uv / texel - 0.5;
                 float2 lower = floor(pixel);
                 float2 mixWeight = frac(pixel);
@@ -74,8 +75,8 @@ Shader "Hidden/CostaLivre/CoastalAtmosphere"
                     float2 offset = float2(i & 1, i >> 1);
                     float2 tap = saturate((lower + offset + 0.5) * texel);
                     float2 bilinear = lerp(1 - mixWeight, mixWeight, offset);
-                    float weight = max(0.001, bilinear.x * bilinear.y) *
-                        exp2(-abs(EyeDepth(tap) - depth) / max(0.35, depth * 0.04));
+                    float difference = abs(EyeDepth(tap) - depth) / max(0.35, depth * 0.04);
+                    float weight = max(0.001, bilinear.x * bilinear.y) * exp2(-difference);
                     sum += SAMPLE_TEXTURE2D_LOD(_CostaScattering, sampler_PointClamp, tap, 0) * weight;
                     weights += weight;
                 }
@@ -151,10 +152,11 @@ Shader "Hidden/CostaLivre/CoastalAtmosphere"
                     float2 tap = uv + float2(cos(angle), sin(angle)) * radius;
                     if (any(tap <= 0.002) || any(tap >= 0.998))
                         continue;
-                    float sampleDepth = EyeDepth(tap);
+                    float rawDepth = SampleSceneDepth(tap);
+                    float sampleDepth = LinearEyeDepth(rawDepth, _ZBufferParams);
                     if (sampleDepth >= _ProjectionParams.z * 0.99)
                         continue;
-                    float3 emitter = WorldPoint(tap);
+                    float3 emitter = WorldPoint(tap, rawDepth);
                     float3 offset = emitter - surface;
                     float separation = length(offset);
                     if (separation < 0.15 || separation > 5)
@@ -177,7 +179,8 @@ Shader "Hidden/CostaLivre/CoastalAtmosphere"
             float4 Lighting(Varyings input) : SV_Target
             {
                 float2 uv = input.texcoord;
-                float3 positionWS = WorldPoint(uv);
+                float rawDepth = SampleSceneDepth(uv);
+                float3 positionWS = WorldPoint(uv, rawDepth);
                 float3 ray = positionWS - _WorldSpaceCameraPos;
                 float distanceToSurface = length(ray);
                 float3 direction = ray / max(distanceToSurface, 0.001);
@@ -187,7 +190,8 @@ Shader "Hidden/CostaLivre/CoastalAtmosphere"
                 Light sunlight = GetMainLight();
                 float cosine = dot(direction, sunlight.direction);
                 const float g = 0.53;
-                float phase = (1 - g * g) * rsqrt(pow(max(0.04, 1 + g * g - 2 * g * cosine), 3));
+                float phaseBase = max(0.04, 1 + g * g - 2 * g * cosine);
+                float phase = (1 - g * g) * rsqrt(phaseBase) / phaseBase;
                 float3 airlight = 0;
                 float transmittance = 1;
                 float jitter = InterleavedGradientNoise(input.positionCS.xy, 0);
@@ -196,16 +200,17 @@ Shader "Hidden/CostaLivre/CoastalAtmosphere"
                     float3 samplePoint = _WorldSpaceCameraPos + direction * ((index + lerp(0.18, 0.82, jitter)) * segment);
                     float density = _CostaMist.y * exp(-max(0, samplePoint.y) * _CostaMist.z);
                     float through = exp(-density * segment);
-                    half shadow = MainLightRealtimeShadow(TransformWorldToShadowCoord(samplePoint));
                     float shadowFade = GetMainLightShadowFade(samplePoint);
-                    shadow = lerp(shadow, 1, shadowFade);
+                    half shadow = 1;
+                    UNITY_BRANCH if (shadowFade < 0.999)
+                        shadow = lerp(MainLightRealtimeShadow(TransformWorldToShadowCoord(samplePoint)), 1, shadowFade);
                     float3 light = _CostaMistColor.rgb * 0.67 + sunlight.color * (0.095 * phase * shadow);
                     if (_CostaFogLightCount > 0)
                         light += LampScattering(samplePoint);
                     airlight += transmittance * (1 - through) * light;
                     transmittance *= through;
                 }
-                float depth = EyeDepth(uv);
+                float depth = LinearEyeDepth(rawDepth, _ZBufferParams);
                 if (_CostaMeterParams.x > 0.5 && depth < min(100, _ProjectionParams.z * 0.99))
                     airlight += transmittance * DiffuseBounce(uv, positionWS, depth);
                 return float4(airlight, transmittance);

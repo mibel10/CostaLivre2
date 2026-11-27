@@ -33,7 +33,11 @@ namespace CostaLivre
             if (pass != null && camera.cameraType == CameraType.Game && !camera.stereoEnabled &&
                 camera.CompareTag("MainCamera") && renderingData.cameraData.renderType == CameraRenderType.Base &&
                 renderingData.cameraData.postProcessEnabled)
+            {
+                pass.ConfigureInput(Shader.GetGlobalVector(AtmospherePass.Mist).x > 0
+                    ? ScriptableRenderPassInput.Depth : ScriptableRenderPassInput.None);
                 renderer.EnqueuePass(pass);
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -51,7 +55,7 @@ namespace CostaLivre
             private static readonly int Meter = Shader.PropertyToID("_CostaExposure");
             private static readonly int Scattering = Shader.PropertyToID("_CostaScattering");
             private static readonly int MeterParams = Shader.PropertyToID("_CostaMeterParams");
-            private static readonly int Mist = Shader.PropertyToID("_CostaMist");
+            internal static readonly int Mist = Shader.PropertyToID("_CostaMist");
             private readonly Material material;
             private readonly bool highQuality;
             private readonly RTHandle[] history = new RTHandle[2];
@@ -74,7 +78,6 @@ namespace CostaLivre
                 this.highQuality = highQuality;
                 renderPassEvent = RenderPassEvent.BeforeRenderingPostProcessing;
                 requiresIntermediateTexture = true;
-                ConfigureInput(ScriptableRenderPassInput.Depth);
                 for (int i = 0; i < history.Length; i++)
                     history[i] = RTHandles.Alloc(1, 1, colorFormat: GraphicsFormat.R16G16B16A16_SFloat,
                         filterMode: FilterMode.Point, name: "Costa exposure history " + i);
@@ -83,7 +86,8 @@ namespace CostaLivre
             public override void RecordRenderGraph(RenderGraph graph, ContextContainer frameData)
             {
                 var resources = frameData.Get<UniversalResourceData>();
-                if (resources.isActiveTargetBackBuffer || !resources.cameraDepthTexture.IsValid())
+                bool world = Shader.GetGlobalVector(Mist).x > 0;
+                if (resources.isActiveTargetBackBuffer || world && !resources.cameraDepthTexture.IsValid())
                     return;
 
                 var camera = frameData.Get<UniversalCameraData>().camera;
@@ -96,7 +100,6 @@ namespace CostaLivre
                 desc.name = "Costa exposed atmosphere";
                 TextureHandle output = graph.CreateTexture(desc);
 
-                bool world = Shader.GetGlobalVector(Mist).x > 0;
                 TextureHandle previous = graph.ImportTexture(history[1 - writeIndex]);
                 TextureHandle current = graph.ImportTexture(history[writeIndex]);
                 writeIndex = 1 - writeIndex;
@@ -110,21 +113,24 @@ namespace CostaLivre
                     parameters: new Vector4(Mathf.Min(Time.unscaledDeltaTime, 0.1f), continuing ? 1 : 0, 0, 0));
 
                 TextureHandle scattering = TextureHandle.nullHandle;
+                Vector4 composite = default;
                 if (world)
                 {
-                    desc.name = "Costa half resolution scattering";
-                    desc.width = Mathf.Max(1, (desc.width + 1) / 2);
-                    desc.height = Mathf.Max(1, (desc.height + 1) / 2);
+                    int divisor = highQuality ? 2 : 3;
+                    desc.name = "Costa low resolution scattering";
+                    desc.width = Mathf.Max(1, (desc.width + divisor - 1) / divisor);
+                    desc.height = Mathf.Max(1, (desc.height + divisor - 1) / divisor);
                     desc.colorFormat = GraphicsFormat.R16G16B16A16_SFloat;
                     desc.filterMode = FilterMode.Bilinear;
                     scattering = graph.CreateTexture(desc);
                     Draw(graph, "Costa light transport", 1, color, scattering, depth: resources.cameraDepthTexture,
                         shadows: resources.mainShadowsTexture, parameters: new Vector4(highQuality ? 1 : 0, 0, 0, 0));
+                    composite = new Vector4(1, 1f / desc.width, 1f / desc.height, 0);
                 }
 
                 Draw(graph, "Costa atmosphere composite", 2, color, output, scattering, Scattering, current,
                     depth: world ? resources.cameraDepthTexture : TextureHandle.nullHandle,
-                    parameters: new Vector4(world ? 1 : 0, 0, 0, 0));
+                    parameters: composite);
                 resources.cameraColor = output;
             }
 

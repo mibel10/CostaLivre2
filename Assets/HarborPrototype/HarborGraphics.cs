@@ -47,7 +47,25 @@ namespace CostaLivre
         private int renderPercent;
         private FrameTiming[] frameTimings;
         private float nextGpuCheck;
-        private int expensiveSamples, cheapSamples;
+        private readonly CostaAdaptiveBudget budget = new();
+        private readonly float[] observedFrames = new float[128];
+        private readonly float[] sortedFrames = new float[128];
+        private int observed;
+        private int cursor;
+        private int lastCollection;
+        internal bool Extreme { get; private set; }
+        internal bool ScaleLocked { get; private set; }
+        internal bool WorldLocked { get; private set; }
+        internal int WorldTier => WorldLocked ? 0 : budget.CpuTier;
+        internal int PracticalTarget => Application.targetFrameRate is 30 or 60 or 90 or 120 ? Application.targetFrameRate : 60;
+        internal float Frame95 { get; private set; }
+        internal float LowOne { get; private set; }
+        internal float MeanFrame { get; private set; }
+        internal int ManagedCollections { get; private set; }
+        internal double AllocatedMiB { get; private set; }
+        internal double CpuMs { get; private set; }
+        internal double GpuMs { get; private set; }
+        internal string AdaptiveStatus => budget.Bottleneck.ToString();
 
         internal int Preset { get; private set; }
         internal int ShadowQuality { get; private set; }
@@ -56,10 +74,10 @@ namespace CostaLivre
         internal int Distance { get; private set; }
         internal bool FsrEnabled { get; private set; }
         internal bool AdaptiveResolution { get; private set; }
-        internal bool AdaptiveSupported => canMeasureGpu;
+        internal bool AdaptiveSupported => pipeline != null;
         internal bool IsCustom => ShadowQuality != Preset || TextureQuality != Textures[Preset] ||
             ResolutionPercent != Scales[Preset] || Distance != Distances[Preset] || FsrEnabled;
-        internal int StreetLightBudget => StreetLights[Preset];
+        internal int StreetLightBudget => Mathf.Max(0,StreetLights[Preset]-(WorldLocked ? 0 : budget.GpuTier));
         internal int ActualPercent => renderPercent;
 
         internal HarborGraphics(Camera camera, Light sun, Volume volume)
@@ -84,14 +102,19 @@ namespace CostaLivre
             Distance = Mathf.Clamp(PlayerPrefs.GetInt(DistanceKey, Distances[Preset]), MinDistance, MaxDistance);
             FsrEnabled = PlayerPrefs.GetInt(FsrKey, 0) != 0;
             AdaptiveResolution = PlayerPrefs.GetInt(AdaptiveKey, 0) != 0;
+            Extreme = PlayerPrefs.GetInt("CostaExtremePotato",0)!=0;
+            ScaleLocked = PlayerPrefs.GetInt("CostaLockScale",0)!=0;
+            WorldLocked = PlayerPrefs.GetInt("CostaLockWorld",0)!=0;
             SetupPipeline();
         }
 
         internal void SetPreset(int preset)
         {
             preset = Mathf.Clamp(preset, 0, Mathf.Min(MaxPreset, QualitySettings.names.Length - 1));
-            if (preset == Preset && !IsCustom)
+            if (preset == Preset && !IsCustom && !Extreme)
                 return;
+            Extreme=false;
+            budget.Reset();
             bool switchAsset = Preset != preset;
             if (switchAsset)
                 RestorePipeline();
@@ -160,59 +183,83 @@ namespace CostaLivre
             if (!AdaptiveSupported)
                 return;
             AdaptiveResolution = !AdaptiveResolution;
-            ApplyUpscaling();
+            budget.Reset();
+            ApplyDynamic();
             QueueSave();
         }
 
+        internal void SetExtreme()
+        {
+            SetPreset(0);
+            Extreme=true;
+            ScaleLocked=WorldLocked=false;
+            AdaptiveResolution=true;
+            ShadowQuality=TextureQuality=0;
+            ResolutionPercent=40;
+            Distance=75;
+            ApplySettings();
+            QueueSave();
+        }
+
+        internal void ToggleScaleLock() { ScaleLocked=!ScaleLocked; ApplyDynamic(); QueueSave(); }
+        internal void ToggleWorldLock() { WorldLocked=!WorldLocked; ApplyDynamic(); QueueSave(); }
+
         internal void UpdateAdaptiveResolution(bool inGameplay)
         {
-            if (!AdaptiveResolution || !AdaptiveSupported)
-                return;
             if (!inGameplay)
             {
-                if (renderPercent != Mathf.Max(ResolutionPercent, MinActualPercent))
-                    ApplyUpscaling();
-                expensiveSamples = cheapSamples = 0;
+                if (budget.Reset()) ApplyDynamic();
+                observed=cursor=0;
+                nextGpuCheck=0;
                 return;
             }
-
-            FrameTimingManager.CaptureFrameTimings();
-            float now = Time.unscaledTime;
-            if (now < nextGpuCheck)
-                return;
-            nextGpuCheck = now + .38f;
+            float ms=Time.unscaledDeltaTime*1000;
+            if (ms>0)
+            {
+                observedFrames[cursor++ & 127]=ms;
+                observed=Mathf.Min(observed+1,128);
+            }
+            if (canMeasureGpu) FrameTimingManager.CaptureFrameTimings();
+            float now=Time.unscaledTime;
+            if(now<nextGpuCheck || observed<12) return;
+            nextGpuCheck=now+.55f;
+            System.Array.Copy(observedFrames,sortedFrames,observed);
+            System.Array.Sort(sortedFrames,0,observed);
+            float total=0;
+            for(int i=0;i<observed;i++) total+=sortedFrames[i];
+            MeanFrame=total/observed;
+            Frame95=sortedFrames[Mathf.CeilToInt(observed*.95f)-1];
+            LowOne=1000f/Mathf.Max(.01f,sortedFrames[Mathf.CeilToInt(observed*.99f)-1]);
+            int collections=System.GC.CollectionCount(0);
+            ManagedCollections=collections-lastCollection;
+            lastCollection=collections;
+            long allocated=UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong();
+            AllocatedMiB=allocated/1048576.0;
             frameTimings ??= new FrameTiming[8];
-            uint count = FrameTimingManager.GetLatestTimings((uint)frameTimings.Length, frameTimings);
-            double total = 0;
-            int valid = 0;
-            for (int i = 0; i < count; i++)
+            uint count=canMeasureGpu ? FrameTimingManager.GetLatestTimings((uint)frameTimings.Length,frameTimings) : 0;
+            double gpu=0,cpu=0;
+            int gpuSamples=0,cpuSamples=0;
+            for(int i=0;i<count;i++)
             {
-                double ms = frameTimings[i].gpuFrameTime;
-                if (ms > 0)
-                {
-                    valid++;
-                    total += ms;
-                }
+                var timing=frameTimings[i];
+                if(timing.gpuFrameTime>0){gpu+=timing.gpuFrameTime;gpuSamples++;}
+                double busy=System.Math.Max(timing.cpuMainThreadFrameTime-timing.cpuMainThreadPresentWaitTime,timing.cpuRenderThreadFrameTime);
+                if(busy>0){cpu+=busy;cpuSamples++;}
             }
-            if (valid == 0)
-                return;
+            bool pressure=SystemInfo.systemMemorySize>0 && AllocatedMiB>SystemInfo.systemMemorySize*.56;
+            CpuMs=cpu/System.Math.Max(1,cpuSamples);
+            GpuMs=gpu/System.Math.Max(1,gpuSamples);
+            if (AdaptiveResolution && budget.Sample(now,PracticalTarget,MeanFrame,CpuMs,GpuMs,pressure)) ApplyDynamic();
+        }
 
-            double target = 1000.0 / (Application.targetFrameRate == 30 ? 30 : 60);
-            double gpuTime = total / valid;
-            expensiveSamples = gpuTime > target * .96 ? expensiveSamples + 1 : 0;
-            cheapSamples = gpuTime < target * .69 ? cheapSamples + 1 : 0;
-            int ceiling = Mathf.Max(ResolutionPercent, MinActualPercent);
-            int floor = Mathf.Min(ceiling, Mathf.Max(50, MinActualPercent));
-            if (expensiveSamples >= 3 && renderPercent > floor)
-                ChangeScale(Mathf.Max(floor, renderPercent - ScaleStep));
-            else if (cheapSamples >= 8 && renderPercent < ceiling)
-                ChangeScale(Mathf.Min(ceiling, renderPercent + ScaleStep));
-
-            void ChangeScale(int percent)
-            {
-                expensiveSamples = cheapSamples = 0;
-                ApplyUpscaling(percent);
-            }
+        private void ApplyDynamic()
+        {
+            int ceiling=Mathf.Max(ResolutionPercent,MinActualPercent);
+            int floor=Extreme ? Mathf.Max(MinActualPercent,25) : Mathf.Min(ceiling,Mathf.Max(MinActualPercent,45));
+            int gpu=ScaleLocked ? 0 : budget.GpuTier;
+            ApplyUpscaling(Mathf.Clamp(ceiling-gpu*5,Mathf.Min(floor,ceiling),ceiling));
+            camera.farClipPlane=WorldLocked ? Distance : Mathf.Max(MinDistance,Distance-(budget.CpuTier+budget.GpuTier/3)*18);
+            ApplyShadows();
         }
 
         internal void SaveIfDue()
@@ -305,7 +352,7 @@ namespace CostaLivre
         {
             if (pipeline == null)
                 return;
-            var shadow = Shadows[ShadowQuality];
+            var shadow = Shadows[Mathf.Max(0,ShadowQuality-(WorldLocked ? 0 : budget.GpuTier/3))];
             pipeline.shadowDistance = shadow.Distance;
             pipeline.mainLightShadowmapResolution = shadow.Resolution;
             pipeline.shadowCascadeCount = shadow.Cascades;
@@ -330,6 +377,9 @@ namespace CostaLivre
 
         private void QueueSave()
         {
+            PlayerPrefs.SetInt("CostaExtremePotato",Extreme ? 1 : 0);
+            PlayerPrefs.SetInt("CostaLockScale",ScaleLocked ? 1 : 0);
+            PlayerPrefs.SetInt("CostaLockWorld",WorldLocked ? 1 : 0);
             PlayerPrefs.SetInt(PresetKey, Preset);
             PlayerPrefs.SetInt(ShadowKey, ShadowQuality);
             PlayerPrefs.SetInt(TextureKey, TextureQuality);

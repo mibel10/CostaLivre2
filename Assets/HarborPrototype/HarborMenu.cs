@@ -78,6 +78,7 @@ namespace CostaLivre
         private const int JobsPerPage = 6;
 
         internal void SaveGraphicsIfDue() => graphics.SaveIfDue();
+        internal int AdaptiveWorldTier => graphics.WorldTier;
         internal void UpdateAdaptiveResolution(bool inGameplay) => graphics.UpdateAdaptiveResolution(inGameplay);
         internal void FlushGraphics() => graphics.Flush();
         internal void SetWorldHour(float? hour, HarborWeather.Conditions weather) => graphics.SetWorldHour(hour, weather);
@@ -500,7 +501,7 @@ namespace CostaLivre
                 ? L("Preset   /   Custom settings", "Predefinição   /   Personalizada")
                 : L("Preset", "Predefinição"), label, Grey);
             if (MenuButton(new Rect(x, y + 25, 150, 34), L("Super Low (Potato)", "Super baixa (Batata)"),
-                    graphics.Preset == 0 && !graphics.IsCustom))
+                    graphics.Preset == 0 && !graphics.IsCustom && !graphics.Extreme))
                 SetGraphicsPreset(0);
             for (int i = 1; i <= HarborGraphics.MaxPreset; i++)
             {
@@ -568,8 +569,21 @@ namespace CostaLivre
             if (MenuButton(new Rect(inset + 147, y + 252, 115, 32), adaptive, graphics.AdaptiveResolution, true))
                 graphics.ToggleAdaptiveResolution();
             GUI.enabled = enabled;
-            if (compatible && graphics.FsrEnabled && percent == 100 && !graphics.AdaptiveResolution)
-                Text(new Rect(options, y + 252, 270, 22), L("FSR scales up below 100%.", "O FSR atua abaixo de 100%."), label, Grey);
+            if (MenuButton(new Rect(options,y+252,157,32),L("EXTREME POTATO","BATATA EXTREMO"),graphics.Extreme,true))
+            {
+                graphics.SetExtreme();
+                frameCap=60; vsync=false;
+                ApplyFrameSettings();
+            }
+            if (MenuButton(new Rect(inset,y+289,124,29),L("Lock scale","Travar escala"),graphics.ScaleLocked,true))
+                graphics.ToggleScaleLock();
+            if (MenuButton(new Rect(inset+135,y+289,135,29),L("Lock world","Travar mundo"),graphics.WorldLocked,true))
+                graphics.ToggleWorldLock();
+            Text(new Rect(options,y+291,271,26),$"{graphics.MeanFrame:0.0} ms · P95 {graphics.Frame95:0.0} · 1% {graphics.LowOne:0} FPS",label,Grey);
+            Text(new Rect(options,y+312,275,21),$"{graphics.AdaptiveStatus} · {graphics.AllocatedMiB:0} MiB · GC {graphics.ManagedCollections}",label,Grey);
+            string cpu = graphics.CpuMs > 0 ? $"{graphics.CpuMs:0.0} ms" : "—";
+            string gpu = graphics.GpuMs > 0 ? $"{graphics.GpuMs:0.0} ms" : "—";
+            Text(new Rect(inset,y+319,260,22),$"CPU {cpu}  ·  GPU {gpu}",label,Grey);
         }
 
         private void SetGraphicsPreset(int preset)
@@ -618,7 +632,11 @@ namespace CostaLivre
                 frameCap = 60;
                 ApplyFrameSettings();
             }
-            if (!Application.isMobilePlatform && MenuButton(new Rect(x + 237, frame, 100, 34), "VSync", vsync))
+            if (MenuButton(new Rect(x+237,frame,56,34),"90",frameCap==90,true))
+            { frameCap=90; ApplyFrameSettings(); }
+            if (MenuButton(new Rect(x+299,frame,56,34),"120",frameCap==120,true))
+            { frameCap=120; ApplyFrameSettings(); }
+            if (!Application.isMobilePlatform && MenuButton(new Rect(x + 361, frame, 86, 34), "VSync", vsync))
             {
                 vsync = !vsync;
                 ApplyFrameSettings();

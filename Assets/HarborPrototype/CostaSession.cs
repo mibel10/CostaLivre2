@@ -236,6 +236,7 @@ namespace CostaLivre
         private int lastHarm;
         private int lastPressure;
         private const float RobberyDuration = 8f;
+        private const float PreparationTime = 5f;
         private readonly Peer[] robbers = new Peer[CostaRobberies.Sites.Length];
         private readonly float[] robberyEnds = new float[CostaRobberies.Sites.Length];
         private readonly float[] restock = new float[CostaRobberies.Sites.Length];
@@ -823,7 +824,7 @@ namespace CostaLivre
             for (int i = 0; i < world.sites.Length; i++)
                 {
                 world.sites[i] = now >= restock[i];
-                world.alarms[i] = robbers[i] != null;
+                world.alarms[i] = RobberyAlarm(i, now);
                 world.crewSlots[i] = robbers[i] == null ? 0
                     : (crews[i].Lookout == null ? 1 : 0) | (crews[i].Driver == null ? 2 : 0);
             }
@@ -1009,15 +1010,17 @@ namespace CostaLivre
                 return;
             }
             robbers[site] = peer;
-            crews[site] = new Crew { Collector = peer };
-            robberyEnds[site] = now + (Vulnerable(site) ? 4.5f : RobberyDuration);
-            SetNotice(peer, 13);
+            crews[site] = new Crew { Collector = peer, AlarmAt = now + PreparationTime };
+            robberyEnds[site] = now + PreparationTime + (Vulnerable(site) ? 4.5f : RobberyDuration);
+            SetNotice(peer, 22);
         }
 
         private static bool CanCollect(Peer peer, int site, float now) =>
             !peer.Pose.police && peer.Pose.playing && peer.Pose.vehicle < 0
             && peer.Pose.rollPose < 0 && now >= peer.HeldUntil && now >= peer.DoorUntil
             && Near(peer.Pose.pos, CostaRobberies.Sites[site].Point, 2.55f);
+
+        private bool RobberyAlarm(int site, float now) => robbers[site] != null && now >= crews[site].AlarmAt;
 
         private void TickRobberies(float now)
         {
@@ -1039,6 +1042,13 @@ namespace CostaLivre
                     crew.Lookout = null;
                 if (!CrewAvailable(crew.Driver, now))
                     crew.Driver = null;
+                if (now < crew.AlarmAt)
+                    continue;
+                if (!crew.AlarmSent)
+                {
+                    crew.AlarmSent = true;
+                    SetNotice(collector, 13);
+                }
                 float assist = LookoutInPlace(crew, i, now) ? 2 : 0;
                 if (now < robberyEnds[i] - assist)
                     continue;
@@ -1689,6 +1699,7 @@ namespace CostaLivre
                 case 19: return L("Driver assigned. Wait at the marked point.", "Você é motorista. Aguarde no ponto marcado.");
                 case 20: return L("Loot handed to getaway driver.", "Saque entregue ao motorista.");
                 case 21: return L("Crew sale complete. Bonus paid.", "Venda da equipe concluída. Bônus recebido.");
+                case 22: return L("Preparing the robbery. Stay near the display.", "Preparando o roubo. Fique perto da vitrine.");
                 default: return "";
             }
         }

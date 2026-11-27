@@ -2286,7 +2286,7 @@ namespace CostaLivre
                     1 => L("Stranded vehicle ahead", "Veículo avariado à frente"),
                     _ => L("Street delivery in progress", "Entrega em andamento na via")
                 };
-            hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? session.CrewTask?.remaining ?? -1 : jobs.Remaining,
+            hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? session.ActivityTime : jobs.Remaining,
                 session.Online ? session.Local.wantedLevel : wantedLevel, notice, prompt, stamina / FullStamina,
                 session.Online ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat) : arrestProgress,
                 car != null ? car.Speed : -1, session.Online ? session.Local.health : encounter.Active ? encounter.Health : -1,
@@ -2360,6 +2360,8 @@ namespace CostaLivre
                     return L("This location is restocking", "Local repondo os itens");
                 if (!CurrentBag.CanLoot(robbery))
                     return L("Not enough room in the backpack", "Mochila sem espaço para o saque");
+                if (session.Online && session.CrewTask is { preparing: true } order && order.site == robbery)
+                    return L("Robbery preparation", "Preparação do roubo");
                 if (session.Online && session.Alarms?[robbery] == true)
                     return L("Robbery in progress", "Roubo em andamento");
                 if (session.Online)

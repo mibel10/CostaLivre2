@@ -31,7 +31,7 @@ namespace CostaLivre
 
         private void TickOpportunity(float now)
         {
-            if (opportunity != null && now >= opportunityEnds)
+            if (opportunity != null && (now >= opportunityEnds || opportunity.falseAlarm && RobberyAlarm(opportunity.site, now)))
                 EndOpportunity(now);
             if (opportunity == null && CountPlayers() > 0)
             {
@@ -82,6 +82,7 @@ namespace CostaLivre
         {
             public int site;
             public int role;
+            public bool preparing;
             public bool getaway;
             public bool handoff;
             public float remaining;
@@ -94,6 +95,8 @@ namespace CostaLivre
             internal Peer Driver;
             internal Peer Carrier;
             internal float Ends;
+            internal float AlarmAt;
+            internal bool AlarmSent;
         }
 
         private readonly Crew[] crews = new Crew[CostaRobberies.Sites.Length];
@@ -123,11 +126,13 @@ namespace CostaLivre
                 return null;
             Crew crew = crews[site];
             bool getaway = crew.Carrier != null;
+            bool preparing = !getaway && now < crew.AlarmAt;
             return new CrewOrder
             {
-                site = site, role = CrewRole(crew, peer), getaway = getaway,
+                site = site, role = CrewRole(crew, peer), getaway = getaway, preparing = preparing,
                 handoff = getaway && crew.Driver != null && crew.Carrier == crew.Collector,
-                remaining = Mathf.Max(0, (getaway ? crew.Ends : robberyEnds[site] - (LookoutInPlace(crew, site, now) ? 2 : 0)) - now)
+                remaining = Mathf.Max(0, (getaway ? crew.Ends : preparing ? crew.AlarmAt
+                    : robberyEnds[site] - (LookoutInPlace(crew, site, now) ? 2 : 0)) - now)
             };
         }
 
@@ -273,7 +278,9 @@ namespace CostaLivre
             {
                 point = task.role == 1 ? CostaRobberies.Sites[task.site].Point
                     : task.role == 2 ? Entrance(task.site) : DriverSpot(task.site);
-                title = task.role == 1 ? L("Collector: stay at the display", "Coletor: fique na vitrine")
+                title = task.role == 1 ? (task.preparing
+                    ? L("Collector: preparing the robbery", "Coletor: preparando o roubo")
+                    : L("Collector: stay at the display", "Coletor: fique na vitrine"))
                     : task.role == 2 ? L("Lookout: cover the entrance", "Vigia: cubra a entrada")
                     : L("Driver: keep the vehicle in position", "Motorista: mantenha o veículo no ponto");
             }
@@ -294,6 +301,10 @@ namespace CostaLivre
             return true;
         }
 
+        internal float ActivityTime => CrewTask?.remaining
+            ?? (Opportunity != null && (Local.police
+                ? Opportunity.falseAlarm && Evidence == 0 && (Alarms == null || Array.IndexOf(Alarms, true) < 0)
+                : !Opportunity.falseAlarm && Bag.Count == 0) ? Opportunity.remaining : -1);
         private Dispatch dispatch;
         private float dispatchEnds;
         private float nextDispatch;
@@ -411,8 +422,9 @@ namespace CostaLivre
                     continue;
                 playing++;
                 humanOfficer |= peer.Pose.police;
+                int activeSite = Array.IndexOf(robbers, peer);
                 if (!peer.Pose.police && peer.Pose.vehicle < 0 && now >= peer.HeldUntil
-                    && (peer.Pose.wantedLevel > 0 || Array.IndexOf(robbers, peer) >= 0)
+                    && (peer.Pose.wantedLevel > 0 || activeSite >= 0 && RobberyAlarm(activeSite, now))
                     && (suspect == null || peer.Pose.wantedLevel > suspect.Pose.wantedLevel))
                     suspect = peer;
             }
@@ -489,7 +501,7 @@ namespace CostaLivre
                 Vector3 direction = Quaternion.Euler(0, angle + offset, 0) * Vector3.forward;
                 Vector3 next = avatar.pos + direction * travel;
                 if (!Supported(next) || Physics.SphereCast(avatar.pos + Vector3.up * .86f, .34f,
-                    direction, Mathf.Max(travel, .6f), Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    direction, out _, Mathf.Max(travel, .6f), Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                     continue;
                 avatar.pos = next;
                 avatar.yaw = angle + offset;

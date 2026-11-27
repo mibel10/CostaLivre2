@@ -60,12 +60,17 @@ namespace CostaLivre
         {
             if (!recipient.CanLoot(site))
                 return false;
-            int first = SiteContents[site][0];
-            int last = SiteContents[site][^1];
-            int total = SiteContents[site].Length;
-            if (Amounts[first] < 1 || Amounts[last] < total - 1)
-                return false;
-            foreach (int item in SiteContents[site])
+            int[] contents = SiteContents[site];
+            for (int i = 0; i < contents.Length; i++)
+            {
+                int required = 1;
+                for (int j = 0; j < i; j++)
+                    if (contents[j] == contents[i])
+                        required++;
+                if (Amounts[contents[i]] < required)
+                    return false;
+            }
+            foreach (int item in contents)
                 Sell(item);
             return recipient.AddLoot(site);
         }

@@ -319,9 +319,9 @@ namespace CostaLivre
             DrawLegend(lx, ly + 201, ColorFor(Kind.Vendor), L("Loot exchange", "Posto de venda"));
             DrawLegend(lx, ly + 223, AlarmColor, L("Robbery in progress", "Roubo em andamento"));
             if (Waypoint.HasValue)
-                Label(new Rect(lx, ly + 238, legend.width - 30, 23), WaypointTitle, small, Route);
+                Label(new Rect(lx, ly + 248, legend.width - 30, 23), WaypointTitle, small, Route);
             else
-                Label(new Rect(lx, ly + 238, legend.width - 30, 23), L("Click to set a waypoint", "Clique para marcar"), small, Muted);
+                Label(new Rect(lx, ly + 248, legend.width - 30, 23), L("Click to set a waypoint", "Clique para marcar"), small, Muted);
             if (Button(new Rect(lx, legend.yMax - 94, 41, 31), "−", false))
                 zoom = Mathf.Max(0.90f, zoom / 1.25f);
             if (Button(new Rect(lx + 48, legend.yMax - 94, 41, 31), "+", false))

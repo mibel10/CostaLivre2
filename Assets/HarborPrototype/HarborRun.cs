@@ -678,7 +678,7 @@ namespace CostaLivre
             pose.moving = !inMenu && overlay == FieldOverlay.None && walking;
             pose.running = !inMenu && overlay == FieldOverlay.None && runningPose;
             pose.bikeLean = car != null ? car.RiderLean : 0;
-            pose.held = car != null ? Mathf.RoundToInt(car.SignedSpeed * 10f) : 0;
+            pose.held = car != null ? CostaVehicle.EncodeSpeed(car.SignedSpeed) : 0;
             return pose;
         }
 

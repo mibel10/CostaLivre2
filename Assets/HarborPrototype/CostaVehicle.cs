@@ -312,6 +312,8 @@ namespace CostaLivre
         internal float Acceleration => engine * CostaBuildTuning.Engine(appliedBuild);
         internal float ReverseSpeed => IsBike ? 3f : 7f;
         internal float MaximumTurnRate => 92f * steeringStrength;
+        internal static int EncodeSpeed(float speed) => Mathf.RoundToInt(speed * 10f);
+        internal static float DecodeSpeed(int speed) => speed / 10f;
 
         internal bool TryExit(Vector3 position, Quaternion rotation, int side, out Vector3 exit)
         {

@@ -1281,6 +1281,7 @@ namespace CostaLivre
             Vector3 movement = pose.pos - avatar.pos;
             float distance = movement.magnitude;
             bool moving = distance > 0.002f;
+            float acceptedSpeed = 0;
             if (avatar.vehicle < 0)
             {
                 float planar = new Vector2(movement.x, movement.z).magnitude;
@@ -1347,21 +1348,23 @@ namespace CostaLivre
             {
                 Vehicle car = hostCars[avatar.vehicle];
                 CostaVehicle rules = sceneVehicles[avatar.vehicle];
-                float speed = pose.held / 10f;
+                float speed = CostaVehicle.DecodeSpeed(pose.held);
                 float acceleration = Mathf.Sign(speed) != Mathf.Sign(car.speed) ? rules.BrakePower
                     : rules.Acceleration;
                 float speedLimit = Mathf.Min(rules.TopSpeed, Mathf.Abs(car.speed) + acceleration * elapsed + 0.45f);
                 float turn = Mathf.Abs(Mathf.DeltaAngle(car.yaw, pose.yaw));
                 float travel = Mathf.Max(Mathf.Abs(car.speed), Mathf.Abs(speed)) * elapsed;
                 float slack = Mathf.Min(0.65f, peer.TravelSlack + travel - distance);
-                if (Mathf.Abs(pose.pos.y) > 0.03f || speed < -rules.ReverseSpeed - 0.05f
-                    || Mathf.Abs(speed) > speedLimit || turn > rules.MaximumTurnRate * elapsed + 3f
+                int encodedLimit = CostaVehicle.EncodeSpeed(speedLimit);
+                if (Mathf.Abs(pose.pos.y) > 0.03f || pose.held < -CostaVehicle.EncodeSpeed(rules.ReverseSpeed)
+                    || pose.held < -encodedLimit || pose.held > encodedLimit || turn > rules.MaximumTurnRate * elapsed + 3f
                     || slack < 0 || (moving || turn > 0.02f) && !rules.ValidNetworkTravel(car.pos, car.yaw, pose.pos, pose.yaw, car.speed, speed))
                 {
                     CorrectPose(peer, now);
                     return false;
                 }
                 peer.TravelSlack = slack;
+                acceptedSpeed = Mathf.Clamp(speed, -rules.ReverseSpeed, rules.TopSpeed);
                 avatar.running = avatar.standing = false;
             }
 
@@ -1377,9 +1380,8 @@ namespace CostaLivre
             if (avatar.vehicle >= 0)
             {
                 Vehicle car = hostCars[avatar.vehicle];
-                float proposed = pose.held / 10f;
                 float oldSpeed = car.speed;
-                if (Mathf.Abs(oldSpeed) > 5 && Mathf.Abs(proposed) < 1.15f)
+                if (Mathf.Abs(oldSpeed) > 5 && Mathf.Abs(acceptedSpeed) < 1.15f)
                 {
                     Quaternion facing = Quaternion.Euler(0, pose.yaw, 0);
                     float reach = .28f + Mathf.Min(elapsed * Mathf.Abs(oldSpeed), .65f);
@@ -1391,7 +1393,7 @@ namespace CostaLivre
                 car.yaw = avatar.yaw;
                 if (sceneVehicles[avatar.vehicle].SetAuthoritativePose(car.pos, car.yaw))
                     Physics.SyncTransforms();
-                car.speed = pose.held / 10f;
+                car.speed = acceptedSpeed;
                 car.lean = sceneVehicles[avatar.vehicle].IsBike && Finite(pose.bikeLean)
                     ? Mathf.Clamp(pose.bikeLean, -24, 24) : 0;
             }

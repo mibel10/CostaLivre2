@@ -2194,7 +2194,16 @@ namespace CostaLivre
             }
 
             if (cityMap != null)
+            {
                 cityMap.Alarms = session?.Alarms;
+                if (session != null && session.TryMapOpportunity(out Vector3 point, out string title))
+                {
+                    cityMap.EventPoint = point;
+                    cityMap.EventTitle = title;
+                }
+                else
+                    cityMap.EventPoint = null;
+            }
             DrawInterface();
             if (!inMenu && overlay == FieldOverlay.None)
                 transitions.Draw();

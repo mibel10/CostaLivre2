@@ -29,6 +29,18 @@ namespace CostaLivre
         private bool nextFalseAlarm = true;
         internal CityOpportunity Opportunity { get; private set; }
 
+        internal bool TryMapOpportunity(out Vector3 point, out string title)
+        {
+            point = default;
+            title = "";
+            if (!Online || Opportunity == null || Local.police != Opportunity.falseAlarm)
+                return false;
+            point = Entrance(Opportunity.site);
+            title = Opportunity.falseAlarm ? L("Alarm report", "Alarme reportado")
+                : L("Vulnerable store", "Loja vulnerável");
+            return true;
+        }
+
         private void TickOpportunity(float now)
         {
             if (opportunity != null && (now >= opportunityEnds || opportunity.falseAlarm && RobberyAlarm(opportunity.site, now)))
@@ -511,7 +523,7 @@ namespace CostaLivre
             }
         }
 
-        private void ResetDispatch()
+        private void ResetActivities()
         {
             dispatch = PoliceDispatch = null;
             patrol = null;

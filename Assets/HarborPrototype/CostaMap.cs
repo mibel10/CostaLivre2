@@ -150,6 +150,9 @@ namespace CostaLivre
         }
 
         internal bool[] Alarms { get; set; }
+        internal Vector3? EventPoint { get; set; }
+        internal string EventTitle { get; set; }
+        private static readonly Color EventColor = new(.80f, .55f, 1f);
         private static readonly Color AlarmColor = new(1f, .28f, .22f);
 
         internal void DrawMini(Rect rect, Vector3 player, float heading, Vector3? objective)
@@ -193,6 +196,11 @@ namespace CostaLivre
                 Color color = Waypoint.HasValue ? Route : Accent;
                 PinDot(destination, color, 8);
                 DrawAltitude(destination, target.y - player.y, color);
+            }
+            if (EventPoint is Vector3 eventPoint)
+            {
+                Vector2 mark = Rotated(projection.Point(eventPoint), center, sine, cosine);
+                PinDot(Constrain(mark, size, 10), EventColor, 10);
             }
             for (int i = 0; Alarms != null && i < Mathf.Min(Alarms.Length, CostaRobberies.Sites.Length); i++)
             {
@@ -292,6 +300,15 @@ namespace CostaLivre
                 PinDot(center, ColorFor(pin.Type), selected == i || hit.Contains(input.mousePosition) ? 11 : 8);
                 if (i >= Points.Length - CostaCity.Districts.Length || zoom > 4.7f || hit.Contains(input.mousePosition) || selected == i)
                     Label(new Rect(center.x + 8, center.y - 8, 168, 16), pin.Title, markerText, Text);
+            }
+            if (EventPoint is Vector3 eventPoint)
+            {
+                Vector2 mark = projection.Point(eventPoint);
+                if (Inside(mark, size, 9))
+                {
+                    PinDot(mark, EventColor, 10);
+                    Label(new Rect(mark.x + 9, mark.y - 20, 180, 16), EventTitle, markerText, EventColor);
+                }
             }
             for (int i = 0; Alarms != null && i < Mathf.Min(Alarms.Length, CostaRobberies.Sites.Length); i++)
             {

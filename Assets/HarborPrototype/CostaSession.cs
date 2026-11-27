@@ -520,6 +520,11 @@ namespace CostaLivre
                         || avatar.doorCar < -1 || avatar.doorCar >= sceneVehicles.Length
                         || avatar.wantedLevel < 0 || avatar.wantedLevel > MaxWanted)
                     || Array.Exists(frame.vehicles, vehicle => vehicle == null)
+                    || frame.sites?.Length != restock.Length || frame.alarms?.Length != restock.Length
+                    || frame.crewSlots?.Length != restock.Length
+                    || frame.dispatch?.active == true && (frame.dispatch.site < 0 || frame.dispatch.site >= restock.Length)
+                    || frame.opportunity?.active == true && (frame.opportunity.site < 0 || frame.opportunity.site >= restock.Length)
+                    || frame.crew?.role > 0 && (frame.crew.role > 3 || frame.crew.site < 0 || frame.crew.site >= restock.Length)
                     || frame.loaded?.Length != HarborArsenal.WeaponNames.Length
                     || frame.reloading?.Length != HarborArsenal.WeaponNames.Length)
                 {
@@ -1851,7 +1856,7 @@ namespace CostaLivre
             Array.Clear(restock, 0, restock.Length);
             Array.Clear(robbers, 0, robbers.Length);
             Alarms = null;
-            ResetDispatch();
+            ResetActivities();
             scenery?.Reset();
             traffic?.Reset();
             trafficTarget = null;

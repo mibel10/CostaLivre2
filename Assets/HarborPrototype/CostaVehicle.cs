@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace CostaLivre
 {
-    internal sealed class CostaVehicle
+    internal sealed partial class CostaVehicle
     {
         internal enum Style { Sedan, Compact, Executive, Super, Track, StreetBike, Cruiser }
 
@@ -48,7 +48,7 @@ namespace CostaLivre
         internal float RiderLean => Mathf.DeltaAngle(0, shell.localEulerAngles.z);
 
         internal CostaVehicle(HarborBlockout art, Transform parent, Vector3 position, float yaw, Color paint,
-            bool service = false, Style style = Style.Sedan, bool traffic = false)
+            bool service = false, Style style = Style.Sedan, bool traffic = false, bool preview = false)
         {
             this.style = style;
             Root = new GameObject(service ? "Police cruiser" : style.ToString()).transform;
@@ -101,6 +101,7 @@ namespace CostaLivre
             frontRest = frontPanel.localPosition;
             rearRest = rearPanel.localPosition;
             Renderer[] renderers = shell.GetComponentsInChildren<Renderer>();
+            SetupCustomization(art,!service && !traffic,paint,renderers);
             runningLights = System.Array.FindAll(renderers, renderer => renderer.name is "Headlight" or "Headlamp" or "Tail light" or "Tail lamp");
             foreach (Renderer renderer in runningLights)
                 renderer.sharedMaterial = art.RunningLightMaterial(renderer.sharedMaterial);
@@ -108,10 +109,10 @@ namespace CostaLivre
             var collision = new GameObject("Vehicle collision").transform;
             collision.SetParent(Root, false);
             body = collision.gameObject.AddComponent<BoxCollider>();
-            art.Damage.Mark(collision.gameObject, CostaWorldDamage.Surface.Metal, 0);
+            if (!preview) art.Damage.Mark(collision.gameObject, CostaWorldDamage.Surface.Metal, 0);
             body.center = Vector3.up * (collisionSize.y / 2 + 0.01f);
             body.size = collisionSize;
-            if (!traffic)
+            if (!traffic && !preview)
             {
                 var obstacle = Root.gameObject.AddComponent<UnityEngine.AI.NavMeshObstacle>();
                 obstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
@@ -120,6 +121,7 @@ namespace CostaLivre
                 obstacle.carving = true;
             }
             Reset();
+            if (preview) body.enabled = false;
         }
 
         private void BuildCar(HarborBlockout art, Color paint, bool service)
@@ -306,8 +308,8 @@ namespace CostaLivre
 
         internal void StopForBoarding() => speed = 0;
 
-        internal float TopSpeed => topSpeed;
-        internal float Acceleration => engine;
+        internal float TopSpeed => topSpeed * CostaBuildTuning.Gearbox(appliedBuild);
+        internal float Acceleration => engine * CostaBuildTuning.Engine(appliedBuild);
         internal float ReverseSpeed => IsBike ? 3f : 7f;
         internal float MaximumTurnRate => 92f * steeringStrength;
 
@@ -453,20 +455,20 @@ namespace CostaLivre
             if (dt <= 0)
                 return false;
             float before = speed;
-            float target = braking ? 0 : input.y >= 0 ? topSpeed * input.y : ReverseSpeed * input.y;
-            float acceleration = braking || Mathf.Sign(target) != Mathf.Sign(speed) ? BrakeAcceleration * Grip
-                : Mathf.Abs(input.y) > 0.03f ? engine * Mathf.Lerp(.64f, 1, Grip) : 4.4f;
+            float target = braking ? 0 : input.y >= 0 ? TopSpeed * input.y : ReverseSpeed * input.y;
+            float acceleration = braking || Mathf.Sign(target) != Mathf.Sign(speed) ? BrakePower * TireGrip
+                : Mathf.Abs(input.y) > 0.03f ? Acceleration * Mathf.Lerp(.64f, 1, TireGrip) : 4.4f;
             speed = Mathf.MoveTowards(speed, target, acceleration * dt);
             float y = Root.eulerAngles.y;
-            float steer = input.x * Mathf.Sign(speed) * Mathf.Lerp(92, 48, Speed / topSpeed) * steeringStrength;
+            float steer = input.x * Mathf.Sign(speed) * Mathf.Lerp(92, 48, Speed / TopSpeed) * steeringStrength;
             float cornerLoad = Mathf.Abs(steer) * Speed * Mathf.Deg2Rad;
-            float available = Mathf.Lerp(3.1f, IsBike ? 10.5f : 8.2f, Grip) * (braking ? .69f : 1);
+            float available = Mathf.Lerp(3.1f, IsBike ? 10.5f : 8.2f, TireGrip) * (braking ? .69f : 1);
             float excess = Mathf.Clamp01((cornerLoad - available) / 10f);
             float slipLimit = IsBike ? 8 : 13;
             float targetSlip = -Mathf.Sign(steer) * excess * slipLimit;
             if (Speed < 3)
                 targetSlip = 0;
-            slip = Mathf.Lerp(slip, targetSlip, 1 - Mathf.Exp(-dt * Mathf.Lerp(3.5f, 11f, Grip)));
+            slip = Mathf.Lerp(slip, targetSlip, 1 - Mathf.Exp(-dt * Mathf.Lerp(3.5f, 11f, TireGrip)));
             steer *= 1 - .26f * excess;
             if (Speed < .04f)
             {
@@ -543,7 +545,7 @@ namespace CostaLivre
                 float target = groundHeights[i] + load;
                 for (int j = 0; j < slices; j++)
                 {
-                    springSpeed[i] += ((target - springTravel[i]) * 115f - springSpeed[i] * 15f) * step;
+                    springSpeed[i] += ((target - springTravel[i]) * (115f * CostaBuildTuning.Spring(appliedBuild)) - springSpeed[i] * 15f) * step;
                     springTravel[i] += springSpeed[i] * step;
                 }
                 wheels[i].localPosition = rest + Vector3.up * springTravel[i] * .72f;

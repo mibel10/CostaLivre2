@@ -312,6 +312,7 @@ namespace CostaLivre
             city.UpdateHouseDoors(jobs, false, snap: true);
             robberies = new CostaRobberies(harbor);
             cityMap = new CostaMap(city.Footprints);
+            cityMap.Prepare();
             gunShop = new CostaGunShop();
             hud = new HarborHud(cityMap);
             bagPanel = new CostaBagPanel(harbor, transform);
@@ -603,6 +604,7 @@ namespace CostaLivre
             urbanAudio?.Release();
             effects?.Release();
             bagPanel?.Release();
+            cityMap?.Release();
             encounter?.Dispose();
             atmosphere?.Release();
             venues?.Release();

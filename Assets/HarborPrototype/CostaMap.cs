@@ -86,6 +86,7 @@ namespace CostaLivre
         };
 
         private readonly IReadOnlyList<Rect> buildings;
+        private Texture2D mapBase;
         private Vector2 mapCenter = Overview;
         private float zoom = 1f;
         private float miniHeading;
@@ -104,6 +105,42 @@ namespace CostaLivre
         {
             this.buildings = buildings;
         }
+
+        private static readonly Rect MapBounds = Rect.MinMaxRect(-154, -68, 80, CostaCity.HighwayEnd + 4);
+
+        internal void Prepare()
+        {
+            const int width = 512, height = 1536;
+            var pixels = new Color32[width * height];
+            System.Array.Fill(pixels, (Color32)Water);
+            DrawMapGeometry((area, color) =>
+            {
+                int x0 = Mathf.Clamp(Mathf.RoundToInt((area.xMin - MapBounds.xMin) / MapBounds.width * width), 0, width);
+                int x1 = Mathf.Clamp(Mathf.RoundToInt((area.xMax - MapBounds.xMin) / MapBounds.width * width), 0, width);
+                int y0 = Mathf.Clamp(Mathf.RoundToInt((area.yMin - MapBounds.yMin) / MapBounds.height * height), 0, height);
+                int y1 = Mathf.Clamp(Mathf.RoundToInt((area.yMax - MapBounds.yMin) / MapBounds.height * height), 0, height);
+                if (x0 == x1 || y0 == y1)
+                    return;
+                Color32 paint = color;
+                for (int y = y0; y < y1; y++)
+                {
+                    int index = y * width + x0;
+                    if (paint.a == 255)
+                        System.Array.Fill(pixels, paint, index, x1 - x0);
+                    else
+                        for (int x = x0; x < x1; x++, index++)
+                            pixels[index] = Color32.Lerp(pixels[index], new Color32(paint.r, paint.g, paint.b, 255), color.a);
+                }
+            });
+            mapBase = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            {
+                name = "Costa Livre minimap geometry", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear
+            };
+            mapBase.SetPixels32(pixels);
+            mapBase.Apply(false, true);
+        }
+
+        internal void Release() => Object.Destroy(mapBase);
 
         internal void CheckWaypoint(Vector3 position)
         {
@@ -128,16 +165,19 @@ namespace CostaLivre
             var projection = new Projection(new Vector2(player.x, player.z), size, Mathf.Min(size.x, size.y) / 82f);
             Matrix4x4 before = GUI.matrix;
             GUIUtility.RotateAroundPivot(-miniHeading, center);
-            DrawBase(size, projection, expanded: true);
+            Fill(new Rect(-size.x, -size.y, size.x * 3, size.y * 3), Water);
+            GUI.DrawTexture(projection.Area(MapBounds), mapBase);
             Vector3? goal = Waypoint ?? objective;
             if (goal is Vector3 location)
                 DrawRoute(player, location, projection, Waypoint.HasValue ? Route : Accent);
             GUI.matrix = before;
 
+            float angle = -miniHeading * Mathf.Deg2Rad;
+            float sine = Mathf.Sin(angle), cosine = Mathf.Cos(angle);
             for (int i = 0; i < Points.Length; i++)
             {
                 Pin pin = Points[i];
-                Vector2 point = Rotated(projection.Point(pin.Position), center, -miniHeading);
+                Vector2 point = Rotated(projection.Point(pin.Position), center, sine, cosine);
                 if (Inside(point, size, 7))
                 {
                     PinDot(point, ColorFor(pin.Type), pin.Type == Kind.Shop ? 7 : 5);
@@ -146,21 +186,19 @@ namespace CostaLivre
             }
             if (goal is Vector3 target)
             {
-                Vector2 destination = Constrain(Rotated(projection.Point(target), center, -miniHeading), size, 9);
+                Vector2 destination = Constrain(Rotated(projection.Point(target), center, sine, cosine), size, 9);
                 Color color = Waypoint.HasValue ? Route : Accent;
                 PinDot(destination, color, 8);
                 DrawAltitude(destination, target.y - player.y, color);
             }
-            Vector2 north = Constrain(Rotated(center + Vector2.up * -size.y, center, -miniHeading), size, 9);
+            Vector2 north = Constrain(Rotated(center + Vector2.up * -size.y, center, sine, cosine), size, 9);
             Label(new Rect(north.x - 5, north.y - 8, 14, 16), "N", markerText, Text);
             PlayerArrow(center, 0);
             GUI.EndGroup();
         }
 
-        private static Vector2 Rotated(Vector2 p, Vector2 center, float degrees)
+        private static Vector2 Rotated(Vector2 p, Vector2 center, float s, float c)
         {
-            float angle = degrees * Mathf.Deg2Rad;
-            float s = Mathf.Sin(angle), c = Mathf.Cos(angle);
             Vector2 d = p - center;
             return center + new Vector2(d.x * c - d.y * s, d.x * s + d.y * c);
         }
@@ -281,46 +319,42 @@ namespace CostaLivre
                 && position.x <= (position.z >= 22 ? 78 : 25));
         }
 
-        private void DrawBase(Vector2 size, Projection p, bool expanded = false)
+        private void DrawBase(Vector2 size, Projection p)
         {
             if (Event.current.type != EventType.Repaint)
                 return;
-            var viewport = expanded ? new Rect(-size.x, -size.y, size.x * 3, size.y * 3) : new Rect(Vector2.zero, size);
-            Fill(viewport, Water);
-            Fill(p.Area(new Rect(-152, 22, 230, 146)), Land);
-            Fill(p.Area(new Rect(-152, -64, 177, 86)), Land);
-            Fill(p.Area(new Rect(26, 97, 40, 47)), new Color(0.21f, 0.28f, 0.24f));
+            Fill(new Rect(Vector2.zero, size), Water);
+            GUI.DrawTexture(p.Area(MapBounds), mapBase);
+        }
+
+        private void DrawMapGeometry(System.Action<Rect, Color> paint)
+        {
+            paint(new Rect(-152, 22, 230, 146), Land);
+            paint(new Rect(-152, -64, 177, 86), Land);
+            paint(new Rect(26, 97, 40, 47), new Color(0.21f, 0.28f, 0.24f));
             for (int x = -150; x <= 70; x += 20)
-                Fill(p.Area(new Rect(x, 22, 0.28f, 146)), Grid);
+                paint(new Rect(x, 22, 0.46f, 146), Grid);
             for (int z = -60; z < 168; z += 20)
-                Fill(p.Area(new Rect(-151, z, z < 22 ? 176 : 228, 0.28f)), Grid);
+                paint(new Rect(-151, z, z < 22 ? 176 : 228, 0.55f), Grid);
 
             foreach (float x in CostaCity.Avenues)
-                Fill(p.Area(new Rect(x - 2.65f, 21, 5.3f, 145)), Street);
+                paint(new Rect(x - 2.65f, 21, 5.3f, 145), Street);
             foreach (float z in CostaCity.CrossStreets)
-                Fill(p.Area(new Rect(-151, z - 2.35f, 228, 4.7f)), Street);
-            Fill(p.Area(new Rect(-1.55f, -21, 3.1f, 45)), Street);
-            Fill(p.Area(new Rect(-28, -1.55f, 51, 3.1f)), Street);
+                paint(new Rect(-151, z - 2.35f, 228, 4.7f), Street);
+            paint(new Rect(-1.55f, -21, 3.1f, 45), Street);
+            paint(new Rect(-28, -1.55f, 51, 3.1f), Street);
 
             foreach (CostaCity.District district in CostaCity.Districts)
             {
-                Fill(p.Area(district.Area), Land);
-                Fill(p.Area(new Rect(district.Area.xMin, district.Center - 4, district.Area.width, 8)), Street);
+                paint(district.Area, Land);
+                paint(new Rect(district.Area.xMin, district.Center - 4, district.Area.width, 8), Street);
             }
-            Fill(p.Area(CostaCity.HighwayArea), Street);
+            paint(CostaCity.HighwayArea, Street);
 
             foreach (Rect building in buildings)
-            {
-                Rect projected = p.Area(building);
-                if (viewport.Overlaps(projected))
-                    Fill(projected, Buildings);
-            }
+                paint(building, Buildings);
             foreach (Vector2 center in HarborBlockout.WarehouseCenters)
-            {
-                Rect projected = p.Area(new Rect(center.x - 5.25f, center.y - 4.25f, 10.5f, 8.5f));
-                if (viewport.Overlaps(projected))
-                    Fill(projected, Buildings);
-            }
+                paint(new Rect(center.x - 5.25f, center.y - 4.25f, 10.5f, 8.5f), Buildings);
         }
 
         private static Color ColorFor(Kind kind)

@@ -610,6 +610,7 @@ namespace CostaLivre
             if (inMenu || overlay != FieldOverlay.None)
                 Time.timeScale = 1;
             session?.Dispose();
+            jobs?.Ledger.FinishBank(wait:true);
             remotes?.Dispose();
             menu?.Release();
             loadingScreen?.Release();

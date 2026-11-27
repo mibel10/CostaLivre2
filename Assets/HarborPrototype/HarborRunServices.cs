@@ -127,17 +127,25 @@ namespace CostaLivre
         private void BankAction(CostaLedger.Operation op,int recipient = 0)
         {
             if (session.Online)
+            {
                 session.BankRequest(op,bankingAmount,recipient);
-            else
-                bankingMessage = jobs.Ledger.Apply(jobs.Account,op,bankingAmount)
-                    ? L("Transaction complete","Transação concluída") : L("Transaction declined","Transação recusada");
+                return;
+            }
+            if (jobs.Ledger.BankWritePending)
+                return;
+            bool accepted = jobs.Ledger.BeginBank(jobs.Account,op,bankingAmount,0,null,success =>
+                bankingMessage = success ? L("Transaction complete","Transação concluída")
+                    : L("Transaction declined","Transação recusada"));
+            bankingMessage = accepted ? L("Saving transaction…","Salvando transação…")
+                : L("Transaction declined","Transação recusada");
         }
 
         private float nextPropertyCheck;
         private void UpdatePropertyBilling()
         {
+            jobs.Ledger.FinishBank();
             float now = Time.unscaledTime;
-            if (now<nextPropertyCheck || session.Online) return;
+            if (now<nextPropertyCheck || session.Online || jobs.Ledger.BankWritePending) return;
             nextPropertyCheck=now+30;
             if(jobs.DailyPropertyCost>0 && jobs.Ledger.PropertyBilling(jobs.Account,jobs.DailyPropertyCost,CostaJobs.BankDay))
                 bankingMessage=L("Property fee paid","Taxa de imóvel paga");

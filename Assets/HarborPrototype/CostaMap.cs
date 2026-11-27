@@ -87,7 +87,17 @@ namespace CostaLivre
             new(CostaInteriorPlan.Garage.Entrance, Kind.Landmark, "Quay Garage", "Garagem do Cais"),
             new(new Vector3(CostaCity.HighwayX, 0, CostaCity.Districts[0].Center), Kind.Landmark, "Calado City", "Calado City"),
             new(new Vector3(CostaCity.HighwayX, 0, CostaCity.Districts[1].Center), Kind.Landmark, "Antutu City", "Antutu City"),
-            new(new Vector3(CostaCity.HighwayX, 0, CostaCity.Districts[2].Center), Kind.Landmark, "Vice City", "Vice City")
+            new(new Vector3(CostaCity.HighwayX, 0, CostaCity.Districts[2].Center), Kind.Landmark, "Vice City", "Vice City"),
+            new(new Vector3(-42f, 0f, 35.4f), Kind.Shop, "Santa Luz Market", "Empório Santa Luz"),
+            new(new Vector3(-69f, 0f, CostaCity.Districts[0].Center - 17.6f), Kind.Shop, "Calado Diner", "Restaurante Calado"),
+            new(new Vector3(31f, 0f, 102f), Kind.Landmark, "Iron & Sea Gym", "Academia Ferro & Mar"),
+            new(new Vector3(60f, 0f, 108f), Kind.Landmark, "Basketball Court", "Quadra de Basquete"),
+            new(new Vector3(24.2f, 0f, 16f), Kind.Landmark, "Quay Fishing", "Pesca no Cais"),
+            new(new Vector3(-20f, 0f, CostaCity.Districts[0].Center - 8.2f), Kind.Landmark, "Drift Trial", "Desafio de Drift"),
+            new(new Vector3(-42f, 0f, CostaCity.Districts[1].Center - 8.2f), Kind.Landmark, "Street Race", "Corrida de Rua"),
+            new(new Vector3(18f, 0f, CostaCity.Districts[1].Center + 13f), Kind.Shop, "Antutu Tuners", "Tunagem Antutu"),
+            new(new Vector3(14f, 0f, CostaCity.Districts[2].Center + 12f), Kind.Shop, "Neon Arcade", "Arcade Neon"),
+            new(new Vector3(-72f, 0f, CostaCity.Districts[2].Center - 14f), Kind.Landmark, "Vice Nights Club", "Boate Vice Nights")
         };
 
         private readonly IReadOnlyList<Rect> buildings;
@@ -157,6 +167,7 @@ namespace CostaLivre
         internal bool[] Alarms { get; set; }
         internal Vector3? EventPoint { get; set; }
         internal string EventTitle { get; set; }
+        internal Vector3? PoliceSearchCenter { get; set; }
         private static readonly Color EventColor = new(.80f, .55f, 1f);
         private static readonly Color AlarmColor = new(1f, .28f, .22f);
 
@@ -208,6 +219,11 @@ namespace CostaLivre
             {
                 Vector2 mark = Rotated(projection.Point(eventPoint), center, sine, cosine);
                 PinDot(Constrain(mark, size, 10), EventColor, 10);
+            }
+            if (PoliceSearchCenter is Vector3 searchCenter)
+            {
+                Vector2 searchPt = Rotated(projection.Point(searchCenter), center, sine, cosine);
+                PinDot(Constrain(searchPt, size, 10), new Color(0.28f, 0.56f, 0.98f, 0.45f), 22);
             }
             for (int i = 0; Alarms != null && i < Mathf.Min(Alarms.Length, CostaRobberies.Sites.Length); i++)
             {

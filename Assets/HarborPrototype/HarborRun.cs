@@ -45,6 +45,10 @@ namespace CostaLivre
         private HarborBlockout harbor;
         private CostaTraffic traffic;
         private CostaVenueLife venues;
+        private CostaWorldInteractive worldInteractive;
+        private CostaPoliceSystem policeSystem;
+        private CostaLivingWorld livingWorld;
+        private CostaMinigames minigames;
         private HarborWeather atmosphere;
         private CostaCity city;
         private CostaJobs jobs;
@@ -325,6 +329,53 @@ namespace CostaLivre
             traffic = new CostaTraffic(harbor, transform);
             yield return .71f;
             venues = new CostaVenueLife(harbor, transform);
+            minigames = new CostaMinigames();
+            worldInteractive = new CostaWorldInteractive(harbor, transform);
+            worldInteractive.BuildEstablishments(
+                BuyWorldFood,
+                () => StartMinigame(() => minigames.StartGym(RewardWorldActivity)),
+                () =>
+                {
+                    if (!TrySpendSolo(20)) return;
+                    StartMinigame(() => minigames.StartArcade(RewardWorldActivity));
+                },
+                () => StartMinigame(() => minigames.StartBasketball(RewardWorldActivity)),
+                () => StartMinigame(() => minigames.StartFishing(RewardWorldActivity)),
+                () =>
+                {
+                    if (car == null) { ShowWorldNotice(L("Need a vehicle for Drift!", "Precisa de um veículo para o Drift!")); return; }
+                    minigames.StartDrift(RewardWorldActivity);
+                },
+                () =>
+                {
+                    if (car == null) { ShowWorldNotice(L("Need a vehicle for the Race!", "Precisa de um veículo para a Corrida!")); return; }
+                    minigames.StartStreetRace(RewardWorldActivity);
+                },
+                (id, idx) =>
+                {
+                    RewardWorldActivity(500, L($"Relic {idx + 1}/{worldInteractive.CollectiblesTotal} found! (+$500)",
+                        $"Relíquia {idx + 1}/{worldInteractive.CollectiblesTotal} encontrada! (+$500)"));
+                },
+                benchPos =>
+                {
+                    stamina = FullStamina;
+                    encounter.RestoreHealth(15);
+                    ShowWorldNotice(L("Rested on bench (+15 HP & stamina)", "Descansou no banco (+15 Vida e fôlego)"));
+                },
+                () =>
+                {
+                    if (!TrySpendSolo(45)) return;
+                    encounter.RestoreHealth(40);
+                    worldInteractive.AddReputation(player.transform.position, 25);
+                    ShowWorldNotice(L("Vice Nights drink (+40 HP · +Rep)", "Drink na Vice Nights (+40 Vida · +Rep)"));
+                },
+                () =>
+                {
+                    if (!TrySpendSolo(120)) return;
+                    worldInteractive.AddReputation(player.transform.position, 35);
+                    ShowWorldNotice(L("Vehicle tuned & repaired! (+Rep)", "Veículo ajustado e reparado! (+Rep)"));
+                });
+            livingWorld = new CostaLivingWorld(harbor, transform);
             jobs.AttachDoors(city.HouseDoors);
             city.UpdateHouseDoors(jobs, false, snap: true);
             robberies = new CostaRobberies(harbor);
@@ -356,8 +407,7 @@ namespace CostaLivre
             navigationBuild = null;
             harbor.ReleaseNavigationSources();
             navMeshInstance = NavMesh.AddNavMeshData(navMesh);
-            for (int i = 0; i < guards.Length; i++)
-                AddGuard(i);
+            policeSystem = new CostaPoliceSystem(harbor, transform, effects, GuardPosts);
             ResetRun();
             SetCursor(false);
             loadingPhase = L("Santa Luz is ready", "Santa Luz está pronta");
@@ -825,8 +875,7 @@ namespace CostaLivre
                 pursuit = false;
                 harborJob = false;
                 cargo.SetActive(false);
-                foreach (Guard guard in guards)
-                    guard?.Agent.gameObject.SetActive(false);
+                policeSystem?.SetActiveForOnline(true);
                 session.Request("outfit", onlinePanel.Outfit);
                 // A connection can finish while a solo session is active.
                 CloseOverlay();
@@ -1015,6 +1064,21 @@ namespace CostaLivre
                 return;
             }
 
+            if (minigames != null && minigames.BlocksWorld)
+            {
+                minigames.UpdateUiActivity();
+                if (!minigames.BlocksWorld)
+                {
+                    Time.timeScale = 1f;
+                    SetCursor(true);
+                }
+                return;
+            }
+            if (!session.Online)
+            {
+                livingWorld?.Update(player.transform.position, InteriorHour, pursuit);
+                minigames?.UpdateWorldActivity(player.transform.position, car);
+            }
             if (vehicleMotion.Active)
             {
                 if (vehicleMotion.Sample(playerBody, effects))
@@ -1165,6 +1229,26 @@ namespace CostaLivre
                 effects.Play(Cue.PanelOpen, .25f);
                 interaction = false;
             }
+            if (interaction && !session.Online)
+            {
+                if (livingWorld != null && livingWorld.TryClaimEvent(player.transform.position, out string evText, out int evCash))
+                {
+                    RewardWorldActivity(evCash, evText);
+                    GestureAt(HarborCharacter.Gesture.PickUp);
+                    interaction = false;
+                }
+                else if (worldInteractive != null)
+                {
+                    var node = worldInteractive.FindNearby(player.transform.position, InteriorHour);
+                    if (node != null && CostaWorldInteractive.IsOpen(node, InteriorHour))
+                    {
+                        node.OnInteract?.Invoke();
+                        GestureAt(HarborCharacter.Gesture.Reach);
+                        effects.Play(Cue.PanelOpen, 0.25f);
+                        interaction = false;
+                    }
+                }
+            }
             if (vehicleMotion.Active)
                 return;
 
@@ -1235,7 +1319,10 @@ namespace CostaLivre
                 fireHeld, aiming, crouching, ResolveSoloHit, effects, displayedReload, rollClock <= 0))
             {
                 if (arsenal.HasFirearm)
+                {
                     score.Combat();
+                    livingWorld?.AlertDanger(player.transform.position, 32f);
+                }
                 if (session.Online)
                     session.Fire(arsenal.Slot, arsenal.ShotDirection, CaptureNetworkPose());
                 else if (!contractCombat)
@@ -2196,15 +2283,9 @@ namespace CostaLivre
                 arsenal.ShowHit();
                 return true;
             }
-            foreach (Guard guard in guards)
+            if (policeSystem != null && policeSystem.TryHit(hit, damage))
             {
-                if (guard == null || guard.Hitbox != hit)
-                    continue;
-
-                guard.Health -= damage;
                 arsenal.ShowHit();
-                if (guard.Health <= 0)
-                    guard.Agent.gameObject.SetActive(false);
                 return true;
             }
             return false;
@@ -2217,7 +2298,9 @@ namespace CostaLivre
             heatUntil = Time.time + CostaSession.HeatDecayTime;
             if (!combat || Time.time >= nextCrime)
             {
-                wantedLevel = Mathf.Min(CostaSession.MaxWanted, wantedLevel + 1);
+                policeSystem?.OnCrimeCommitted(player.transform.position, ref wantedLevel, combat);
+                if (policeSystem == null)
+                    wantedLevel = Mathf.Min(CostaSession.MaxWanted, wantedLevel + 1);
                 nextCrime = Time.time + 6f;
             }
             if (pursuit)
@@ -2230,72 +2313,52 @@ namespace CostaLivre
 
         private void UpdatePursuit()
         {
-            bool refreshPaths = Time.time >= nextPursuitUpdate;
-            Vector3 target = player.transform.position;
-            if (refreshPaths)
-            {
-                nextPursuitUpdate = Time.time + 0.2f;
-                if (NavMesh.SamplePosition(target, out NavMeshHit point, 1.25f, NavMesh.AllAreas))
-                    target = point.position;
-            }
+            if (policeSystem == null)
+                return;
 
-            Guard nearby = null;
-            bool spotted = false;
-            Vector3 position = player.transform.position;
-            foreach (Guard guard in guards)
-            {
-                if (guard == null || !guard.Active)
-                    continue;
+            bool active = policeSystem.Update(player.transform.position, car != null, car?.Speed ?? 0f,
+                rollClock > 0, ref wantedLevel, out bool arrested);
+            arrestProgress = policeSystem.ArrestProgress;
 
-                if (refreshPaths)
+            if (policeSystem.DamageThisFrame > 0)
+            {
+                encounter.TakeDamage(policeSystem.DamageThisFrame);
+                effects.CombatFeedback(policeSystem.DamageSource ?? player.transform.position, policeSystem.DamageThisFrame);
+                CameraKick(Mathf.Clamp01(policeSystem.DamageThisFrame / 22f) * 0.45f);
+                impactStrength = Mathf.Clamp01(policeSystem.DamageThisFrame / 24f);
+                if (encounter.Health <= 0)
                 {
-                    guard.Agent.isStopped = false;
-                    guard.Agent.speed = Mathf.Lerp(5.1f, 7.2f,
-                        Mathf.Clamp01((wantedLevel - 1f) / (CostaSession.MaxWanted - 1)));
-                    guard.Agent.SetDestination(target);
-                }
-
-                Vector3 feet = guard.Agent.transform.position;
-                float range = (feet - position).sqrMagnitude;
-                Vector3 sightTarget = position + Vector3.up * 0.85f;
-                if (car != null)
-                    sightTarget = car.NearestBodyPoint(feet + Vector3.up * 0.85f);
-                if (range > 28f * 28f || Physics.Linecast(feet + Vector3.up * 0.85f, sightTarget,
-                    out RaycastHit obstruction, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
-                    && (car == null || !car.OwnsCollider(obstruction.collider)))
-                    continue;
-
-                spotted = true;
-                Vector3 arrestOffset = sightTarget - (feet + Vector3.up * 0.85f);
-                if (arrestOffset.sqrMagnitude <= 1.75f * 1.75f
-                    && (car == null || car.Speed < 1.45f) && rollClock <= 0
-                    && (nearby == null || guard == arrestingGuard))
-                    nearby = guard;
-            }
-
-            if (nearby != arrestingGuard)
-                arrestProgress = 0;
-            arrestingGuard = nearby;
-            if (nearby != null)
-            {
-                arrestProgress += Time.deltaTime / SoloArrestTime;
-                if (arrestProgress >= 1)
-                {
-                    effects.Play(Cue.Cuffs);
-                    EndRun(RunState.Caught);
+                    // Respawn at Coastal Hospital in free roam
+                    wantedLevel = 0;
+                    pursuit = false;
+                    policeSystem.ResetAll();
+                    encounter.Reset();
+                    if (car != null)
+                        car = null;
+                    player.enabled = false;
+                    player.transform.position = CostaInteriorPlan.Hospital.Entrance + Vector3.back * 2f;
+                    player.enabled = true;
+                    playerModel.gameObject.SetActive(true);
+                    arsenal.SetVisible(true);
+                    TrySpendSolo(150);
+                    ShowWorldNotice(L("Treated at Coastal Hospital (-$150)", "Atendido no Hospital Costeiro (-$150)"));
                     return;
                 }
             }
 
-            if (spotted)
-                heatUntil = Time.time + CostaSession.HeatDecayTime;
-            else if (Time.time >= heatUntil && wantedLevel > (jobs.Bag.Count > 0 ? 1 : 0))
+            if (arrested)
             {
-                wantedLevel--;
-                recoveryMissionStar = false;
-                heatUntil = Time.time + CostaSession.HeatDecayTime;
-                if (wantedLevel == 0)
-                    StopPursuit();
+                effects.Play(Cue.Cuffs);
+                EndRun(RunState.Caught);
+                return;
+            }
+
+            if (!active && wantedLevel == 0)
+            {
+                pursuit = false;
+                if (jobs.Bag.Count == 0)
+                    worldInteractive?.AddReputation(player.transform.position, 20);
+                ShowWorldNotice(L("Police evaded!", "Polícia despistada!"));
             }
         }
 
@@ -2362,24 +2425,7 @@ namespace CostaLivre
 
         private void ResetGuards()
         {
-            foreach (Guard guard in guards)
-            {
-                if (guard == null)
-                    continue;
-                bool hasPost = NavMesh.SamplePosition(guard.Post, out NavMeshHit post, 2f, NavMesh.AllAreas);
-                guard.Health = 100;
-                if (!guard.Agent.gameObject.activeSelf)
-                {
-                    guard.Agent.transform.position = hasPost ? post.position : guard.Post;
-                    guard.Agent.gameObject.SetActive(true);
-                }
-                if (hasPost && guard.Agent.Warp(post.position))
-                {
-                    guard.Agent.ResetPath();
-                    guard.Agent.isStopped = true;
-                    guard.Agent.transform.rotation = Quaternion.identity;
-                }
-            }
+            policeSystem?.ResetAll();
         }
 
         private void EndRun(RunState result)
@@ -2397,7 +2443,52 @@ namespace CostaLivre
             }
         }
 
-        private static void SetCursor(bool locked)
+        private void BuyWorldFood(string item, int basePrice, int healAmount, float staminaBoost)
+        {
+            int price = Mathf.RoundToInt(basePrice * (worldInteractive?.PriceMultiplier(player.transform.position) ?? 1f));
+            if (!TrySpendSolo(price))
+                return;
+            encounter.RestoreHealth(healAmount);
+            stamina = Mathf.Min(FullStamina, stamina + FullStamina * staminaBoost);
+            worldInteractive?.AddReputation(player.transform.position, 10);
+            ShowWorldNotice(L($"{item} (-${price} · +{healAmount} HP)", $"{item} (-${price} · +{healAmount} Vida)"));
+        }
+
+        private bool TrySpendSolo(int amount)
+        {
+            if (amount <= 0)
+                return true;
+            if (jobs.Credits < amount)
+            {
+                ShowWorldNotice(L("Not enough cash!", "Dinheiro insuficiente!"));
+                return false;
+            }
+            jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Purchase, amount);
+            return true;
+        }
+
+        private void RewardWorldActivity(int cash, string message)
+        {
+            if (cash > 0)
+                jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Reward, cash);
+            worldInteractive?.AddReputation(player.transform.position, 20);
+            ShowWorldNotice(message);
+        }
+
+        private void StartMinigame(System.Action startAction)
+        {
+            Time.timeScale = 0f;
+            SetCursor(false);
+            startAction();
+        }
+
+        private void ShowWorldNotice(string text)
+        {
+            interiorNotice = text;
+            interiorNoticeUntil = Time.unscaledTime + 4.2f;
+        }
+
+        private void SetCursor(bool locked)
         {
             Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
             Cursor.visible = !locked;
@@ -2488,6 +2579,11 @@ namespace CostaLivre
                 bagPanel.Draw(CurrentBag, CurrentCash, overlay == FieldOverlay.Vendor, SellLoot, closeOverlay);
                 return;
             }
+            if (minigames != null && minigames.BlocksWorld)
+            {
+                minigames.DrawUi();
+                return;
+            }
             if (Event.current.type != EventType.Repaint)
                 return;
 
@@ -2510,10 +2606,12 @@ namespace CostaLivre
                 return;
             }
 
-            Vector3? missionLocation = MissionLocation();
+            Vector3? missionLocation = minigames?.CurrentWaypoint ?? MissionLocation();
             Vector3? destination = cityMap.Waypoint ?? missionLocation;
             string objective = "";
-            if (cityMap.Waypoint.HasValue)
+            if (minigames != null && minigames.WorldHudStatus.Length > 0)
+                objective = minigames.WorldHudStatus;
+            else if (cityMap.Waypoint.HasValue)
                 objective = cityMap.WaypointTitle;
             else if (harborJob)
                 objective = escaping ? L("Reach the safehouse", "Vá ao esconderijo") : L("Retrieve the case", "Recolha a maleta");
@@ -2546,6 +2644,15 @@ namespace CostaLivre
                     1 => L("Stranded vehicle ahead", "Veículo avariado à frente"),
                     _ => L("Street delivery in progress", "Entrega em andamento na via")
                 };
+            if (notice.Length == 0 && pursuit && policeSystem != null && policeSystem.StatusBanner.Length > 0)
+                notice = policeSystem.StatusBanner;
+            if (cityMap != null)
+            {
+                cityMap.EventPoint = livingWorld?.ActiveEventPoint;
+                cityMap.EventTitle = livingWorld?.ActiveEventTitle;
+                cityMap.PoliceSearchCenter = !session.Online && pursuit && policeSystem != null && !policeSystem.PlayerSpotted
+                    ? policeSystem.LastKnownPosition : null;
+            }
             hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? session.ActivityTime : jobs.Remaining,
                 session.Online ? session.Local.wantedLevel : wantedLevel, notice, prompt, stamina / FullStamina,
                 session.Online ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat) : arrestProgress,
@@ -2596,6 +2703,18 @@ namespace CostaLivre
                 return L($"{use} Campaign",$"{use} Campanha");
             if (CanOpenWorkshop())
                 return L($"{use} Workshop",$"{use} Oficina");
+            if (!session.Online && livingWorld != null)
+            {
+                string evPrompt = livingWorld.EventPrompt(player.transform.position, use);
+                if (evPrompt.Length > 0)
+                    return evPrompt;
+            }
+            if (!session.Online && worldInteractive != null)
+            {
+                var node = worldInteractive.FindNearby(player.transform.position, InteriorHour);
+                if (node != null)
+                    return worldInteractive.Prompt(node, use, InteriorHour);
+            }
             if (car != null)
                 return L($"{use} Exit", $"{use} Sair");
             if (!session.Online && encounter.Active)

@@ -405,16 +405,20 @@ namespace CostaLivre
             }
         }
 
+        private static readonly int BaseMap = Shader.PropertyToID("_BaseMap");
+        private static readonly int Smoothness = Shader.PropertyToID("_Smoothness");
+        private MaterialPropertyBlock skinProperties;
+
         internal void WearTexture(Texture2D texture)
         {
             if (skin == null || texture == null)
                 return;
-            var properties = new MaterialPropertyBlock();
-            skin.GetPropertyBlock(properties);
-            properties.SetTexture("_BaseMap", texture);
+            skinProperties ??= new MaterialPropertyBlock();
+            skin.GetPropertyBlock(skinProperties);
+            skinProperties.SetTexture(BaseMap, texture);
             // The clothing response texture already supplies per-pixel smoothness.
-            properties.SetFloat("_Smoothness", 1f);
-            skin.SetPropertyBlock(properties);
+            skinProperties.SetFloat(Smoothness, 1f);
+            skin.SetPropertyBlock(skinProperties);
         }
 
         internal void CrouchPose()

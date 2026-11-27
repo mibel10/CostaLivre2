@@ -10,6 +10,7 @@ namespace CostaLivre
         private readonly GameObject civilianDetails;
         private int current = -1;
         private bool isPolice;
+        private int lastTexture = -1;
 
         internal CostaLook(HarborBlockout art, HarborCharacter body)
         {
@@ -27,14 +28,25 @@ namespace CostaLivre
             current = outfit;
             isPolice = policeRole;
             int textureIndex = policeRole ? 4 : outfit % 27;
-            body.WearTexture(Resources.Load<Texture2D>($"Harbor/Wardrobe/look-{textureIndex}"));
+            if (lastTexture != textureIndex)
+            {
+                lastTexture = textureIndex;
+                body.WearTexture(Resources.Load<Texture2D>($"Harbor/Wardrobe/look-{textureIndex}"));
+            }
             civilianDetails.SetActive(!policeRole);
             foreach (GameObject part in police)
                 part.SetActive(policeRole);
-            int[] selected = { outfit / 27 % 3, outfit / 81 % 3 };
             for (int category = 0; category < options.Length; category++)
+            {
+                int selected = outfit / (category == 0 ? 27 : 81) % 3;
                 for (int option = 0; option < options[category].Length; option++)
-                    options[category][option].SetActive(!policeRole && selected[category] == option + 1);
+                {
+                    GameObject detail = options[category][option];
+                    bool visible = !policeRole && selected == option + 1;
+                    if (detail.activeSelf != visible)
+                        detail.SetActive(visible);
+                }
+            }
         }
 
         private static GameObject BuildCivilianDetails(HarborBlockout art, HarborCharacter body)

@@ -527,7 +527,8 @@ namespace CostaLivre
             else if (percent != graphics.ResolutionPercent)
                 scaleNote = L($"Engine minimum   {percent}%", $"Mínimo da Unity   {percent}%");
             else if (percent == 100)
-                scaleNote = L("Native resolution", "Resolução nativa");
+                scaleNote = graphics.StpEnabled && graphics.StpSupported ?
+                    L("Native resolution + STP", "Resolução nativa + STP") : L("Native resolution", "Resolução nativa");
             else
                 scaleNote = $"{Screen.width * percent / 100} × {Screen.height * percent / 100}";
             Text(new Rect(inset, y + 136, 262, 22), scaleNote, label, Grey);
@@ -553,14 +554,14 @@ namespace CostaLivre
                     graphics.SetTextures(i);
             }
 
-            bool compatible = HarborGraphics.FsrSupported;
-            string fsr = !compatible ? L("Unavailable", "Indisponível") :
-                graphics.FsrEnabled ? L("On", "Ligado") : L("Off", "Desligado");
-            Text(new Rect(options, y + 211, 145, 32), "AMD FSR 1.0", label, Paper);
+            bool compatible = graphics.StpSupported;
+            string stp = !compatible ? L("Unavailable", "Indisponível") :
+                graphics.StpEnabled ? L("On", "Ligado") : L("Off", "Desligado");
+            Text(new Rect(options, y + 211, 145, 32), "Unity STP", label, Paper);
             bool enabled = GUI.enabled;
             GUI.enabled = enabled && compatible;
-            if (MenuButton(new Rect(options + 147, y + 211, 115, 32), fsr, graphics.FsrEnabled && compatible, true))
-                graphics.ToggleFsr();
+            if (MenuButton(new Rect(options + 147, y + 211, 115, 32), stp, graphics.StpEnabled && compatible, true))
+                graphics.ToggleStp();
             GUI.enabled = enabled;
             string adaptive = !graphics.AdaptiveSupported ? L("Unavailable", "Indisponível") :
                 graphics.AdaptiveResolution ? L("On", "Ligada") : L("Off", "Desligada");

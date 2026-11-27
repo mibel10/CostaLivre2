@@ -11,13 +11,13 @@ namespace CostaLivre
         internal const int MaxDistance = 900;
         internal const int ScaleStep = 5;
         internal static int MinActualPercent => Mathf.RoundToInt(UniversalRenderPipeline.minRenderScale * 100);
-        internal static bool FsrSupported => FSRUtils.IsSupported();
 
         private const string PresetKey = "CostaGraphicsPreset";
         private const string ShadowKey = "CostaShadowQuality";
         private const string TextureKey = "CostaTextureQuality";
         private const string ScaleKey = "CostaRenderPercent";
-        private const string FsrKey = "CostaFsrEnabled";
+        private const string StpKey = "CostaStpEnabled";
+        private const string LegacyFsrKey = "CostaFsrEnabled";
         private const string AdaptiveKey = "CostaAdaptiveResolution";
         private const string DistanceKey = "CostaViewDistance";
 
@@ -72,11 +72,14 @@ namespace CostaLivre
         internal int TextureQuality { get; private set; }
         internal int ResolutionPercent { get; private set; }
         internal int Distance { get; private set; }
-        internal bool FsrEnabled { get; private set; }
+        internal bool StpEnabled { get; private set; }
+        internal bool StpSupported => pipeline != null && STP.IsSupported() &&
+            GraphicsSettings.TryGetRenderPipelineSettings<RenderGraphSettings>(out var renderGraph) &&
+            !renderGraph.enableRenderCompatibilityMode;
         internal bool AdaptiveResolution { get; private set; }
         internal bool AdaptiveSupported => pipeline != null;
         internal bool IsCustom => ShadowQuality != Preset || TextureQuality != Textures[Preset] ||
-            ResolutionPercent != Scales[Preset] || Distance != Distances[Preset] || FsrEnabled;
+            ResolutionPercent != Scales[Preset] || Distance != Distances[Preset] || StpEnabled;
         internal int StreetLightBudget => Mathf.Max(0,StreetLights[Preset]-(WorldLocked ? 0 : budget.GpuTier));
         internal int ActualPercent => renderPercent;
 
@@ -100,7 +103,7 @@ namespace CostaLivre
             TextureQuality = Mathf.Clamp(PlayerPrefs.GetInt(TextureKey, Textures[Preset]), 0, 3);
             ResolutionPercent = RoundScale(PlayerPrefs.GetInt(ScaleKey, Scales[Preset]));
             Distance = Mathf.Clamp(PlayerPrefs.GetInt(DistanceKey, Distances[Preset]), MinDistance, MaxDistance);
-            FsrEnabled = PlayerPrefs.GetInt(FsrKey, 0) != 0;
+            StpEnabled = PlayerPrefs.GetInt(StpKey, PlayerPrefs.GetInt(LegacyFsrKey, 0)) != 0;
             AdaptiveResolution = PlayerPrefs.GetInt(AdaptiveKey, 0) != 0;
             Extreme = PlayerPrefs.GetInt("CostaExtremePotato",0)!=0;
             ScaleLocked = PlayerPrefs.GetInt("CostaLockScale",0)!=0;
@@ -123,7 +126,7 @@ namespace CostaLivre
             TextureQuality = Textures[preset];
             ResolutionPercent = Scales[preset];
             Distance = Distances[preset];
-            FsrEnabled = false;
+            StpEnabled = false;
             if (switchAsset)
                 SetupPipeline();
             else
@@ -169,11 +172,11 @@ namespace CostaLivre
             QueueSave();
         }
 
-        internal void ToggleFsr()
+        internal void ToggleStp()
         {
-            if (!FsrSupported)
+            if (!StpSupported)
                 return;
-            FsrEnabled = !FsrEnabled;
+            StpEnabled = !StpEnabled;
             ApplyUpscaling(renderPercent);
             QueueSave();
         }
@@ -351,7 +354,6 @@ namespace CostaLivre
                 volume.sharedProfile = ultra && pipeline?.volumeProfile != null ? pipeline.volumeProfile : originalVolume;
             daylight.Apply(worldHour, Preset, weather);
             camera.farClipPlane = Distance;
-            camera.allowMSAA = Preset < 2 && originalMsaa;
             cameraData.antialiasing = Preset >= 2 ? AntialiasingMode.SubpixelMorphologicalAntiAliasing :
                 Preset == 1 ? AntialiasingMode.FastApproximateAntialiasing : AntialiasingMode.None;
             cameraData.antialiasingQuality = Preset >= 3 ? AntialiasingQuality.High : AntialiasingQuality.Medium;
@@ -374,11 +376,12 @@ namespace CostaLivre
         private void ApplyUpscaling(int percent)
         {
             renderPercent = percent;
+            bool useStp = StpEnabled && StpSupported;
+            camera.allowMSAA = !useStp && Preset < 2 && originalMsaa;
             if (pipeline == null)
                 return;
             pipeline.renderScale = ActualPercent / 100f;
-            pipeline.upscalingFilter = FsrEnabled && FsrSupported && ActualPercent < 100
-                ? UpscalingFilterSelection.FSR : UpscalingFilterSelection.Linear;
+            pipeline.upscalingFilter = useStp ? UpscalingFilterSelection.STP : UpscalingFilterSelection.Linear;
         }
 
         private static int RoundScale(float value) =>
@@ -393,7 +396,7 @@ namespace CostaLivre
             PlayerPrefs.SetInt(ShadowKey, ShadowQuality);
             PlayerPrefs.SetInt(TextureKey, TextureQuality);
             PlayerPrefs.SetInt(ScaleKey, ResolutionPercent);
-            PlayerPrefs.SetInt(FsrKey, FsrEnabled ? 1 : 0);
+            PlayerPrefs.SetInt(StpKey, StpEnabled ? 1 : 0);
             PlayerPrefs.SetInt(AdaptiveKey, AdaptiveResolution ? 1 : 0);
             PlayerPrefs.SetInt(DistanceKey, Distance);
             saveAt = Time.realtimeSinceStartupAsDouble + 0.5;

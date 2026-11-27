@@ -8,7 +8,7 @@ namespace CostaLivre
         {
             Jump = 3, Land, Roll, Lock, DoorOpen, DoorShut, Mount, Brake,
             Equip, PanelOpen, PanelClose, Loot, Sale, Purchase, Alert, Cuffs, Reward, CarEngine, BikeEngine,
-            Concrete, MetalHit, Wood, Glass, Earth, Blast, Incoming, Hurt, ReloadOut, ReloadIn, ReloadDone
+            Concrete, MetalHit, Wood, Glass, Earth, Blast, Incoming, Hurt, ReloadOut, ReloadIn, ReloadDone, LiftChime
         }
 
         internal struct Footfalls
@@ -43,7 +43,7 @@ namespace CostaLivre
         }
 
         private const int Rate = 22050;
-        private readonly AudioClip[] bank = new AudioClip[(int)Cue.ReloadDone + 1];
+        private readonly AudioClip[] bank = new AudioClip[(int)Cue.LiftChime + 1];
         private readonly AudioSource feedback;
         private readonly CostaSpatialAudio spatialAudio;
         private readonly CostaAcousticScene acousticScene;
@@ -265,7 +265,7 @@ namespace CostaLivre
                 Cue.Lock or Cue.DoorShut or Cue.Cuffs => 0.24f,
                 Cue.DoorOpen or Cue.Land or Cue.Roll => 0.34f,
                 Cue.Brake or Cue.Loot or Cue.Sale or Cue.Purchase => 0.40f,
-                Cue.Alert or Cue.Reward => 0.56f,
+                Cue.Alert or Cue.Reward or Cue.LiftChime => 0.56f,
                 Cue.Concrete or Cue.Wood or Cue.Earth or Cue.Hurt => 0.20f,
                 Cue.MetalHit or Cue.Glass or Cue.Incoming => 0.30f,
                 Cue.Blast => 0.70f,
@@ -323,6 +323,7 @@ namespace CostaLivre
                     Cue.PanelClose => Tone(time, 620) + Tone(time - 0.032f, 420) * 0.65f,
                     Cue.Loot => Tone(time, 720) + Tone(time - 0.08f, 980),
                     Cue.Sale => Tone(time, 1020) + Tone(time - 0.075f, 1350) + 0.53f * Tone(time - 0.15f, 1480),
+                    Cue.LiftChime => .66f * Tone(time, 784) + .47f * Tone(time - .14f, 1046),
                     Cue.Purchase => Tone(time, 660) + Tone(time - 0.072f, 910),
                     Cue.Alert => Tone(time, 246) + Tone(time - 0.09f, 320) + Tone(time - 0.22f, 272),
                     Cue.Cuffs => Metal(time, high, 1130) + 0.6f * Metal(time - 0.09f, high, 880),

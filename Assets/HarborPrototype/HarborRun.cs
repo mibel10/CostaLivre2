@@ -1377,7 +1377,7 @@ namespace CostaLivre
             {
                 Rect cell = new(panel.x+15+(level%2)*140,panel.y+48+(level/2)*38,134,32);
                 string label = level == 0 ? L("Ground floor","Térreo")
-                    : level == plan.Levels ? L("Roof terrace","Cobertura") : L($"Floor {level+1}",$"{level+1}º andar");
+                    : level == plan.Levels ? L("Roof terrace","Cobertura") : L($"Floor {level}",$"{level}º andar");
                 if (!CostaUi.Button(cell,label,elevatorButton))
                     continue;
                 UseInterior(CostaInteriors.Encode(liftPicker,CostaInteriors.Action.Travel,level));

@@ -529,7 +529,7 @@ namespace CostaLivre
                     || frame.players.Length > MaxPlayers + 1 || frame.vehicles == null || frame.vehicles.Length != sceneVehicles.Length
                     || Array.Exists(frame.players, avatar => avatar == null || avatar.vehicle < -1 || avatar.vehicle >= sceneVehicles.Length
                         || avatar.doorCar < -1 || avatar.doorCar >= sceneVehicles.Length
-                        || avatar.wantedLevel < 0 || avatar.wantedLevel > MaxWanted)
+                        || avatar.wantedLevel < 0 || avatar.wantedLevel > MaxWanted || !CostaInteriors.ValidRider(avatar.lift, avatar.seat))
                     || Array.Exists(frame.vehicles, vehicle => vehicle == null)
                     || interiors != null && !CostaInteriors.Valid(frame.interiors)
                     || frame.sites?.Length != restock.Length || frame.alarms?.Length != restock.Length

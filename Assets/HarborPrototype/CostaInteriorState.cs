@@ -80,6 +80,13 @@ namespace CostaLivre
 
         internal static int Encode(int building, Action action, int floor = 0) => (building * 16 + floor) * 8 + (int)action;
         internal static int BuildingOf(int key) => key / 128;
+
+        internal static bool ValidRider(int lift, int seat)
+        {
+            return (lift == -1 || lift >= 0 && lift < CostaInteriorPlan.All.Length && CostaInteriorPlan.All[lift].Vertical)
+                && (seat == -1 || seat >= 0 && BuildingOf(seat) < CostaInteriorPlan.All.Length
+                    && (seat & 7) == (int)Action.Sit && FloorOf(seat) < CostaInteriorPlan.All[BuildingOf(seat)].Levels);
+        }
         private static int FloorOf(int key) => key / 8 % 16;
 
         internal int FindAction(Vector3 position, int seat, int lift, float hour, out string title, out int picker)
@@ -342,13 +349,13 @@ namespace CostaLivre
                 if (!Mathf.Approximately(door,b.DoorVisual))
                 {
                     if ((b.DoorVisual == 0 || b.DoorVisual == 1) && (listener-p.Entrance).sqrMagnitude < 90)
-                        effects?.PlayAt(CostaEffects.Cue.PanelOpen,p.Entrance,.20f);
+                        effects?.PlayAt(state.open ? CostaEffects.Cue.DoorOpen : CostaEffects.Cue.DoorShut,p.Entrance,.21f);
                     b.DoorVisual = door;
                     float eased = Mathf.SmoothStep(0,1,door);
                     if (p.Door is CostaInteriorPlan.EntranceDoor.Swing or CostaInteriorPlan.EntranceDoor.Revolve)
                         b.Doors[0].rotation = Quaternion.Euler(0, -90*eased, 0);
                     else if (p.Door == CostaInteriorPlan.EntranceDoor.Shutter)
-                        b.Doors[0].position = p.Entrance + Vector3.up*(1.29f+eased*2.63f);
+                        RaiseShutter(b.Doors[0],p.Entrance,2.57f,eased);
                     else
                     {
                         float offset = p.DoorSpan/4*(1+eased*1.97f);
@@ -387,7 +394,7 @@ namespace CostaLivre
                 if (b.IndicatorFloor != display)
                 {
                     b.IndicatorFloor = display;
-                    string digits = display < 0 ? "↕" : display == p.Levels ? "R" : (display + 1).ToString();
+                    string digits = display < 0 ? "↕" : display == p.Levels ? "R" : display == 0 ? "0" : display.ToString();
                     b.RoofIndicator.text = digits;
                     foreach (RoomSet room in b.Rooms)
                         if (room.FloorNumber != null)
@@ -396,7 +403,7 @@ namespace CostaLivre
 
                 if (b.DisplayFloor >= 0 && b.DisplayFloor != state.target && !state.moving
                     && (listener-b.Cab.position).sqrMagnitude < 100)
-                    effects?.PlayAt(CostaEffects.Cue.Purchase,b.Cab.position,.23f);
+                    effects?.PlayAt(CostaEffects.Cue.LiftChime,b.Cab.position,.23f);
                 if (!state.moving)
                     b.DisplayFloor = state.target;
                 for (int level = 0; level < b.Gates.Length; level++)
@@ -406,7 +413,7 @@ namespace CostaLivre
                     if (gate == b.GateVisual[level])
                         continue;
                     b.GateVisual[level] = gate;
-                    b.Gates[level].position = new Vector3(p.Cabin(0).x, p.Y(level)+1.11f + 2.25f*gate,p.ShaftFront);
+                    RaiseShutter(b.Gates[level],new Vector3(p.Cabin(0).x,p.Y(level),p.ShaftFront),2.22f,gate);
                     transformDirty = true;
                 }
             }
@@ -415,6 +422,14 @@ namespace CostaLivre
                 Physics.SyncTransforms();
                 transformDirty = false;
             }
+        }
+
+        private static void RaiseShutter(Transform panel, Vector3 threshold, float fullHeight, float open)
+        {
+            Vector3 scale = panel.localScale;
+            scale.y = Mathf.Lerp(fullHeight,.055f,open);
+            panel.localScale = scale;
+            panel.position = threshold + Vector3.up*(fullHeight-scale.y/2);
         }
 
         private TextMesh Indicator(Transform parent, CostaInteriorPlan p, int level)

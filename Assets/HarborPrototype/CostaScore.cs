@@ -18,35 +18,50 @@ namespace CostaLivre
             var loading = new ResourceRequest[Tracks.Length];
             for (int i = 0; i < Tracks.Length; i++)
                 loading[i] = Resources.LoadAsync<AudioClip>("Harbor/Score/" + Tracks[i]);
-            float deadline = Time.realtimeSinceStartup + 12;
-            for (int i = 0; i < Tracks.Length; i++)
+            var clips = new AudioClip[Tracks.Length];
+            var deadlines = new float[Tracks.Length];
+            var settled = new bool[Tracks.Length];
+            double epoch = 0;
+            int remaining = Tracks.Length;
+            while (remaining > 0)
             {
-                yield return loading[i];
-                if (loading[i].asset is not AudioClip clip)
-                    yield break;
-
-                var source = new GameObject("Score " + Tracks[i]).AddComponent<AudioSource>();
-                source.transform.SetParent(root, false);
-                source.clip = clip;
-                source.loop = true;
-                source.playOnAwake = false;
-                source.spatialBlend = 0;
-                source.reverbZoneMix = 0;
-                source.volume = 0;
-                source.priority = 56;
-                voices[i] = source;
-                if (clip.loadState == AudioDataLoadState.Unloaded)
-                    clip.LoadAudioData();
-                while (clip.loadState == AudioDataLoadState.Loading && Time.realtimeSinceStartup < deadline)
-                    yield return null;
-                if (clip.loadState != AudioDataLoadState.Loaded)
-                    yield break;
+                for (int i = 0; i < Tracks.Length; i++)
+                {
+                    if (settled[i] || !loading[i].isDone)
+                        continue;
+                    if (deadlines[i] == 0)
+                    {
+                        deadlines[i] = Time.realtimeSinceStartup + 12;
+                        clips[i] = loading[i].asset as AudioClip;
+                        if (clips[i] != null && clips[i].loadState == AudioDataLoadState.Unloaded)
+                            clips[i].LoadAudioData();
+                    }
+                    AudioClip clip = clips[i];
+                    if (clip != null && clip.loadState == AudioDataLoadState.Loading && Time.realtimeSinceStartup < deadlines[i])
+                        continue;
+                    settled[i] = true;
+                    remaining--;
+                    if (clip == null || clip.loadState != AudioDataLoadState.Loaded)
+                        continue;
+                    var source = new GameObject("Score " + Tracks[i]).AddComponent<AudioSource>();
+                    source.transform.SetParent(root, false);
+                    source.clip = clip;
+                    source.loop = true;
+                    source.playOnAwake = false;
+                    source.spatialBlend = 0;
+                    source.reverbZoneMix = 0;
+                    source.volume = 0;
+                    source.priority = 56;
+                    double start = AudioSettings.dspTime + .18;
+                    if (epoch == 0) epoch = start;
+                    if (clip.samples > 0)
+                        source.timeSamples = (int)((start - epoch) * clip.frequency % clip.samples);
+                    source.PlayScheduled(start);
+                    voices[i] = source;
+                    ready = true;
+                }
+                if (remaining > 0) yield return null;
             }
-
-            double beat = AudioSettings.dspTime + .18;
-            foreach (AudioSource voice in voices)
-                voice.PlayScheduled(beat);
-            ready = true;
         }
 
         internal void Combat(float duration = 3.4f) =>
@@ -71,6 +86,7 @@ namespace CostaLivre
         private void Mix(int index, float level)
         {
             AudioSource voice = voices[index];
+            if (voice == null) return;
             float seconds = level > voice.volume ? .62f : 1.65f;
             voice.volume = Mathf.Lerp(voice.volume, level, 1 - Mathf.Exp(-Time.unscaledDeltaTime / seconds));
         }

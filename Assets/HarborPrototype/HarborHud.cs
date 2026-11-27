@@ -16,6 +16,13 @@ namespace CostaLivre
         private GUIStyle small;
         private GUIStyle centered;
         private GUIStyle resultTitle;
+        private readonly GUIContent measure = new();
+        private readonly string[] slotLabels = new string[3];
+        private (int Heavy, bool HeavyOwned, bool PistolOwned, bool Portuguese, bool Keys)? slotState;
+        private (int Level, bool Portuguese) wantedState;
+        private string wantedText;
+        private (int Weapon, int Loaded, int Capacity, bool Reloading, bool Portuguese)? ammoState;
+        private string weaponTitle, ammoText;
 
         internal HarborHud(CostaMap map)
         {
@@ -35,8 +42,14 @@ namespace CostaLivre
             float statusY = 18;
             if (wantedLevel > 0)
             {
-                string stars = new string('★', wantedLevel) + new string('☆', CostaSession.MaxWanted - wantedLevel);
-                Chip(statusX, statusY, stars + "   " + L("WANTED", "PROCURADO"), Danger, 239);
+                var state = (wantedLevel, Portuguese);
+                if (wantedState != state)
+                {
+                    wantedState = state;
+                    wantedText = new string('★', wantedLevel) + new string('☆', CostaSession.MaxWanted - wantedLevel)
+                        + L("   WANTED", "   PROCURADO");
+                }
+                Chip(statusX, statusY, wantedText, Danger, 239);
                 statusY += 29;
             }
             if (objective.Length > 0 || timer >= 0)
@@ -94,8 +107,9 @@ namespace CostaLivre
                 float y = viewport.z <= 0 ? height * .46f : (1 - viewport.y) * height;
                 string arrow = offscreen ? (side < 0 ? "‹ " : "› ") : "";
                 string distance = $"{arrow}{Mathf.CeilToInt(Vector3.Distance(player, target))} m";
-                Chip(Mathf.Clamp(x, 174, width - 174) - TextWidth(distance, 12, 85) / 2,
-                    Mathf.Clamp(y, 151, height * .55f), distance, HarborBlockout.Amber, 85);
+                float size = TextWidth(distance, 85);
+                DrawChip(Mathf.Clamp(x, 174, width - 174) - size / 2, Mathf.Clamp(y, 151, height * .55f),
+                    size, distance, HarborBlockout.Amber);
             }
             GUI.matrix = old;
         }
@@ -108,19 +122,26 @@ namespace CostaLivre
             Box(new Rect(x + 7, y + 19, 103 * Mathf.Clamp01(progress), 2), color);
         }
 
-        private float TextWidth(string text, float padding, float maxWidth) =>
-            Mathf.Min(maxWidth, centered.CalcSize(new GUIContent(text)).x + padding);
-
-        private void Chip(float x, float y, string text, Color color, float maxWidth)
+        private float TextWidth(string text, float maxWidth)
         {
-            Rect rect = new(x, y, TextWidth(text, 12, maxWidth), 24);
+            measure.text = text;
+            return Mathf.Min(maxWidth, centered.CalcSize(measure).x + 12);
+        }
+
+        private void Chip(float x, float y, string text, Color color, float maxWidth) =>
+            DrawChip(x, y, TextWidth(text, maxWidth), text, color);
+
+        private void DrawChip(float x, float y, float width, string text, Color color)
+        {
+            Rect rect = new(x, y, width, 24);
             Box(rect, Panel);
             Label(rect, text, centered, color);
         }
 
         private void CenterChip(float width, float y, string text, Color color, float maxWidth)
         {
-            Chip((width - TextWidth(text, 12, maxWidth)) / 2, y, text, color, maxWidth);
+            float size = TextWidth(text, maxWidth);
+            DrawChip((width - size) / 2, y, size, text, color);
         }
 
         private void DrawLoadout(float width, float height, HarborArsenal arsenal, bool touch, bool gamepad)
@@ -128,6 +149,9 @@ namespace CostaLivre
             float slotWidth = touch ? 90 : 114;
             float start = touch ? 18 : width - 24 - slotWidth * 3;
             float slotsY = touch ? 249 : height - 59;
+            var equipment = (arsenal.Heavy, arsenal.Owned(arsenal.Heavy), arsenal.Owned(0), Portuguese, !touch && !gamepad);
+            bool changed = slotState != equipment;
+            slotState = equipment;
             for (int i = 0; i < 3; i++)
             {
                 int weapon = i == 0 ? 0 : i == 1 ? arsenal.Heavy : HarborArsenal.Knife;
@@ -136,11 +160,14 @@ namespace CostaLivre
                 Box(slot, selected ? new Color(0.28f, 0.32f, 0.27f, 0.96f) : Panel);
                 bool owned = arsenal.Owned(weapon);
                 Color edge = selected ? HarborBlockout.Amber : owned ? Edge : Color.clear;
-                Box(new Rect(slot.x, slot.y + slot.height - 2, slot.width, 2), edge);
-                string category = i == 0 ? L("Pistol", "Pistola") : L("Heavy", "Pesada");
-                string slotText = owned ? Weapon(weapon) : category + " —";
-                string label = touch || gamepad ? slotText : $"{i + 1} {slotText}";
-                Label(slot, label, centered, selected ? Paper : Muted);
+                if (edge.a > 0)
+                    Box(new Rect(slot.x, slot.y + slot.height - 2, slot.width, 2), edge);
+                if (changed)
+                {
+                    string slotText = owned ? Weapon(weapon) : i == 0 ? L("Pistol —", "Pistola —") : L("Heavy —", "Pesada —");
+                    slotLabels[i] = touch || gamepad ? slotText : $"{i + 1} {slotText}";
+                }
+                Label(slot, slotLabels[i], centered, selected ? Paper : Muted);
             }
 
             Rect card = new(touch ? start : width - 173, slotsY - 50, 146, 47);
@@ -152,10 +179,17 @@ namespace CostaLivre
                 return;
             }
 
-            Label(new Rect(card.x + 8, card.y + 2, 130, 19), Weapon(arsenal.Slot).ToUpperInvariant(), small, Muted);
-            string loaded = arsenal.KnifeEquipped ? L("Melee", "Corpo a corpo")
-                : arsenal.Reloading ? L("Reloading…", "Recarregando…") : $"{arsenal.Loaded:00} / {arsenal.Capacity:00}";
-            Label(new Rect(card.x + 8, card.y + 18, 130, 25), loaded, title,
+            var state = (arsenal.Slot, arsenal.Loaded, arsenal.Capacity, arsenal.Reloading, Portuguese);
+            if (ammoState != state)
+            {
+                if (!ammoState.HasValue || ammoState.Value.Weapon != arsenal.Slot || ammoState.Value.Portuguese != Portuguese)
+                    weaponTitle = Weapon(arsenal.Slot).ToUpperInvariant();
+                ammoState = state;
+                ammoText = arsenal.KnifeEquipped ? L("Melee", "Corpo a corpo")
+                    : arsenal.Reloading ? L("Reloading…", "Recarregando…") : $"{arsenal.Loaded:00} / {arsenal.Capacity:00}";
+            }
+            Label(new Rect(card.x + 8, card.y + 2, 130, 19), weaponTitle, small, Muted);
+            Label(new Rect(card.x + 8, card.y + 18, 130, 25), ammoText, title,
                 arsenal.Loaded == 0 ? HarborBlockout.Amber : Paper);
         }
 

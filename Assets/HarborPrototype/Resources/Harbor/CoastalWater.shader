@@ -55,19 +55,19 @@ Shader "CostaLivre/CoastalWater"
 
             half4 Fragment(Varyings input) : SV_Target
             {
-                float2 point = input.positionWS.xz;
+                float2 waterPosition = input.positionWS.xz;
                 float time = _Time.y;
                 float3 view = GetWorldSpaceNormalizeViewDir(input.positionWS);
                 float distanceFade = 1.0 - smoothstep(16.0, 100.0, distance(_WorldSpaceCameraPos, input.positionWS));
-                float2 slope = float2(0.049, 0.031) * cos(dot(point, float2(1.1, 0.7)) - time * 1.18);
-                slope += float2(-0.035, 0.059) * cos(dot(point, float2(-0.8, 1.35)) + time * 1.52);
-                slope += distanceFade * float2(0.064, -0.028) * cos(dot(point, float2(4.8, -2.1)) + time * 2.45);
+                float2 slope = float2(0.049, 0.031) * cos(dot(waterPosition, float2(1.1, 0.7)) - time * 1.18);
+                slope += float2(-0.035, 0.059) * cos(dot(waterPosition, float2(-0.8, 1.35)) + time * 1.52);
+                slope += distanceFade * float2(0.064, -0.028) * cos(dot(waterPosition, float2(4.8, -2.1)) + time * 2.45);
                 float3 normal = normalize(input.normalWS + float3(slope.x, 0, slope.y));
                 half fresnel = 0.04h + 0.87h * pow(1.0h - saturate(dot(normal, view)), 4.0h);
                 Light sun = GetMainLight();
                 half alignment = saturate(dot(reflect(-view, normal), sun.direction));
                 half sparkle = 0.28h * pow(alignment, 36.0h) + 0.42h * pow(alignment, 120.0h);
-                half tint = 0.9h + 0.11h * sin(dot(point, float2(0.44, -0.23)) + time * 0.35);
+                half tint = 0.9h + 0.11h * sin(dot(waterPosition, float2(0.44, -0.23)) + time * 0.35);
                 half3 color = lerp(_Deep.rgb * tint, _Sky.rgb, fresnel) + sun.color * sparkle;
                 color *= lerp(half3(0.15h, 0.23h, 0.39h), half3(1, 1, 1), _Daylight);
                 return half4(MixFog(color, input.fog), 1.0h);

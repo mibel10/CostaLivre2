@@ -15,7 +15,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 14;
+        private const int Protocol = 15;
         private const float Interval = 0.083f;
         internal const int PoliceArmor = 50;
         internal const int MaxWanted = 6;
@@ -106,6 +106,7 @@ namespace CostaLivre
             public int protocol;
             public int index;
             public int pong;
+            public int staminaRefill;
             public int amount;
             public long option;
             public int id;
@@ -126,7 +127,7 @@ namespace CostaLivre
             public Avatar pose;
             public Avatar[] players;
             public Vehicle[] vehicles;
-            public int[] vehicleIds, visibleCars;
+            public int[] vehicleIds;
             public int humans, policeCount;
             public RosterEntry[] roster;
             public int[] bag;
@@ -175,13 +176,12 @@ namespace CostaLivre
         {
             public int id;
             public int pong;
+            public int staminaRefill;
             public Avatar[] players;
             public Vehicle[] vehicles;
-            public int[] vehicleIds, visibleCars;
+            public int[] vehicleIds;
             public int credits;
             public int bankPersonal, bankBusiness, transaction;
-            public CostaLedger.Entry[] bankHistory;
-            public CostaCampaign.Progress campaign;
             public int evidence;
             public CrewOrder crew;
             public int weapons;
@@ -200,14 +200,14 @@ namespace CostaLivre
         {
             internal CostaWire Wire;
             internal readonly RosterEntry Roster=new();
-            internal uint VisibleCars;
-            internal float NextFullCars;
-            internal readonly CarStamp[] CarStamps = new CarStamp[32];
             internal Avatar Pose;
             internal bool Ready;
             internal string ResumeKey;
             internal byte[] Challenge;
             internal CostaLedger.Account Account;
+            internal CostaLedger.Entry[] SentHistory;
+            internal CostaCampaign.Progress SentCampaign;
+            internal int StaminaRefill;
             internal int Credits => Account?.cash ?? 4500;
             internal int Evidence;
             internal float DispatchSince = -1;
@@ -497,7 +497,7 @@ namespace CostaLivre
             if (connection == null)
                 return;
 
-            while (connection.Receive(out string text))
+            for (int messages = 0; messages < 24 && connection.Receive(out string text); messages++)
             {
                 TrackNetwork(text,now);
                 Frame frame = Parse(text);
@@ -522,6 +522,12 @@ namespace CostaLivre
                     noticeEvents.Enqueue(frame.notice);
                     Notice = FormatNotice(frame.notice);
                     noticeUntil = now + 4.2f;
+                    continue;
+                }
+                if (frame != null && frame.protocol == Protocol && frame.type == "account")
+                {
+                    BankHistory = frame.bankHistory;
+                    Narrative = frame.campaign;
                     continue;
                 }
                 if (frame != null && frame.protocol == Protocol && frame.type == "surface")
@@ -602,8 +608,7 @@ namespace CostaLivre
                 Cash = frame.credits;
                 BankPersonal = frame.bankPersonal;
                 BankBusiness = frame.bankBusiness;
-                BankHistory = frame.bankHistory;
-                Narrative = frame.campaign;
+                StaminaRefill = frame.staminaRefill;
                 nextTransaction = Mathf.Max(nextTransaction,frame.transaction);
                 WeaponMask = frame.weapons;
                 EquipAcknowledged = frame.equipSequence;
@@ -891,8 +896,16 @@ namespace CostaLivre
                 snapshot.credits = peer.Credits;
                 snapshot.bankPersonal = peer.Account.personal;
                 snapshot.bankBusiness = peer.Account.business;
-                snapshot.bankHistory = peer.Account.history;
-                snapshot.campaign = peer.Account.campaign;
+                if (peer.SentHistory != peer.Account.history || peer.SentCampaign != peer.Account.campaign)
+                {
+                    peer.SentHistory = peer.Account.history;
+                    peer.SentCampaign = peer.Account.campaign;
+                    peer.Wire.Send(JsonUtility.ToJson(new AccountUpdate
+                    {
+                        bankHistory = peer.SentHistory, campaign = peer.SentCampaign
+                    }));
+                }
+                snapshot.staminaRefill = peer.StaminaRefill;
                 snapshot.transaction = peer.Account.serial;
                 snapshot.evidence = peer.Evidence;
                 snapshot.crew = CrewState(peer, now);
@@ -903,7 +916,7 @@ namespace CostaLivre
                     snapshot.loaded[i] = HarborArsenal.ShotRules(i).magazine - peer.UsedRounds[i];
                     snapshot.reloading[i] = peer.ReloadEnds[i] > 0;
                 }
-                FilterSnapshot(peer,now);
+                FilterSnapshot(peer);
                 peer.Wire.SendState(shared, JsonUtility.ToJson(snapshot));
             }
         }
@@ -1226,6 +1239,8 @@ namespace CostaLivre
                 bool hospital = CostaInteriorPlan.All[CostaInteriors.BuildingOf(key)].Purpose == CostaInteriorPlan.Use.Hospital;
                 avatar.health = Mathf.Min(100,avatar.health+(hospital ? 65 : 12));
                 peer.Stamina = HarborRun.FullStamina;
+                peer.SprintExhausted = false;
+                peer.StaminaRefill++;
                 SetNotice(peer,34);
             }
         }
@@ -2041,6 +2056,7 @@ namespace CostaLivre
             identity = 0;
             ledger = null;
             nextTransaction = BankPersonal = BankBusiness = 0;
+            StaminaRefill = 0;
             BankHistory = null;
             Narrative = null;
             nextPose = 0;

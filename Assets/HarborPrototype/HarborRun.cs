@@ -100,6 +100,7 @@ namespace CostaLivre
         private bool runningPose;
         private bool aimingPose;
         private int netRevision = -1;
+        private int staminaRefill;
         private int pendingBuy = -1;
         private float nextReloadRequest;
         private int appliedSelection;
@@ -728,6 +729,7 @@ namespace CostaLivre
                     equipSequence = 0;
                     queuedEquip = -1;
                     netRevision = -1;
+                    staminaRefill = 0;
                     pendingBuy = -1;
                     remotes.Clear();
                     arsenal.SetOnlineWeapons(null);
@@ -826,6 +828,12 @@ namespace CostaLivre
             }
 
             CostaSession.Avatar avatar = session.Local;
+            if (staminaRefill != session.StaminaRefill)
+            {
+                staminaRefill = session.StaminaRefill;
+                stamina = FullStamina;
+                needsSprintRelease = false;
+            }
             if (avatar.held > 0 && overlay != FieldOverlay.None)
                 CloseOverlay();
             bool syncCars = joined;
@@ -1274,7 +1282,7 @@ namespace CostaLivre
             overlay = screen;
             if (screen is FieldOverlay.Bag or FieldOverlay.Vendor)
                 bagPanel?.Open();
-            Time.timeScale = 0;
+            Time.timeScale = session.Online || session.Hosting ? 1 : 0;
             SetCursor(false);
         }
 

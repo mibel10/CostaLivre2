@@ -23,6 +23,17 @@ namespace CostaLivre
             return false;
         }
 
+        [Serializable]
+        private sealed class AccountUpdate
+        {
+            public string type = "account";
+            public int protocol = Protocol;
+            public CostaLedger.Entry[] bankHistory;
+            public CostaCampaign.Progress campaign;
+        }
+
+        internal int StaminaRefill { get; private set; }
+
         private CostaLedger ledger;
         private int nextTransaction;
         internal int BankPersonal { get; private set; }

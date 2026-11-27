@@ -35,7 +35,6 @@ namespace CostaLivre
         private readonly List<Avatar> relevantPlayers = new(MaxPlayers+1);
         private readonly List<Vehicle> relevantCars = new(16);
         private readonly List<int> relevantIds = new(16);
-        private readonly List<int> presentIds = new(16);
         private Vehicle[] vehicleCache;
         private bool[] carPresent;
         private float lastTrafficSample;
@@ -62,10 +61,10 @@ namespace CostaLivre
             foreach (Vehicle vehicle in hostCars) interest.Add(vehicle.pos);
         }
 
-        private void FilterSnapshot(Peer peer,float now)
+        private void FilterSnapshot(Peer peer)
         {
             interest.Query(peer.Pose.pos,nearby);
-            relevantPlayers.Clear(); relevantCars.Clear(); relevantIds.Clear(); presentIds.Clear();
+            relevantPlayers.Clear(); relevantCars.Clear(); relevantIds.Clear();
             uint visible = 0;
             foreach(int index in nearby)
             {
@@ -83,66 +82,32 @@ namespace CostaLivre
                 if (avatar.vehicle >= 0) visible |= 1u<<avatar.vehicle;
                 if (avatar.doorCar >= 0) visible |= 1u<<avatar.doorCar;
             }
-            bool refresh = now >= peer.NextFullCars;
-            if (refresh) peer.NextFullCars = now + 1.5f;
-            for(int i=0;i<hostCars.Length;i++)
+            // The transport can replace a pending snapshot, so each vehicle slice
+            // must stand alone, including stationary cars.
+            for (int i = 0; i < hostCars.Length; i++)
             {
-                uint mask = 1u<<i;
-                if ((visible&mask)==0) continue;
-                presentIds.Add(i);
-                Vehicle car=hostCars[i];
-                bool entering=(peer.VisibleCars&mask)==0;
-                bool unchanged=peer.CarStamps[i].Matches(car);
-                if (!refresh && !entering && unchanged && car.speed==0 && car.driver==0)
+                if ((visible & (1u << i)) == 0)
                     continue;
-                bool distant=(car.pos-peer.Pose.pos).sqrMagnitude>88*88;
-                if (!refresh && !entering && distant && car.speed!=0 && car.driver==0
-                    && car.tune==peer.CarStamps[i].Tune && now < peer.CarStamps[i].SentAt+.25f)
-                    continue;
-                peer.CarStamps[i] = new CarStamp(car,now);
                 relevantIds.Add(i);
-                relevantCars.Add(car);
+                relevantCars.Add(hostCars[i]);
             }
-            peer.VisibleCars=visible;
             Copy(relevantPlayers,ref peer.Snapshot.players);
             Copy(relevantCars,ref peer.Snapshot.vehicles);
             Copy(relevantIds,ref peer.Snapshot.vehicleIds);
-            Copy(presentIds,ref peer.Snapshot.visibleCars);
-        }
-
-        private readonly struct CarStamp
-        {
-            private readonly Vector3 position;
-            private readonly float yaw, front, rear, speed;
-            internal readonly long Tune;
-            internal readonly float SentAt;
-            private readonly int driver;
-            internal CarStamp(Vehicle car,float now)
-            {
-                position=car.pos; yaw=car.yaw; front=car.frontDamage; rear=car.rearDamage; Tune=car.tune; driver=car.driver; speed=car.speed; SentAt=now;
-            }
-            internal bool Matches(Vehicle car) => position.Equals(car.pos) && yaw==car.yaw && front==car.frontDamage
-                && rear==car.rearDamage && Tune==car.tune && driver==car.driver && speed==car.speed;
         }
 
         private bool ValidVehicleSlice(Frame frame)
         {
-            if(frame.vehicles == null || frame.vehicleIds?.Length != frame.vehicles.Length
-                || frame.visibleCars == null || frame.visibleCars.Length > sceneVehicles.Length
-                || frame.humans is < 1 or > MaxPlayers || frame.policeCount is < 0 or > 4)
+            if (frame.vehicles == null || frame.vehicleIds?.Length != frame.vehicles.Length
+                || frame.vehicles.Length > sceneVehicles.Length || frame.humans is < 1 or > MaxPlayers
+                || frame.policeCount is < 0 or > 4)
                 return false;
-            uint present=0, updated=0;
-            foreach(int i in frame.visibleCars)
+            uint present = 0;
+            foreach (int i in frame.vehicleIds)
             {
-                if(i<0 || i>=sceneVehicles.Length || (present&(1u<<i))!=0) return false;
-                present |= 1u<<i;
-            }
-            for(int j=0;j<frame.vehicleIds.Length;j++)
-            {
-                int i = frame.vehicleIds[j];
-                if(i<0 || i>=sceneVehicles.Length || (present&(1u<<i))==0 || (updated&(1u<<i))!=0)
+                if (i < 0 || i >= sceneVehicles.Length || (present & (1u << i)) != 0)
                     return false;
-                updated |= 1u<<i;
+                present |= 1u << i;
             }
             return true;
         }
@@ -152,10 +117,14 @@ namespace CostaLivre
             vehicleCache ??= new Vehicle[sceneVehicles.Length];
             carPresent ??= new bool[sceneVehicles.Length];
             Array.Clear(carPresent,0,carPresent.Length);
-            foreach(int i in frame.visibleCars) carPresent[i]=true;
-            for(int j=0;j<frame.vehicleIds.Length;j++) vehicleCache[frame.vehicleIds[j]]=frame.vehicles[j];
+            for (int j = 0; j < frame.vehicleIds.Length; j++)
+            {
+                int index = frame.vehicleIds[j];
+                carPresent[index] = true;
+                vehicleCache[index] = frame.vehicles[j];
+            }
             Cars=vehicleCache;
-            NetworkEntities=frame.players.Length+frame.visibleCars.Length;
+            NetworkEntities=frame.players.Length+frame.vehicleIds.Length;
             networkHumans=frame.humans;
             networkPolice=frame.policeCount;
             bankRoster=frame.roster;

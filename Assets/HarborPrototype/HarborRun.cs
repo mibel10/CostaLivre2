@@ -1510,6 +1510,7 @@ namespace CostaLivre
             float danger = session?.Online == true ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat)
                 : Mathf.Max(arrestProgress, pursuit ? .30f : 0);
             score.Update(menu.MusicVolume, quiet, heat, danger, !quiet && encounter?.Combat == true);
+            menu.UpdateAdaptiveResolution(!quiet);
             if (!worldReady)
                 return;
             foreach (CostaVehicle vehicle in cars)

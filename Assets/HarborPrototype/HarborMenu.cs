@@ -78,6 +78,7 @@ namespace CostaLivre
         private const int JobsPerPage = 6;
 
         internal void SaveGraphicsIfDue() => graphics.SaveIfDue();
+        internal void UpdateAdaptiveResolution(bool inGameplay) => graphics.UpdateAdaptiveResolution(inGameplay);
         internal void FlushGraphics() => graphics.Flush();
         internal void SetWorldHour(float? hour, HarborWeather.Conditions weather) => graphics.SetWorldHour(hour, weather);
         internal int GraphicsPreset => graphics.Preset;
@@ -520,7 +521,9 @@ namespace CostaLivre
             graphics.SetScale(GraphicsSlider(new Rect(inset, y + 104, 262, 31), graphics.ResolutionPercent, 0, 100));
             int percent = graphics.ActualPercent;
             string scaleNote;
-            if (percent != graphics.ResolutionPercent)
+            if (graphics.AdaptiveResolution && graphics.AdaptiveSupported)
+                scaleNote = L($"Rendering at {percent}%", $"Renderizando a {percent}%");
+            else if (percent != graphics.ResolutionPercent)
                 scaleNote = L($"Engine minimum   {percent}%", $"Mínimo da Unity   {percent}%");
             else if (percent == 100)
                 scaleNote = L("Native resolution", "Resolução nativa");
@@ -558,7 +561,14 @@ namespace CostaLivre
             if (MenuButton(new Rect(options + 147, y + 211, 115, 32), fsr, graphics.FsrEnabled && compatible, true))
                 graphics.ToggleFsr();
             GUI.enabled = enabled;
-            if (compatible && graphics.FsrEnabled && percent == 100)
+            string adaptive = !graphics.AdaptiveSupported ? L("Unavailable", "Indisponível") :
+                graphics.AdaptiveResolution ? L("On", "Ligada") : L("Off", "Desligada");
+            Text(new Rect(inset, y + 252, 147, 32), L("Adaptive resolution", "Resolução adaptativa"), label, Paper);
+            GUI.enabled = enabled && graphics.AdaptiveSupported;
+            if (MenuButton(new Rect(inset + 147, y + 252, 115, 32), adaptive, graphics.AdaptiveResolution, true))
+                graphics.ToggleAdaptiveResolution();
+            GUI.enabled = enabled;
+            if (compatible && graphics.FsrEnabled && percent == 100 && !graphics.AdaptiveResolution)
                 Text(new Rect(options, y + 252, 270, 22), L("FSR scales up below 100%.", "O FSR atua abaixo de 100%."), label, Grey);
         }
 

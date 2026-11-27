@@ -939,7 +939,7 @@ namespace CostaLivre
                 if (!session.Online && !session.Hosting)
                 {
                     if (!inMenu && overlay == FieldOverlay.None && !pausedForFocus)
-                        traffic.Simulate(Time.deltaTime, hour.Value, pursuit ? player.transform.position : null);
+                        traffic.Simulate(Time.deltaTime, hour.Value, pursuit ? player.transform.position : null, Time.unscaledDeltaTime);
                     traffic.UpdateSignals(hour.Value);
                 }
             }

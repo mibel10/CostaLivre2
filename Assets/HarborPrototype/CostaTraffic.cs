@@ -138,28 +138,26 @@ namespace CostaLivre
         internal CostaVehicle[] VehiclesForAudio => cars;
         internal CityEvent Incident => incident;
 
-        internal void Simulate(float step, float hour, Vector3? pursuit)
+        internal void Simulate(float step, float hour, Vector3? pursuit, float elapsed = -1)
         {
             if (step <= 0)
                 return;
-            accumulator += step;
-            if (accumulator < .075f)
-                return;
-            float dt = Mathf.Min(.2f, accumulator);
-            accumulator = 0;
+            float clock = elapsed >= 0 ? elapsed : step;
+            // Carry a bounded amount of physical work into the next frame.
+            accumulator = Mathf.Min(accumulator + clock, .6f);
             motorHour = hour;
             running = true;
 
             if (incident.site >= 0)
             {
-                incident.remaining -= dt;
+                incident.remaining -= clock;
                 if (incident.remaining <= 0)
                 {
                     SetIncident(-1, 0);
                     nextEvent = random.Next(30, 66);
                 }
             }
-            else if ((nextEvent -= dt) <= 0)
+            else if ((nextEvent -= clock) <= 0)
             {
                 int site = random.Next(EventSites.Length);
                 Vector3 at = EventSites[site] + Vector3.up * .7f;
@@ -173,6 +171,10 @@ namespace CostaLivre
                     nextEvent = 3;
             }
 
+            if (accumulator < .075f)
+                return;
+            float dt = Mathf.Min(.2f, accumulator);
+            accumulator -= dt;
             float night = HarborDaylight.CityNight(hour);
             for (int i = 0; i < cars.Length; i++)
                 StepCar(i, dt, night, pursuit);

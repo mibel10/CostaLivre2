@@ -454,7 +454,8 @@ namespace CostaLivre
             Harm = default;
             Pressure = null;
             float now = Time.realtimeSinceStartup;
-            float delta = Mathf.Clamp(now - lastClock, 0, 0.10f);
+            float elapsed = Mathf.Max(0, now - lastClock);
+            float delta = Mathf.Min(elapsed, .10f);
             lastClock = now;
 
             if (internetRoom?.Ended == true || norayRoom?.Ended == true && connecting == null)
@@ -464,7 +465,7 @@ namespace CostaLivre
                 return;
             }
             if (listener != null)
-                TickHost(now, delta);
+                TickHost(now, delta, elapsed);
             TickClient(now, localPose);
             if (Online && !Hosting)
                 traffic?.Present(trafficTarget, cityEventTarget, WorldHour);
@@ -652,7 +653,7 @@ namespace CostaLivre
                 || internetRoom != null && internetRoom.TryAccept(out wire);
         }
 
-        private void TickHost(float now, float delta)
+        private void TickHost(float now, float delta, float elapsed)
         {
             for (int i = 0; i < 3 && TryAcceptPeer(out var wire); i++)
             {
@@ -823,7 +824,7 @@ namespace CostaLivre
             if (traffic != null)
             {
                 float hour = WorldHour;
-                traffic.Simulate(delta, hour, chase);
+                traffic.Simulate(delta, hour, chase, elapsed);
                 traffic.UpdateSignals(hour);
             }
             if (now < nextSnapshot)

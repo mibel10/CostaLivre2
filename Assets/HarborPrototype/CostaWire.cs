@@ -186,16 +186,18 @@ namespace CostaLivre
             try
             {
                 byte[] header = new byte[4];
+                byte[] payload = Array.Empty<byte>();
                 while (!Closed)
                 {
-                    await ReadExact(header).ConfigureAwait(false);
+                    await ReadExact(header, header.Length).ConfigureAwait(false);
                     int length = (header[0] << 24) | (header[1] << 16) | (header[2] << 8) | header[3];
                     if (length <= 0 || length > Limit || Interlocked.Increment(ref inCount) > 96)
                         break;
 
-                    byte[] bytes = new byte[length];
-                    await ReadExact(bytes).ConfigureAwait(false);
-                    incoming.Enqueue(Encoding.UTF8.GetString(bytes));
+                    if (payload.Length < length)
+                        payload = new byte[Math.Max(length, Math.Min(Limit, payload.Length * 2))];
+                    await ReadExact(payload, length).ConfigureAwait(false);
+                    incoming.Enqueue(Encoding.UTF8.GetString(payload, 0, length));
                 }
             }
             catch (Exception exception) when (NetworkException(exception))
@@ -207,14 +209,14 @@ namespace CostaLivre
             }
         }
 
-        private async Task ReadExact(byte[] buffer)
+        private async Task ReadExact(byte[] buffer, int length)
         {
             int offset = 0;
-            while (offset < buffer.Length)
+            while (offset < length)
             {
                 if (websocket != null)
                 {
-                    var chunk = new ArraySegment<byte>(buffer, offset, buffer.Length - offset);
+                    var chunk = new ArraySegment<byte>(buffer, offset, length - offset);
                     var result = await websocket.ReceiveAsync(chunk, cancel.Token).ConfigureAwait(false);
                     if (result.MessageType != WebSocketMessageType.Binary || (result.Count == 0 && result.EndOfMessage))
                         throw new EndOfStreamException();
@@ -222,7 +224,7 @@ namespace CostaLivre
                 }
                 else
                 {
-                    int size = await stream.ReadAsync(buffer, offset, buffer.Length - offset, cancel.Token).ConfigureAwait(false);
+                    int size = await stream.ReadAsync(buffer, offset, length - offset, cancel.Token).ConfigureAwait(false);
                     if (size == 0)
                         throw new EndOfStreamException();
                     offset += size;

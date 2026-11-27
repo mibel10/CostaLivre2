@@ -69,16 +69,61 @@ namespace CostaLivre
                         || choice.contact is < 0 or > 2)
                         throw new ArgumentException("Invalid campaign choice.");
             }
+            var visiting = new HashSet<string>();
             void Visit(string id)
             {
-                if (!nodes.TryGetValue(id,out Node node)) throw new ArgumentException("Unknown campaign destination: "+id);
+                if (string.IsNullOrEmpty(id) || !nodes.TryGetValue(id,out Node node))
+                    throw new ArgumentException("Unknown campaign destination: " + id);
+                if (visiting.Contains(id))
+                    throw new ArgumentException("Campaign path cycles at " + id);
                 if (!reachable.Add(id)) return;
+                visiting.Add(id);
                 foreach (Choice choice in node.choices ?? Array.Empty<Choice>()) Visit(choice.next);
+                visiting.Remove(id);
             }
             Visit(first);
             if (reachable.Count != nodes.Count || endings.Count < 5)
                 throw new ArgumentException("Campaign requires every node to be reachable and at least five endings.");
+
+            var visited = new HashSet<(string, int, int, int, int, int)>();
+            var possibleEndings = new HashSet<int>();
+            void CheckPaths(string id, int depth, Progress progress)
+            {
+                if (depth > 100)
+                    throw new ArgumentException("Campaign path exceeds the saved decision limit.");
+                if (!visited.Add((id,depth,progress.flags,progress.journalist,progress.mechanic,progress.inspector)))
+                    return;
+                if (visited.Count > 50000)
+                    throw new ArgumentException("Campaign exceeds the path validation budget.");
+                Node node = nodes[id];
+                if (node.ending != 0)
+                {
+                    possibleEndings.Add(node.ending);
+                    return;
+                }
+                bool canContinue = false;
+                foreach (Choice choice in node.choices)
+                {
+                    if (!Available(choice,progress))
+                        continue;
+                    canContinue = true;
+                    CheckPaths(choice.next,depth+1,Branch(progress,choice));
+                }
+                if (!canContinue)
+                    throw new ArgumentException("No available choices at " + id);
+            }
+            CheckPaths(first,0,new Progress());
+            if (!endings.SetEquals(possibleEndings))
+                throw new ArgumentException("Campaign contains endings blocked by trust or flags.");
         }
+
+        private static Progress Branch(Progress old, Choice choice) => new()
+        {
+            node = choice.next, flags = old.flags | choice.earns,
+            journalist = old.journalist + choice.journalist,
+            mechanic = old.mechanic + choice.mechanic,
+            inspector = old.inspector + choice.inspector
+        };
 
         internal Node Current(Progress progress) =>
             progress?.node != null && nodes.TryGetValue(progress.node,out var node) ? node : nodes[first];
@@ -121,12 +166,8 @@ namespace CostaLivre
             if (trail.Length >= 100) return false;
             Array.Resize(ref trail,trail.Length+1);
             trail[^1] = choice.id;
-            var progress = new Progress
-            {
-                node = choice.next, flags = old.flags | choice.earns, decisions = trail,
-                journalist = old.journalist+choice.journalist, mechanic = old.mechanic+choice.mechanic,
-                inspector = old.inspector+choice.inspector
-            };
+            Progress progress = Branch(old,choice);
+            progress.decisions = trail;
             return ledger.SaveCampaign(account,old.node,serial,progress,choice.pay);
         }
 

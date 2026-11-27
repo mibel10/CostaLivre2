@@ -12,6 +12,12 @@ namespace CostaLivre.Editor
         [MenuItem("Costa Livre/Build/Android APK")]
         public static void Android() => Build(BuildTarget.Android, "Builds/Android/CostaLivre2.apk");
 
+        [MenuItem("Costa Livre/Build/Windows (x64)")]
+        public static void Windows() => Build(BuildTarget.StandaloneWindows64, "Builds/Windows/CostaLivre2.exe");
+
+        [MenuItem("Costa Livre/Build/Linux (x64)")]
+        public static void Linux() => Build(BuildTarget.StandaloneLinux64, "Builds/Linux/CostaLivre2.x86_64");
+
         [MenuItem("Costa Livre/Build/Xbox Series X|S")]
         public static void XboxSeries() => Build(BuildTarget.GameCoreXboxSeries, "Builds/XboxSeries");
 

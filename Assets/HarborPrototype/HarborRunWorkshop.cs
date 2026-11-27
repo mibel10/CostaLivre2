@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using static CostaLivre.CostaText;
 using Part = CostaLivre.CostaBuildTuning.Part;
 
@@ -15,6 +16,9 @@ namespace CostaLivre
         private int selectedValue;
         private bool workshopBank = true;
         private float cameraOrbit;
+        private float lastWorkshopHeading = float.NaN;
+        private Part lastWorkshopPart;
+        private long lastWorkshopBuild;
         private string workshopMessage;
         private static readonly Vector3 PreviewSite = new(290,-360,600);
 
@@ -33,6 +37,13 @@ namespace CostaLivre
             workshopCamera = new GameObject("Workshop inspection camera").AddComponent<Camera>();
             workshopCamera.transform.SetParent(transform,false);
             workshopCamera.targetTexture = workshopImage;
+            workshopCamera.cullingMask = CostaItemPreview.Mask;
+            workshopCamera.useOcclusionCulling = false;
+            var cameraData = workshopCamera.GetUniversalAdditionalCameraData();
+            cameraData.renderPostProcessing = false;
+            cameraData.volumeLayerMask = 0;
+            cameraData.renderShadows = false;
+            lastWorkshopHeading = float.NaN;
             workshopCamera.clearFlags = CameraClearFlags.SolidColor;
             workshopCamera.backgroundColor = new(.07f,.105f,.11f);
             workshopCamera.nearClipPlane = .08f;
@@ -56,6 +67,16 @@ namespace CostaLivre
                 _ => 36
             };
             cameraOrbit = Mathf.LerpAngle(cameraOrbit,heading,1-Mathf.Exp(-Time.unscaledDeltaTime*8));
+            if (Mathf.Abs(Mathf.DeltaAngle(cameraOrbit,heading)) < .1f)
+                cameraOrbit = heading;
+            long build = CostaBuildTuning.Change(cars[workshopCar].Build,selectedPart,selectedValue);
+            bool redraw = lastWorkshopHeading != cameraOrbit || lastWorkshopPart != selectedPart || lastWorkshopBuild != build;
+            workshopCamera.enabled = redraw;
+            if (!redraw)
+                return;
+            lastWorkshopHeading = cameraOrbit;
+            lastWorkshopPart = selectedPart;
+            lastWorkshopBuild = build;
             Vector3 focus = PreviewSite + (selectedPart switch
             {
                 Part.Exhaust or Part.Wing => new Vector3(0,.65f,-.86f),
@@ -66,7 +87,20 @@ namespace CostaLivre
             float distance = selectedPart is Part.Hood or Part.Paint or Part.Color or >= Part.Engine and <= Part.Grip ? 5.4f : 4.05f;
             Vector3 eye = focus + Quaternion.Euler(0,cameraOrbit,0)*new Vector3(0,1.42f,distance);
             workshopCamera.transform.SetPositionAndRotation(eye,Quaternion.LookRotation(focus-eye,Vector3.up));
-            workshopModel.ApplyBuild(CostaBuildTuning.Change(cars[workshopCar].Build,selectedPart,selectedValue));
+            workshopModel.ApplyBuild(build);
+            SetWorkshopLayer(workshopModel.Root);
+        }
+
+        private static void SetWorkshopLayer(Transform node)
+        {
+            node.gameObject.layer = CostaItemPreview.Layer;
+            for (int i = 0; i < node.childCount; i++)
+            {
+                Transform child = node.GetChild(i);
+                SetWorkshopLayer(child);
+                if (child.TryGetComponent(out Light light))
+                    light.cullingMask = CostaItemPreview.Mask;
+            }
         }
 
         private void ReleaseWorkshop()
@@ -79,6 +113,8 @@ namespace CostaLivre
             if (workshopModel != null)
             {
                 workshopModel.Root.gameObject.SetActive(false);
+                foreach (MeshFilter filter in workshopModel.Root.GetComponentsInChildren<MeshFilter>(true))
+                    harbor.ReleaseModel(filter.sharedMesh);
                 Destroy(workshopModel.Root.gameObject);
             }
             if (workshopImage != null) { workshopImage.Release(); Destroy(workshopImage); }

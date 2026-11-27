@@ -6,7 +6,7 @@ namespace CostaLivre
     internal sealed class CostaItemPreview
     {
         private static readonly Vector3 Stage = new(0, -4800, 0);
-        private const int Layer = 8;
+        internal const int Layer = 8;
         internal const int Mask = 1 << Layer;
         private readonly HarborBlockout art;
         private readonly Transform anchor;

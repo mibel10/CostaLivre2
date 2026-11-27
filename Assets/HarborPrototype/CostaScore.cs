@@ -22,13 +22,23 @@ namespace CostaLivre
             var deadlines = new float[Tracks.Length];
             var settled = new bool[Tracks.Length];
             double epoch = 0;
+            float requestDeadline = Time.realtimeSinceStartup + 30;
             int remaining = Tracks.Length;
             while (remaining > 0)
             {
                 for (int i = 0; i < Tracks.Length; i++)
                 {
-                    if (settled[i] || !loading[i].isDone)
+                    if (settled[i])
                         continue;
+                    if (!loading[i].isDone)
+                    {
+                        if (Time.realtimeSinceStartup >= requestDeadline)
+                        {
+                            settled[i] = true;
+                            remaining--;
+                        }
+                        continue;
+                    }
                     if (deadlines[i] == 0)
                     {
                         deadlines[i] = Time.realtimeSinceStartup + 12;

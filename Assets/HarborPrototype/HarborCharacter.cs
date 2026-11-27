@@ -427,6 +427,16 @@ namespace CostaLivre
             AlignLimb(leftThigh, leftCalf, leftFoot, Root.TransformPoint(new Vector3(-0.16f, 0.085f, -0.02f)), Root.forward);
         }
 
+        internal void Sit()
+        {
+            Animate(Motion.Idle, progress: 0, snap: true);
+            mesh.transform.localPosition = Vector3.down * .53f;
+            AlignLimb(rightThigh, rightCalf, rightFoot, Root.TransformPoint(new(.19f,.06f,.43f)), Root.forward);
+            AlignLimb(leftThigh, leftCalf, leftFoot, Root.TransformPoint(new(-.19f,.06f,.43f)), Root.forward);
+            AlignArm(rightShoulder, rightElbow, rightHand, Root.TransformPoint(new(.21f,.59f,.24f)), Root.right);
+            AlignArm(leftShoulder, leftElbow, leftHand, Root.TransformPoint(new(-.21f,.59f,.24f)), -Root.right);
+        }
+
         internal void Ride()
         {
             Animate(Motion.Idle, progress: 0, snap: true);

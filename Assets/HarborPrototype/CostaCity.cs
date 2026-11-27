@@ -76,10 +76,12 @@ namespace CostaLivre
         private static readonly Color Pavement = new(0.76f, 0.73f, 0.68f);
         private static readonly Color Stone = new(0.85f, 0.80f, 0.73f);
         private static readonly Color Glass = new(0.15f, 0.23f, 0.26f);
+        private static readonly Color LinenSign = new(.79f,.88f,.84f);
         private static readonly Color Brass = new(0.64f, 0.49f, 0.27f);
         private readonly HarborBlockout art;
         private readonly Transform root;
         private Transform wheel;
+        internal CostaInteriors Interiors { get; }
         private float wheelAngle;
         private readonly Transform[] gondolas = new Transform[8];
 
@@ -92,6 +94,7 @@ namespace CostaLivre
         {
             this.art = art;
             this.root = root;
+            Interiors = new CostaInteriors(art, root);
         }
 
         internal IEnumerable<float> Build()
@@ -205,11 +208,12 @@ namespace CostaLivre
                     continue;
                 Block(new Vector3(x, 0, 158), 9, 9, height);
             }
-            Block(new Vector3(31, 0, 58), 19, 19, 14);
+            Venue("HOSPITAL COSTEIRO", CostaInteriorPlan.Hospital.Entry, 23, 17, 10, Stone,
+                CostaInteriorPlan.Hospital.Accent);
             Block(new Vector3(32, 0, 151), 21, 12, 24);
             Block(new Vector3(-137, 0, 121), 13, 16, 13);
             Block(new Vector3(-55, 0, 118), 17, 7, 10);
-            Venue("CAFÉ DA PRAÇA", new Vector3(-113, 0, 67), 12, 7, 5.3f, Stone, Brass);
+            Venue("CAFÉ DA PRAÇA", CostaInteriorPlan.Cafe, 12, 7, 5.3f, Stone, Brass);
             for (int i = 0; i < 4; i++)
                 Tree(new Vector3(-18 + i * 8, 0, 38));
             Block(new Vector3(-140, 0, 65), 14, 19, 12);
@@ -227,8 +231,10 @@ namespace CostaLivre
                 yield return 0.65f + 0.10f * i;
             }
 
+            foreach (float part in Interiors.BuildStructure())
+                yield return Mathf.Lerp(.86f,.93f,part);
             foreach (float part in art.FinishDecoration())
-                yield return Mathf.Lerp(0.86f, 0.99f, part);
+                yield return Mathf.Lerp(.93f, .99f, part);
             yield return 1f;
         }
 
@@ -309,7 +315,14 @@ namespace CostaLivre
                     float x = block < 3 ? -91 + block * 16 : -4 + (block - 3) * 16;
                     float depth = 15 + (block % 3) * 2;
                     float height = index == 1 ? 11 + (block % 4) * 6 : 6 + (block % 3) * 3 + index;
-                    Block(new Vector3(x, 0, z + row * 37), 11, depth, height);
+                    if (row == -1 && index == 2 && block == 4)
+                        Venue("APARTAMENTOS MIRANTE", CostaInteriorPlan.Apartment.Entry, 11, 17, 10,
+                            Stone, CostaInteriorPlan.Apartment.Accent);
+                    else if (row == -1 && index == 0 && block == 5)
+                        Venue("GARAGEM DO CAIS", CostaInteriorPlan.Garage.Entry, 11, 19, 7,
+                            Stone, CostaInteriorPlan.Garage.Accent);
+                    else
+                        Block(new Vector3(x, 0, z + row * 37), 11, depth, height);
                     Tree(new Vector3(x + 5, 0, z + row * 13));
                 }
 
@@ -322,7 +335,7 @@ namespace CostaLivre
                             district.Accent, true);
                     break;
                 case 1:
-                    Venue("CENTRO TECNOLÓGICO", new Vector3(-73, 0, z + 9), 28, 17, 32, Stone, district.Accent);
+                    Venue("CENTRO TECNOLÓGICO", CostaInteriorPlan.Office.Entry, 28, 17, 17, Stone, district.Accent);
                     Plaza(new Vector3(12, 0, z - 15), district.Accent);
                     break;
                 default:
@@ -450,11 +463,16 @@ namespace CostaLivre
 
         private void Venue(string name, Vector3 entry, float width, float depth, float height, Color color, Color trim, Floor floor = Floor.Stone)
         {
+            CostaInteriorPlan plan = CostaInteriorPlan.Find(entry);
+            if (plan != null)
+                height = Mathf.Max(4.3f, plan.Height);
             float front = entry.z - 2f;
             Footprints.Add(new Rect(entry.x - width * 0.5f, front, width, depth));
             Vector3 center = new(entry.x, 0, front + depth / 2);
-            art.Acoustics.AddRoom(new Bounds(center + Vector3.up * 1.65f, new Vector3(width - .42f, 3.3f, depth)));
-            float wing = (width - 2.8f) / 2;
+            if (plan == null)
+                art.Acoustics.AddRoom(new Bounds(center + Vector3.up * 1.65f, new Vector3(width - .42f, 3.3f, depth)));
+            float opening = plan?.DoorSpan ?? 2.8f;
+            float wing = (width - opening) / 2;
             art.Wear(1, new Vector3(entry.x + width * 0.32f, 0.073f, front - 1.15f),
                 new Vector2(2.8f, 1.7f), Quaternion.Euler(90, 0, 0));
             art.MarkFootFloor(art.Box("Entrance paving", new(entry.x, .035f, front - 1.4f),
@@ -467,7 +485,7 @@ namespace CostaLivre
             {
                 art.Box("Lobby side", center + new Vector3(side * (width / 2 - 0.21f), 1.65f, 0),
                     new Vector3(0.42f, 3.30f, depth), color, true, "Concrete", new Vector2(depth / 2.4f, 2));
-                float wallX = entry.x + side * (1.4f + wing / 2);
+                float wallX = entry.x + side * (opening / 2 + wing / 2);
                 art.Box("Stone window base", new Vector3(wallX, .47f, front),
                     new Vector3(wing, .94f, .44f), color, true, "Concrete", new Vector2(wing / 2, 1));
                 art.Box("Stone window lintel", new Vector3(wallX, 2.85f, front),
@@ -493,24 +511,60 @@ namespace CostaLivre
 
             art.Box("Lobby back", center + new Vector3(0, 1.65f, depth / 2 - 0.21f),
                 new Vector3(width, 3.3f, 0.42f), color, true, "Concrete", new Vector2(width / 2.4f, 2));
-            art.Box(name, center + new Vector3(0, (3.3f + height) / 2, 0),
-                new Vector3(width, height - 3.3f, depth), color, true, "Concrete", new Vector2(width / 2.4f, height / 2));
+            if (plan == null || !plan.Vertical)
+                art.Box(name, center + new Vector3(0, (3.3f + height) / 2, 0),
+                    new Vector3(width, height - 3.3f, depth), color, true, "Concrete", new Vector2(width / 2.4f, height / 2));
+            else
+            {
+                float facadeHeight = height - 3.3f;
+                float middle = 3.3f + facadeHeight / 2;
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    art.Box("Upper side wall", new Vector3(entry.x + side * (width/2 - .21f), middle, center.z),
+                        new(.42f, facadeHeight, depth), color, true, "Concrete");
+                }
+                art.Box("Upper rear facade", new Vector3(entry.x,middle,center.z+depth/2-.21f),
+                    new(width-.84f,facadeHeight,.42f),color,true,"Concrete");
+                int bays = Mathf.Max(2,Mathf.FloorToInt((width-.84f)/3.4f));
+                float bayWidth = (width-.84f)/bays;
+                for (int floorIndex=1; floorIndex<plan.Levels; floorIndex++)
+                {
+                    float y = plan.Y(floorIndex);
+                    art.Box("Facade sill wall",new(entry.x,y+.42f,front+.21f),new(width-.84f,.88f,.42f),color,true,"Concrete");
+                    art.Box("Facade lintel",new(entry.x,y+2.79f,front+.21f),new(width-.84f,1.02f,.42f),color,true,"Concrete");
+                    for (int bayIndex=0; bayIndex<bays; bayIndex++)
+                    {
+                        float x = entry.x-width/2+.42f + (bayIndex+.5f)*bayWidth;
+                        art.Box("Upper facade mullion",new(x-bayWidth/2+.19f,y+1.57f,front+.21f),
+                            new(.38f,1.48f,.42f),color,true,"Concrete");
+                        art.Box("Upper window glazing",new(x+.19f,y+1.57f,front+.14f),
+                            new(bayWidth-.38f,1.48f,.08f),Glass,true,finish:HarborBlockout.Finish.Glass);
+                    }
+                }
+            }
             art.Box("Entrance canopy", new Vector3(entry.x, 3.11f, front - 0.68f), new Vector3(5.2f, 0.17f, 1.85f), trim);
             art.Box("Facade sign panel", new Vector3(entry.x, 3.68f, front - 0.252f),
                 new Vector3(Mathf.Min(width - 1, 10), 0.70f, 0.12f), trim);
             art.Sign(name, new Vector3(entry.x, 3.68f, front - 0.319f), 0.16f, Stone);
 
-            GameObject fixture = new GameObject("Lobby lighting");
-            fixture.transform.SetParent(root, false);
-            fixture.transform.position = center + Vector3.up * 2.91f;
-            Light lamp = fixture.AddComponent<Light>();
-            lamp.type = LightType.Point;
-            lamp.range = Mathf.Max(7f, depth * 0.75f);
-            lamp.intensity = 2.4f;
-            lamp.color = new Color(1f, 0.87f, 0.72f);
-            lamp.shadows = LightShadows.None;
+            if (plan != null && plan.Opens != plan.Closes)
+                art.Sign($"{plan.Opens:00}:00 – {plan.Closes:00}:00",
+                    new(entry.x + opening/2 + .4f,1.57f,front-.29f),.085f,LinenSign);
 
-            if (height > 8f)
+            if (plan == null)
+            {
+                GameObject fixture = new GameObject("Lobby lighting");
+                fixture.transform.SetParent(root, false);
+                fixture.transform.position = center + Vector3.up * 2.91f;
+                Light lamp = fixture.AddComponent<Light>();
+                lamp.type = LightType.Point;
+                lamp.range = Mathf.Max(7f, depth * 0.75f);
+                lamp.intensity = 2.4f;
+                lamp.color = new Color(1f, 0.87f, 0.72f);
+                lamp.shadows = LightShadows.None;
+            }
+
+            if (height > 8f && (plan == null || !plan.Vertical))
                 Windows(center, width, depth, height);
         }
 

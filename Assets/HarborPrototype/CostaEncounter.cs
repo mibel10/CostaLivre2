@@ -42,6 +42,7 @@ namespace CostaLivre
         private const float BreachSeconds = 1.8f;
 
         internal int Health { get; private set; } = 100;
+        internal void RestoreHealth(int amount) => Health = Mathf.Min(100,Health + amount);
         internal bool Active => jobs.Active >= CostaJobs.OriginalCount;
         internal bool Combat => Active && jobs.Current.Mode == Action.Fight;
         internal bool CarryingLoot { get; private set; }

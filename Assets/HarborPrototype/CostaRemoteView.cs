@@ -109,7 +109,7 @@ namespace CostaLivre
                     model.BlendDuration = .075f;
                 }
                 model.WasTransitioning = transitioning;
-                model.Mount.gameObject.SetActive(!transitioning && avatar.vehicle < 0);
+                model.Mount.gameObject.SetActive(!transitioning && avatar.vehicle < 0 && avatar.seat < 0);
                 if (transitioning)
                     continue;
                 bool bike = avatar.vehicle >= 0 && avatar.vehicle < cars.Length && cars[avatar.vehicle].IsBike;
@@ -152,6 +152,11 @@ namespace CostaLivre
                     model.Velocity = Vector3.Lerp(oldVelocity, measured, 1 - Mathf.Exp(-dt * 10f));
                     if (!InView(position))
                         continue;
+                    if (avatar.seat >= 0)
+                    {
+                        model.Body.Sit();
+                        continue;
+                    }
                     if (avatar.rollPose >= 0)
                         model.Body.Animate(HarborCharacter.Motion.Roll, progress: avatar.rollPose, snap: !continuous);
                     else if (avatar.jumpPose >= 0)

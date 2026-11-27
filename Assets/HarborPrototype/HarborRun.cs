@@ -13,7 +13,7 @@ namespace CostaLivre
 {
     public sealed class HarborRun : MonoBehaviour
     {
-        private enum FieldOverlay { None, Map, Shop, Bag, Vendor }
+        private enum FieldOverlay { None, Map, Shop, Bag, Vendor, Elevator }
         private enum RunState { FindCargo, Escape, Delivered, Caught }
 
         private sealed class Guard
@@ -59,6 +59,15 @@ namespace CostaLivre
         private InputAction bagKey;
         private InputAction crouchKey;
         private CostaSession session;
+        private int soloSeat = -1;
+        private int soloLift = -1;
+        private int liftPicker = -1;
+        private float nextSoloTreatment;
+        private string interiorNotice = "";
+        private float interiorNoticeUntil;
+        private int CurrentSeat => session.Online ? session.Local.seat : soloSeat;
+        private int CurrentLift => session.Online ? session.Local.lift : soloLift;
+        private GUIStyle elevatorButton;
         private CostaOnlinePanel onlinePanel;
         private CostaRemoteView remotes;
         private CostaBagPanel bagPanel;
@@ -391,7 +400,10 @@ namespace CostaLivre
             yield return .79f;
 
             encounter = new CostaEncounter(harbor, transform, jobs, cars, effects);
-            session = new CostaSession(cars, harbor.Damage, traffic);
+            session = new CostaSession(cars, harbor.Damage, traffic, city.Interiors)
+            {
+                InteriorEffects = effects
+            };
             onlinePanel.AttachSession(session);
             remotes = new CostaRemoteView(harbor, transform, effects);
         }
@@ -614,6 +626,7 @@ namespace CostaLivre
             encounter?.Dispose();
             atmosphere?.Release();
             venues?.Release();
+            city?.Interiors.Release();
             traffic?.Release();
             harbor?.ReleaseMaterials();
         }
@@ -666,6 +679,7 @@ namespace CostaLivre
                 return;
 
             int priorHeat = session.Local?.wantedLevel ?? 0;
+            session.InteriorListener = followCamera.transform.position;
             session.Tick(CaptureNetworkPose());
             int impactBudget = 16;
             while (impactBudget-- > 0 && session.ReadImpact(out var impact))
@@ -785,6 +799,7 @@ namespace CostaLivre
                 arsenal.SetLoanerPistol(false);
 
                 wasOnline = true;
+                soloSeat = soloLift = -1;
                 jobs.SetOnlineDoors(true);
                 city.UpdateHouseDoors(jobs, true, snap: true);
                 pursuit = false;
@@ -918,6 +933,7 @@ namespace CostaLivre
                 if (!session.Online && !inMenu && overlay == FieldOverlay.None)
                     soloDaySeconds += Time.deltaTime;
                 ApplyWorldHour();
+                UpdateInteriors();
             }
             touch.Update(!inMenu && overlay == FieldOverlay.None && !pausedForFocus,
                 car != null, worldReady && !session.Online && (state == RunState.Caught || state == RunState.Delivered));
@@ -1037,6 +1053,21 @@ namespace CostaLivre
             city.Animate(followCamera.transform.position, followCamera.farClipPlane);
             city.UpdateHouseDoors(jobs, session.Online);
             bool interaction = Pressed(interact, TouchControl.Use);
+            if (car == null && (CurrentSeat >= 0 || CurrentLift >= 0))
+            {
+                if (interaction && CurrentSeat >= 0)
+                    UseInterior(CurrentSeat);
+                PositionCamera(false);
+                return;
+            }
+            bool interiorAction = car == null && interaction && rollClock <= 0 && !UsingContractObjective()
+                && TryInteriorInteraction();
+            if (interiorAction)
+            {
+                interaction = false;
+                if (overlay == FieldOverlay.Elevator)
+                    return;
+            }
             bool pendingVehicleSync = false;
             if (!session.Online)
             {
@@ -1218,6 +1249,145 @@ namespace CostaLivre
             overlay = FieldOverlay.None;
             Time.timeScale = 1;
             SetCursor(true);
+        }
+
+        private float InteriorHour => session.Online ? session.WorldHour
+            : HarborDaylight.Advance(HarborDaylight.StartHour,soloDaySeconds);
+
+        private void UpdateInteriors()
+        {
+            CostaInteriors interiors = city.Interiors;
+            float delta = Mathf.Min(Time.unscaledDeltaTime,.1f);
+            float hour = InteriorHour;
+            bool running = !inMenu && !pausedForFocus;
+            if (!session.Online && !session.Hosting && !session.Connecting && running && overlay != FieldOverlay.Elevator)
+            {
+                interiors.ObserveDoor(player.transform.position, Time.unscaledTime,hour);
+                interiors.Step(Time.unscaledTime,delta);
+            }
+            if (!session.Hosting)
+                interiors.Present(delta,!session.Online,effects,followCamera.transform.position);
+            if (CurrentLift >= 0)
+            {
+                int lift = CurrentLift;
+                player.enabled = false;
+                Vector3 position = player.transform.position;
+                position.y = interiors.VisualHeight(lift);
+                player.transform.position = position;
+                if (!session.Online && !interiors.Moving(lift))
+                {
+                    soloLift = -1;
+                    player.enabled = true;
+                }
+            }
+            if (CurrentSeat >= 0)
+            {
+                player.enabled = false;
+                playerBody.Sit();
+                arsenal.SetVisible(false);
+            }
+            interiors.Stream(player.transform.position,hour,running || pauseMenu,menu.GraphicsPreset <= 1,
+                running && overlay == FieldOverlay.None ? 1 : 0);
+        }
+
+        private bool TryInteriorInteraction()
+        {
+            Vector3 position = player.transform.position;
+            int key = city.Interiors.FindAction(position,CurrentSeat,CurrentLift,InteriorHour,out _,out int picker);
+            if (key < 0)
+                return false;
+            if (picker >= 0)
+            {
+                liftPicker = picker;
+                OpenOverlay(FieldOverlay.Elevator);
+                return true;
+            }
+            UseInterior(key);
+            return true;
+        }
+
+        private void UseInterior(int key)
+        {
+            if (session.Online)
+            {
+                session.Request("interior",key);
+                return;
+            }
+
+            CostaInteriors interiors = city.Interiors;
+            Vector3 position = player.transform.position;
+            int prior = soloSeat;
+            bool accepted = interiors.Use(key,Time.unscaledTime,InteriorHour,ref position,ref soloSeat,out var action,out int notice);
+            if (accepted && action == CostaInteriors.Action.Sit && prior != soloSeat)
+            {
+                player.enabled = false;
+                player.transform.position = position;
+                if (soloSeat >= 0)
+                    playerModel.rotation = Quaternion.Euler(0,180,0);
+                ApplyVehiclePresentation();
+                player.enabled = soloSeat < 0;
+            }
+            if (accepted && action is CostaInteriors.Action.Call or CostaInteriors.Action.Travel)
+            {
+                int lift = CostaInteriors.BuildingOf(key);
+                if (interiors.Boarded(lift,position))
+                    soloLift = lift;
+            }
+            if (accepted && action == CostaInteriors.Action.Service)
+            {
+                if (Time.unscaledTime < nextSoloTreatment)
+                    notice = 35;
+                else
+                {
+                    nextSoloTreatment = Time.unscaledTime + 35;
+                    bool hospital = CostaInteriorPlan.All[CostaInteriors.BuildingOf(key)].Purpose == CostaInteriorPlan.Use.Hospital;
+                    encounter.RestoreHealth(hospital ? 65 : 12);
+                    stamina = FullStamina;
+                    notice = 34;
+                }
+            }
+            if (accepted)
+                effects.Play(Cue.PanelOpen,.18f);
+            if (notice > 0)
+            {
+                interiorNotice = CostaInteriors.Notice(notice);
+                interiorNoticeUntil = Time.unscaledTime + 4;
+            }
+        }
+
+        private void DrawElevator()
+        {
+            if (liftPicker < 0)
+                return;
+            float scale = Mathf.Min(Screen.width/430f,Screen.height/480f,1.5f);
+            Matrix4x4 previous = GUI.matrix;
+            GUI.matrix = Matrix4x4.Scale(new Vector3(scale,scale,1));
+            float width = Screen.width/scale;
+            float height = Screen.height/scale;
+            var plan = CostaInteriorPlan.All[liftPicker];
+            float panelHeight = 114 + 38 * Mathf.CeilToInt((plan.Levels+1)/2f);
+            Rect panel = new((width-310)/2,(height-panelHeight)/2,310,panelHeight);
+            Color old = GUI.color;
+            GUI.color = new Color(.055f,.09f,.10f,.98f);
+            GUI.DrawTexture(panel,Texture2D.whiteTexture);
+            GUI.color = old;
+            elevatorButton ??= new GUIStyle(GUI.skin.button) { fontSize = 15 };
+            GUI.Label(new Rect(panel.x+16,panel.y+11,265,30), L("ELEVATOR · SELECT A FLOOR","ELEVADOR · SELECIONE UM ANDAR"));
+            for (int level = 0; level <= plan.Levels; level++)
+            {
+                Rect cell = new(panel.x+15+(level%2)*140,panel.y+48+(level/2)*38,134,32);
+                string label = level == 0 ? L("Ground floor","Térreo")
+                    : level == plan.Levels ? L("Roof terrace","Cobertura") : L($"Floor {level+1}",$"{level+1}º andar");
+                if (!CostaUi.Button(cell,label,elevatorButton))
+                    continue;
+                UseInterior(CostaInteriors.Encode(liftPicker,CostaInteriors.Action.Travel,level));
+                CloseOverlay();
+                break;
+            }
+            if (overlay == FieldOverlay.Elevator && CostaUi.Button(new Rect(panel.x+15,panel.yMax-42,274,30),
+                L("Close","Fechar"),elevatorButton))
+                CloseOverlay();
+            GUI.matrix = previous;
         }
 
         private void AnimatePolice()
@@ -2081,6 +2251,7 @@ namespace CostaLivre
             effects.ResetCombat();
             score.Reset();
             vehicleMotion.Clear();
+            soloSeat = soloLift = -1;
             footfalls = default;
             engineThrottle = 0;
             wantedLevel = 0;
@@ -2231,6 +2402,11 @@ namespace CostaLivre
                 cityMap.DrawFull(player.transform.position, yaw, MissionLocation(), closeOverlay);
                 return;
             }
+            if (overlay == FieldOverlay.Elevator)
+            {
+                DrawElevator();
+                return;
+            }
             if (overlay == FieldOverlay.Shop)
             {
                 gunShop.Draw(CurrentCash, arsenal, BuyWeapon, EquipWeapon, closeOverlay);
@@ -2286,6 +2462,8 @@ namespace CostaLivre
             float side = Vector3.Dot(target - position, followCamera.transform.right);
             string notice = session.Online ? session.CurrentNotice
                 : robberies.Notice.Length > 0 ? robberies.Notice : jobs.Notice;
+            if (notice.Length == 0 && Time.unscaledTime < interiorNoticeUntil)
+                notice = interiorNotice;
             if (notice.Length == 0)
                 notice = venues.Notice;
             if (notice.Length == 0 && traffic.NearbyEvent(position, out int incident))
@@ -2361,6 +2539,10 @@ namespace CostaLivre
                 if (jobs.Current.Mode != CostaJobs.Action.Checkpoint)
                     return $"{use} {jobs.Current.Title}";
             }
+
+            city.Interiors.FindAction(player.transform.position, CurrentSeat, CurrentLift, InteriorHour, out string interior, out _);
+            if (interior.Length > 0)
+                return CurrentLift >= 0 ? interior : $"{use} {interior}";
 
             int robbery = robberies.Nearby(player.transform.position);
             if (!IsPolice && state != RunState.Escape && robbery >= 0)

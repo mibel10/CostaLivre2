@@ -9,6 +9,7 @@ namespace CostaLivre
         {
             internal string En, Pt;
             internal Vector3 Kiosk;
+            internal CostaInteriorPlan Plan;
             internal HarborCharacter Clerk;
             internal Light Lamp;
             internal Vector3 WorkStart, WorkEnd;
@@ -16,6 +17,7 @@ namespace CostaLivre
 
         private readonly Venue[] venues = new Venue[6];
         private float updateAt;
+        private float venueHour = HarborDaylight.StartHour;
         private float noticeUntil;
         private string notice = "";
         private readonly Transform root;
@@ -66,7 +68,7 @@ namespace CostaLivre
             clerk.WearTexture(Resources.Load<Texture2D>($"Harbor/Wardrobe/look-{index + 6}"));
             venues[index] = new Venue
             {
-                En = en, Pt = pt, Kiosk = kiosk, Clerk = clerk, Lamp = lamp,
+                En = en, Pt = pt, Kiosk = kiosk, Plan = CostaInteriorPlan.Find(entry), Clerk = clerk, Lamp = lamp,
                 WorkStart = clerkStart, WorkEnd = clerkStart + Vector3.right * 1.13f
             };
 
@@ -146,6 +148,7 @@ namespace CostaLivre
 
         internal void Update(float hour, Vector3 viewer)
         {
+            venueHour = hour;
             float night = HarborDaylight.CityNight(hour);
             bool rethink = Time.unscaledTime >= updateAt;
             if (rethink)
@@ -159,7 +162,7 @@ namespace CostaLivre
                     venue.Lamp.enabled = nearby;
                     venue.Lamp.intensity = Mathf.Lerp(1.2f, 2.6f, night);
                 }
-                float open = i == 0 || i == 4 ? 1 : 1 - night;
+                float open = venue.Plan?.IsOpen(hour) != false ? 1 : 0;
                 // Attendants slowly move between service and stock during business hours.
                 float phase = Mathf.Repeat(hour * 3.75f + i * .71f, 4);
                 float walk = phase < 1 ? Mathf.SmoothStep(0, 1, phase)
@@ -209,7 +212,7 @@ namespace CostaLivre
         internal bool Use(Vector3 player)
         {
             int index = Find(player);
-            if (index < 0)
+            if (index < 0 || venues[index].Plan?.IsOpen(venueHour) == false)
                 return false;
             notice = index switch
             {
@@ -227,7 +230,7 @@ namespace CostaLivre
         internal string Prompt(Vector3 player)
         {
             int index = Find(player);
-            return index < 0 ? "" : L(venues[index].En, venues[index].Pt);
+            return index < 0 || venues[index].Plan?.IsOpen(venueHour) == false ? "" : L(venues[index].En, venues[index].Pt);
         }
 
         internal string Notice => Time.unscaledTime < noticeUntil ? notice : "";

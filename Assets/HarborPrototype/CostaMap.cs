@@ -80,6 +80,11 @@ namespace CostaLivre
             new(CostaCity.Estate[2], Kind.Home, "Vila 03", "Vila 03"),
             new(CostaCity.Vendors[0], Kind.Vendor, "Loot exchange 01", "Posto de venda 01"),
             new(CostaCity.Vendors[1], Kind.Vendor, "Loot exchange 02", "Posto de venda 02"),
+            new(CostaInteriorPlan.Cafe + Vector3.back*2, Kind.Landmark, "Praça Café", "Café da Praça"),
+            new(CostaInteriorPlan.Hospital.Entrance, Kind.Landmark, "Coastal Hospital", "Hospital Costeiro"),
+            new(CostaInteriorPlan.Office.Entrance, Kind.Landmark, "Technology Centre", "Centro Tecnológico"),
+            new(CostaInteriorPlan.Apartment.Entrance, Kind.Home, "Mirante Apartments", "Apartamentos Mirante"),
+            new(CostaInteriorPlan.Garage.Entrance, Kind.Landmark, "Quay Garage", "Garagem do Cais"),
             new(new Vector3(CostaCity.HighwayX, 0, CostaCity.Districts[0].Center), Kind.Landmark, "Calado City", "Calado City"),
             new(new Vector3(CostaCity.HighwayX, 0, CostaCity.Districts[1].Center), Kind.Landmark, "Antutu City", "Antutu City"),
             new(new Vector3(CostaCity.HighwayX, 0, CostaCity.Districts[2].Center), Kind.Landmark, "Vice City", "Vice City")

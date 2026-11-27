@@ -15,7 +15,7 @@ namespace CostaLivre
     {
         internal const int DefaultPort = 7777;
         internal const int MaxPlayers = 16;
-        private const int Protocol = 11;
+        private const int Protocol = 12;
         private const float Interval = 0.083f;
         internal const int PoliceArmor = 50;
         internal const int MaxWanted = 6;
@@ -60,6 +60,8 @@ namespace CostaLivre
             public float arrestThreat;
             public int outfit;
             public int vehicle = -1;
+            public int seat = -1;
+            public int lift = -1;
             public int doorCar = -1;
             public int doorSide;
             public float doorTime;
@@ -122,6 +124,7 @@ namespace CostaLivre
             public int[] loaded;
             public bool[] reloading;
             public bool[] sites;
+            public CostaInteriors.State[] interiors;
             public bool[] alarms;
             public int[] crewSlots;
             public Dispatch dispatch;
@@ -147,6 +150,7 @@ namespace CostaLivre
             public Avatar[] players;
             public Vehicle[] vehicles;
             public bool[] sites;
+            public CostaInteriors.State[] interiors;
             public bool[] alarms;
             public int[] crewSlots;
             public Dispatch dispatch;
@@ -206,6 +210,8 @@ namespace CostaLivre
             internal float DoorUntil;
             internal float HeatUntil;
             internal float NextCrime;
+            internal float NextInteriorUse;
+            internal float NextTreatment;
             internal int ArrestTarget;
             internal float ArrestStarted;
             internal float ArrestAfter;
@@ -231,6 +237,9 @@ namespace CostaLivre
         private readonly CostaVehicle[] sceneVehicles;
         private readonly CostaWorldDamage scenery;
         private readonly CostaTraffic traffic;
+        private readonly CostaInteriors interiors;
+        internal Vector3 InteriorListener { get; set; }
+        internal CostaEffects InteriorEffects { get; set; }
         private readonly Queue<ImpactEvent> surfaceEvents = new();
         private readonly ImpactEvent impactFrame = new();
         private int lastHarm;
@@ -326,9 +335,10 @@ namespace CostaLivre
         internal int PoliceLimit => AllowedPolice(HumanCount);
         internal static int AllowedPolice(int players) => players < 2 ? 0 : Mathf.Clamp(players * 3 / 10, 1, 4);
 
-        internal CostaSession(CostaVehicle[] vehicles, CostaWorldDamage scenery = null, CostaTraffic traffic = null)
+        internal CostaSession(CostaVehicle[] vehicles, CostaWorldDamage scenery = null, CostaTraffic traffic = null, CostaInteriors interiors = null)
         {
             this.traffic = traffic;
+            this.interiors = interiors;
             this.scenery = scenery;
             sceneVehicles = vehicles;
             initialHomes = new int[vehicles.Length];
@@ -390,6 +400,7 @@ namespace CostaLivre
             {
                 if (host)
                 {
+                    interiors?.UseLocalWorld(true);
                     bool relayed = useNoray || relay != null;
                     listener = new TcpListener(relayed ? IPAddress.Loopback : IPAddress.Any, relayed ? 0 : port);
                     listener.Start(MaxPlayers);
@@ -520,6 +531,7 @@ namespace CostaLivre
                         || avatar.doorCar < -1 || avatar.doorCar >= sceneVehicles.Length
                         || avatar.wantedLevel < 0 || avatar.wantedLevel > MaxWanted)
                     || Array.Exists(frame.vehicles, vehicle => vehicle == null)
+                    || interiors != null && !CostaInteriors.Valid(frame.interiors)
                     || frame.sites?.Length != restock.Length || frame.alarms?.Length != restock.Length
                     || frame.crewSlots?.Length != restock.Length
                     || frame.dispatch?.active == true && (frame.dispatch.site < 0 || frame.dispatch.site >= restock.Length)
@@ -552,6 +564,7 @@ namespace CostaLivre
 
                 if (!Hosting)
                 {
+                    interiors?.Read(frame.interiors);
                     scenery?.Apply(frame.scenery);
                     trafficTarget = frame.traffic;
                     cityEventTarget = frame.cityEvent;
@@ -643,6 +656,10 @@ namespace CostaLivre
                 if (peer.Wire.Closed || now - peer.LastPacket > 10f)
                 {
                     ReleaseVehicle(peer);
+                    if (interiors != null && peer.Ready && peer.Pose.lift >= 0)
+                        peer.Pose.pos = interiors.Landing(peer.Pose.lift,peer.Pose.pos);
+                    if (peer.Ready)
+                        peer.Pose.seat = peer.Pose.lift = -1;
                     peer.Wire.Dispose();
                     peers.RemoveAt(index);
                     left |= peer.Ready;
@@ -688,6 +705,7 @@ namespace CostaLivre
                             peer.NextShot = saved.NextShot;
                             peer.HeatUntil = saved.HeatUntil;
                             peer.NextCrime = saved.NextCrime;
+                            peer.NextTreatment = saved.NextTreatment;
                             peer.Pose.arrestProgress = 0;
                             peer.RespawnProtection = saved.RespawnProtection;
                             Array.Copy(saved.UsedRounds, peer.UsedRounds, peer.UsedRounds.Length);
@@ -727,6 +745,7 @@ namespace CostaLivre
 
             if (left)
                 Rebalance();
+            TickInteriors(now, delta);
             TickGetaways(now);
             TickRobberies(now);
 
@@ -821,6 +840,7 @@ namespace CostaLivre
             active.CopyTo(world.players);
             world.vehicles = hostCars;
             world.worldHour = WorldHour;
+            world.interiors = interiors?.States;
             world.dispatch = dispatch;
             world.opportunity = opportunity;
             world.scenery = scenery?.Capture();
@@ -882,7 +902,7 @@ namespace CostaLivre
                 if (msg.pose != null && msg.pose.revision == avatar.revision)
                 {
                     avatar.playing |= msg.pose.playing;
-                    if (avatar.playing && now >= peer.HeldUntil && now >= peer.DoorUntil)
+                    if (avatar.playing && avatar.seat < 0 && avatar.lift < 0 && now >= peer.HeldUntil && now >= peer.DoorUntil)
                         UpdatePose(peer, msg.pose, now);
                 }
                 return;
@@ -901,8 +921,15 @@ namespace CostaLivre
             if (!avatar.playing && msg.type != "police" && msg.type != "outfit")
                 return;
 
+            if ((avatar.lift >= 0 && msg.type is not ("outfit" or "police")) ||
+                (avatar.seat >= 0 && msg.type is not ("interior" or "outfit" or "police")))
+                return;
+
             switch (msg.type)
             {
+                case "interior":
+                    UseInterior(peer, msg.index, now);
+                    break;
                 case "police":
                     if (avatar.police)
                     {
@@ -1071,6 +1098,85 @@ namespace CostaLivre
                 RaiseHeat(collector, now, false);
                 BeginGesture(collector, HarborCharacter.Gesture.PickUp, now, CostaRobberies.PickupTarget(i));
                 SetNotice(collector, 5);
+            }
+        }
+
+        private void TickInteriors(float now, float delta)
+        {
+            if (interiors == null)
+                return;
+            float hour = WorldHour;
+            foreach (Peer peer in peers)
+                if (peer.Ready && peer.Pose.playing)
+                    interiors.ObserveDoor(peer.Pose.pos, now, hour);
+            interiors.Step(now, delta);
+            foreach (Peer peer in peers)
+            {
+                if (!peer.Ready || peer.Pose.lift < 0)
+                    continue;
+                Avatar avatar = peer.Pose;
+                avatar.pos.y = interiors.Height(avatar.lift);
+                if (interiors.Moving(avatar.lift))
+                    continue;
+                avatar.lift = -1;
+                ResetMotion(peer);
+                peer.LastPose = now;
+                avatar.revision++;
+            }
+            interiors.Present(delta,true,InteriorEffects,InteriorListener);
+        }
+
+        private void UseInterior(Peer peer, int key, float now)
+        {
+            Avatar avatar = peer.Pose;
+            if (interiors == null || avatar.vehicle >= 0 || avatar.rollPose >= 0
+                || avatar.lift >= 0 || now < peer.NextInteriorUse || avatar.seat < 0 && !Supported(avatar.pos))
+                return;
+            if (avatar.seat < 0 && (key & 7) == (int)CostaInteriors.Action.Sit)
+                foreach (Peer occupant in peers)
+                    if (occupant != peer && occupant.Ready && occupant.Pose.seat == key)
+                        return;
+            peer.NextInteriorUse = now + .32f;
+            int previousSeat = avatar.seat;
+            bool accepted = interiors.Use(key,now,WorldHour,ref avatar.pos,ref avatar.seat,out var action,out int notice);
+            if (notice > 0)
+                SetNotice(peer, notice);
+            if (!accepted)
+                return;
+
+            if (action == CostaInteriors.Action.Sit && avatar.seat != previousSeat)
+            {
+                ResetMotion(peer);
+                avatar.standing = avatar.seat < 0;
+                if (avatar.seat >= 0)
+                    avatar.yaw = 180;
+                avatar.revision++;
+            }
+            else if (action is CostaInteriors.Action.Travel or CostaInteriors.Action.Call)
+            {
+                int building = CostaInteriors.BuildingOf(key);
+                foreach (Peer rider in peers)
+                {
+                    if (!rider.Ready || !rider.Pose.playing || rider.Pose.vehicle >= 0
+                        || rider.Pose.seat >= 0 || !interiors.Boarded(building,rider.Pose.pos))
+                        continue;
+                    ResetMotion(rider);
+                    rider.Pose.lift = building;
+                    rider.Pose.revision++;
+                }
+            }
+            else if (action == CostaInteriors.Action.Service)
+            {
+                if (now < peer.NextTreatment)
+                {
+                    SetNotice(peer,35);
+                    return;
+                }
+                peer.NextTreatment = now + 35;
+                bool hospital = CostaInteriorPlan.All[CostaInteriors.BuildingOf(key)].Purpose == CostaInteriorPlan.Use.Hospital;
+                avatar.health = Mathf.Min(100,avatar.health+(hospital ? 65 : 12));
+                peer.Stamina = HarborRun.FullStamina;
+                SetNotice(peer,34);
             }
         }
 
@@ -1388,6 +1494,7 @@ namespace CostaLivre
             if (victim.Pose.health <= 0)
             {
                 victim.Pose.health = 100;
+                victim.Pose.seat = victim.Pose.lift = -1;
                 victim.Pose.armor = victim.Pose.police ? PoliceArmor : 0;
                 victim.Pose.pos = victim.Pose.police ? PoliceSpawn : FindCriminalSpawn();
                 ResetMotion(victim);
@@ -1553,6 +1660,7 @@ namespace CostaLivre
             if (officer.Wire != null)
                 officer.Evidence += target.Bag.Count;
             target.Bag.Clear();
+            target.Pose.seat = target.Pose.lift = -1;
             target.Pose.wantedLevel = 0;
             target.Pose.arrestThreat = 0;
             target.Pose.pos = Holding;
@@ -1572,6 +1680,7 @@ namespace CostaLivre
         {
             ReleaseVehicle(peer);
             peer.Pose.police = police;
+            peer.Pose.seat = peer.Pose.lift = -1;
             peer.DispatchSince = -1;
             peer.Pose.equipped = police ? 0 : HarborArsenal.Knife;
             peer.Pose.health = 100;
@@ -1705,7 +1814,7 @@ namespace CostaLivre
                 case 20: return L("Loot handed to getaway driver.", "Saque entregue ao motorista.");
                 case 21: return L("Crew sale complete. Bonus paid.", "Venda da equipe concluída. Bônus recebido.");
                 case 22: return L("Preparing the robbery. Stay near the display.", "Preparando o roubo. Fique perto da vitrine.");
-                default: return "";
+                default: return CostaInteriors.Notice(code);
             }
         }
 
@@ -1822,6 +1931,7 @@ namespace CostaLivre
 
         public void Dispose()
         {
+            interiors?.UseLocalWorld(false);
             clientIdentity?.Dispose();
             clientIdentity = null;
             identitySent = false;

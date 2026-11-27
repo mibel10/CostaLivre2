@@ -195,6 +195,15 @@ namespace CostaLivre
                 new Bounds(new Vector3(-37, 3, 361), new Vector3(238, 46, 864)));
         }
 
+        internal void AddNavigationBox(Vector3 position, Quaternion rotation, Vector3 size) =>
+            walkableGeometry.Add(new NavMeshBuildSource
+            {
+                shape = NavMeshBuildSourceShape.Box,
+                transform = Matrix4x4.TRS(position, rotation, Vector3.one),
+                size = size,
+                area = 0
+            });
+
         internal void ReleaseNavigationSources()
         {
             walkableGeometry.Clear();

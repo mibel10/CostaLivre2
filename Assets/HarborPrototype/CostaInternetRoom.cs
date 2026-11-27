@@ -28,12 +28,32 @@ namespace CostaLivre
         internal static bool TryEndpoint(string address, out Uri endpoint)
         {
             endpoint = null;
-            if (!Uri.TryCreate(address.Trim(), UriKind.Absolute, out Uri url) ||
+            if (string.IsNullOrWhiteSpace(address) || !Uri.TryCreate(address.Trim(), UriKind.Absolute, out Uri url) ||
                 (url.Scheme != "https" && url.Scheme != "wss" && !(url.Scheme == "ws" && url.IsLoopback)) ||
                 string.IsNullOrEmpty(url.Host) || url.AbsolutePath != "/" || url.Query != "" ||
                 url.Fragment != "" || url.UserInfo != "")
                 return false;
             endpoint = url.Scheme == "https" ? new UriBuilder(url) { Scheme = "wss" }.Uri : url;
+            return true;
+        }
+
+        internal static bool TryInvite(string value, string defaultEndpoint, out string endpoint, out string code)
+        {
+            endpoint = null;
+            code = (value ?? "").Trim();
+            string candidate = defaultEndpoint;
+            if (Uri.TryCreate(code, UriKind.Absolute, out var link))
+            {
+                if (link.Query.Length != 0 || link.Fragment.Length != 0 || link.UserInfo.Length != 0
+                    || !link.AbsolutePath.StartsWith("/join/", StringComparison.Ordinal))
+                    return false;
+                candidate = link.GetLeftPart(UriPartial.Authority);
+                code = link.AbsolutePath.Substring(6);
+            }
+            code = code.ToUpperInvariant();
+            if (!ValidCode(code, 10, UpperHex) || !TryEndpoint(candidate, out _))
+                return false;
+            endpoint = candidate;
             return true;
         }
 

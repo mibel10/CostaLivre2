@@ -13,7 +13,9 @@ namespace CostaLivre
         private string port = "7777";
         private bool internet = true;
         private const string DefaultRelay = "https://costalivre2-mibel10-relay.onrender.com";
-        private string relay = DefaultRelay;
+        private string relay = PlayerPrefs.GetString("CostaRelayAddress", DefaultRelay);
+        private bool showServer;
+        private string inputError = "";
         private string invite = "";
         private float copiedUntil;
         private static readonly int[] Powers = { 1, 3, 9, 27, 81 };
@@ -49,14 +51,40 @@ namespace CostaLivre
                 bool connecting = session?.Connecting == true;
                 Label(new Rect(x + 8, row, 350, 22), L("PLAYER NAME", "NOME DO JOGADOR"), labels, Muted);
                 name = Input(new Rect(x + 8, row + 25, 362, 34), name, 20, 1, TouchScreenKeyboardType.Default);
-                if (Button(new Rect(x + 8, row + 65, 174, 32), "Internet", !connecting))
+                if (Button(new Rect(x + 8, row + 65, 174, 32), L("Internet rooms", "Salas pela internet"), !connecting))
+                {
                     internet = true;
-                if (Button(new Rect(x + 195, row + 65, 175, 32), "LAN", !connecting))
+                    inputError = "";
+                }
+                if (Button(new Rect(x + 195, row + 65, 175, 32), L("Local rooms", "Salas locais"), !connecting))
+                {
                     internet = false;
+                    inputError = "";
+                }
                 if (internet)
                 {
-                    Label(new Rect(x + 8, row + 112, 350, 20), L("ROOM CODE OR INVITE", "CÓDIGO OU CONVITE DA SALA"), labels, Muted);
-                    invite = Input(new Rect(x + 8, row + 136, 362, 36), invite, 210, 5, TouchScreenKeyboardType.URL);
+                    Label(new Rect(x + 8, row + 109, 225, 24), showServer
+                        ? L("ROOM SERVER ADDRESS", "ENDEREÇO DO SERVIDOR")
+                        : L("ROOM CODE OR INVITE", "CÓDIGO OU CONVITE DA SALA"), labels, Muted);
+                    if (Button(new Rect(x + 245, row + 108, 125, 25), showServer
+                        ? L("Back to invite", "Voltar ao convite") : L("Server", "Servidor"), !connecting))
+                    {
+                        showServer = !showServer;
+                        inputError = "";
+                    }
+                    if (showServer)
+                        relay = Input(new Rect(x + 8, row + 136, 362, 36), relay, 240, 4, TouchScreenKeyboardType.URL);
+                    else
+                    {
+                        invite = Input(new Rect(x + 8, row + 136, 274, 36), invite, 270, 5, TouchScreenKeyboardType.URL);
+                        if (Button(new Rect(x + 288, row + 136, 82, 36), L("Paste", "Colar"), !connecting))
+                        {
+                            string clipboard = (GUIUtility.systemCopyBuffer ?? "").Trim();
+                            if (clipboard.Length <= 270)
+                                invite = clipboard;
+                            inputError = "";
+                        }
+                    }
                 }
                 else
                 {
@@ -68,11 +96,19 @@ namespace CostaLivre
                 float actions = row + (internet ? 180 : 172);
                 if (Button(new Rect(x + 8, actions, 174, 36), internet ? L("Create room", "Criar sala") : L("Host LAN", "Hospedar LAN"), !connecting))
                     Start(true);
-                if (Button(new Rect(x + 195, actions, 175, 36), internet ? L("Join room", "Entrar na sala") : L("Join by IP", "Entrar por IP"), !connecting))
-                    Start(false);
+                string joinLabel = !internet ? L("Join by IP", "Entrar por IP")
+                    : showServer ? L("Save server", "Salvar servidor") : L("Join room", "Entrar na sala");
+                if (Button(new Rect(x + 195, actions, 175, 36), joinLabel, !connecting))
+                {
+                    if (internet && showServer)
+                        SaveServer();
+                    else
+                        Start(false);
+                }
                 if (connecting && Button(new Rect(x + 250, actions + 40, 120, 29), L("Cancel", "Cancelar"), true))
                     session.Dispose();
-                Label(new Rect(x + 8, actions + 39, connecting ? 236 : 372, 30), session?.Status ?? "", labels, Gold);
+                string feedback = inputError.Length > 0 ? inputError : session?.Status ?? "";
+                Label(new Rect(x + 8, actions + 39, connecting ? 236 : 372, 30), feedback, labels, Gold);
                 return;
             }
 
@@ -149,19 +185,44 @@ namespace CostaLivre
 
         private void Start(bool host)
         {
-            if (!int.TryParse(port, out int number))
-                number = 0;
-            string address = internet ? invite.Trim() : ip;
-            if (internet && !host && Uri.TryCreate(address, UriKind.Absolute, out var link)
-                && link.Query == "" && link.Fragment == "" && link.UserInfo == ""
-                && link.AbsolutePath.StartsWith("/join/", StringComparison.Ordinal))
+            inputError = "";
+            int.TryParse(port, out int number);
+            string address = ip;
+            string endpoint = null;
+            if (internet)
             {
-                relay = link.GetLeftPart(UriPartial.Authority);
-                address = link.AbsolutePath.Substring(6);
+                if (host)
+                {
+                    if (!SaveServer())
+                        return;
+                    endpoint = relay;
+                    address = "";
+                }
+                else if (!CostaInternetRoom.TryInvite(invite, relay, out endpoint, out address))
+                {
+                    inputError = L("Paste a valid room invitation.", "Cole um convite de sala válido.");
+                    return;
+                }
             }
             PlayerPrefs.SetString("CostaMultiplayerName", name);
             PlayerPrefs.Save();
-            connect(name, address, number, host, internet ? DefaultRelay : null);
+            connect(name, address, number, host, endpoint);
+        }
+
+        private bool SaveServer()
+        {
+            string address = string.IsNullOrWhiteSpace(relay) ? DefaultRelay : relay.Trim();
+            if (!CostaInternetRoom.TryEndpoint(address, out _))
+            {
+                inputError = L("Enter a valid HTTPS server address.", "Informe um endereço HTTPS válido.");
+                return false;
+            }
+            relay = address;
+            PlayerPrefs.SetString("CostaRelayAddress", relay);
+            PlayerPrefs.Save();
+            inputError = "";
+            showServer = false;
+            return true;
         }
 
         private void Change(int category, int option, int offset)

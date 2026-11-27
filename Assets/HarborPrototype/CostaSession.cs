@@ -421,10 +421,11 @@ namespace CostaLivre
                 else if (connecting.IsFaulted || connecting.IsCanceled || now >= connectDeadline)
                 {
                     bool internet = RelayAddress.Length > 0;
+                    bool creatingRoom = requestedHost;
                     Dispose();
-                    status = internet
-                        ? L("Check the relay address and room code.", "Confira o endereço do servidor e o código da sala.")
-                        : L("Connection failed.", "A conexão falhou.");
+                    status = !internet ? L("Connection failed.", "A conexão falhou.")
+                        : creatingRoom ? L("Room server unavailable.", "Servidor de salas indisponível.")
+                        : L("Check the invite or try again.", "Confira o convite ou tente novamente.");
                     return;
                 }
             }

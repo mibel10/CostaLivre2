@@ -532,10 +532,10 @@ namespace CostaLivre
                 Cars = frame.vehicles;
                 Sites = frame.sites;
                 Alarms = frame.alarms;
-                PoliceDispatch = frame.dispatch;
-                Opportunity = frame.opportunity;
+                PoliceDispatch = frame.dispatch?.active == true ? frame.dispatch : null;
+                Opportunity = frame.opportunity?.active == true ? frame.opportunity : null;
                 Evidence = frame.evidence;
-                CrewTask = frame.crew;
+                CrewTask = frame.crew?.role > 0 ? frame.crew : null;
                 availableCrewSlots = frame.crewSlots;
                 Local = null;
                 foreach (Avatar avatar in Players)

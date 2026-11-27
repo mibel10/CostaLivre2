@@ -9,6 +9,7 @@ namespace CostaLivre
         [Serializable]
         internal sealed class Dispatch
         {
+            public bool active;
             public int site;
             public bool guard;
         }
@@ -16,6 +17,8 @@ namespace CostaLivre
         [Serializable]
         internal sealed class CityOpportunity
         {
+            public bool active;
+            public float remaining;
             public int site;
             public bool falseAlarm;
         }
@@ -42,7 +45,7 @@ namespace CostaLivre
                         int site = (first + offset) % robbers.Length;
                         if (robbers[site] != null || !nextFalseAlarm && now < restock[site])
                             continue;
-                        opportunity = new CityOpportunity { site = site, falseAlarm = nextFalseAlarm };
+                        opportunity = new CityOpportunity { active = true, site = site, falseAlarm = nextFalseAlarm };
                         opportunityEnds = now + 75;
                         nextFalseAlarm = !nextFalseAlarm;
                         break;
@@ -50,6 +53,8 @@ namespace CostaLivre
                     nextOpportunity = now + 8;
                 }
             }
+            if (opportunity != null)
+                opportunity.remaining = Mathf.Max(0, opportunityEnds - now);
             if (opportunity?.falseAlarm != true)
                 return;
             foreach (Peer officer in peers)
@@ -122,7 +127,7 @@ namespace CostaLivre
             {
                 site = site, role = CrewRole(crew, peer), getaway = getaway,
                 handoff = getaway && crew.Driver != null && crew.Carrier == crew.Collector,
-                remaining = Mathf.Max(0, (getaway ? crew.Ends : robberyEnds[site]) - now)
+                remaining = Mathf.Max(0, (getaway ? crew.Ends : robberyEnds[site] - (LookoutInPlace(crew, site, now) ? 2 : 0)) - now)
             };
         }
 
@@ -244,7 +249,26 @@ namespace CostaLivre
             point = default;
             title = "";
             if (task == null)
-                return false;
+            {
+                if (availableCrewSlots == null)
+                    return false;
+                bool driving = Local.vehicle >= 0;
+                float nearest = 38 * 38;
+                for (int i = 0; i < availableCrewSlots.Length; i++)
+                {
+                    if ((availableCrewSlots[i] & (driving ? 2 : 1)) == 0)
+                        continue;
+                    Vector3 spot = driving ? DriverSpot(i) : Entrance(i);
+                    float distance = (Local.pos - spot).sqrMagnitude;
+                    if (distance >= nearest)
+                        continue;
+                    nearest = distance;
+                    point = spot;
+                    title = driving ? L("Help as getaway driver", "Ajude como motorista de fuga")
+                        : L("Help as lookout at the entrance", "Ajude como vigia na entrada");
+                }
+                return title.Length > 0;
+            }
             if (!task.getaway)
             {
                 point = task.role == 1 ? CostaRobberies.Sites[task.site].Point
@@ -294,7 +318,7 @@ namespace CostaLivre
             }
             if (dispatch == null && now >= nextDispatch && CountPolice() > 0)
             {
-                dispatch = new Dispatch { site = UnityEngine.Random.Range(0, robbers.Length), guard = UnityEngine.Random.value < .5f };
+                dispatch = new Dispatch { active = true, site = UnityEngine.Random.Range(0, robbers.Length), guard = UnityEngine.Random.value < .5f };
                 dispatchEnds = now + 90;
             }
             foreach (Peer officer in peers)
@@ -308,6 +332,7 @@ namespace CostaLivre
                     SetNotice(officer, 16);
                 }
                 if (dispatch == null || officer.Evidence > 0 || officer.Pose.vehicle >= 0
+                    || (dispatch.guard && robbers[dispatch.site] != null)
                     || !Near(officer.Pose.pos, Entrance(dispatch.site), 6))
                 {
                     officer.DispatchSince = -1;

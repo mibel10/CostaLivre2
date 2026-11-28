@@ -1544,10 +1544,10 @@ namespace CostaLivre
 
                 if (canDriveBy && driveByAiming)
                 {
-                    bool fireEnabled = !recapturing && (touch.Down(TouchControl.Fire) || Cursor.lockState == CursorLockMode.Locked || shoot.activeControl?.device is Gamepad);
-                    bool firePressed = fireEnabled && Pressed(shoot, TouchControl.Fire);
-                    bool fireHeld = fireEnabled && Held(shoot, TouchControl.Fire);
-                    if (Pressed(reload, TouchControl.Reload) || (arsenal.Loaded == 0 && (firePressed || fireHeld)))
+                    bool dbFireEnabled = !recapturing && (touch.Down(TouchControl.Fire) || Cursor.lockState == CursorLockMode.Locked || shoot.activeControl?.device is Gamepad);
+                    bool dbFirePressed = dbFireEnabled && Pressed(shoot, TouchControl.Fire);
+                    bool dbFireHeld = dbFireEnabled && Held(shoot, TouchControl.Fire);
+                    if (Pressed(reload, TouchControl.Reload) || (arsenal.Loaded == 0 && (dbFirePressed || dbFireHeld)))
                     {
                         if (!session.Online) arsenal.Reload();
                         else if (!arsenal.Reloading && arsenal.Loaded < arsenal.Capacity && Time.unscaledTime >= nextReloadRequest)
@@ -1556,7 +1556,7 @@ namespace CostaLivre
                             session.Request("reload", arsenal.Slot);
                         }
                     }
-                    if (arsenal.Update(followCamera, playerBody, pitch, firePressed, fireHeld, true, false,
+                    if (arsenal.Update(followCamera, playerBody, pitch, dbFirePressed, dbFireHeld, true, false,
                         ResolveSoloHit, effects, -1f, true))
                     {
                         score.Combat();
@@ -1632,7 +1632,7 @@ namespace CostaLivre
                 },
                 dmg =>
                 {
-                    effects.Play(Cue.ShotPistol, 0.55f);
+                    effects.Play(Cue.Incoming, 0.55f);
                     if (!session.Online)
                         encounter.TakeDamage(dmg);
                 });

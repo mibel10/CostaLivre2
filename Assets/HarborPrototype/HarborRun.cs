@@ -142,6 +142,11 @@ namespace CostaLivre
         private bool worldLoading;
         private bool worldLoadFailed;
         private HarborLoadingScreen loadingScreen;
+        private readonly CostaTitleBackdrop titleBackdrop = new();
+        private System.Action afterWorldLoad;
+        private bool blockingWorldLoad;
+        private float titleShownAt;
+        private bool cityTitleVisible;
         private string loadingPhase;
         private float loadingProgress;
         private HarborMenu menu;
@@ -283,25 +288,30 @@ namespace CostaLivre
         {
             if (worldReady)
                 play();
-            else if (!worldLoading && !worldLoadFailed)
+            else if (!worldLoadFailed)
             {
-                worldLoading = true;
-                loadingPhase = L("Reading the port", "Abrindo o porto");
-                loadingProgress = 0;
-                loadingScreen.Begin();
-                SetCursor(false);
-                StartCoroutine(LoadWorld(play));
+                afterWorldLoad = play;
+                if (play != null && !blockingWorldLoad)
+                {
+                    blockingWorldLoad = true;
+                    loadingScreen.Begin();
+                    SetCursor(false);
+                }
+
+                if (!worldLoading)
+                {
+                    worldLoading = true;
+                    loadingPhase = L("Reading the port", "Abrindo o porto");
+                    loadingProgress = 0;
+                    StartCoroutine(LoadWorld());
+                }
             }
         }
 
-        private IEnumerator LoadWorld(System.Action play)
+        private IEnumerator LoadWorld()
         {
-            // Draw one full frame of the loading screen before constructing scene objects.
             yield return null;
-            menuStage.gameObject.SetActive(false);
             yield return harbor.PreloadWorldTextures();
-            int culling = followCamera.cullingMask;
-            followCamera.cullingMask = 0;
             using (var stages = BuildWorld().GetEnumerator())
             {
                 while (true)
@@ -327,14 +337,20 @@ namespace CostaLivre
 
             worldLoading = false;
             if (worldLoadFailed)
+            {
+                if (!blockingWorldLoad)
+                    loadingScreen.Begin();
                 yield break;
+            }
 
-            followCamera.cullingMask = culling;
             worldReady = true;
             loadingScreen.Release();
             loadingScreen = null;
             ShowMenu();
-            play();
+            blockingWorldLoad = false;
+            System.Action pending = afterWorldLoad;
+            afterWorldLoad = null;
+            pending?.Invoke();
         }
 
         private IEnumerable<float> BuildWorld()
@@ -572,6 +588,22 @@ namespace CostaLivre
 
         private void UpdateMenuPreview()
         {
+            bool live = worldReady && menu.LiveTitle && !pauseMenu && !menu.OnlinePage && !menu.LoadoutPage
+                && session?.Online != true;
+            if (live != cityTitleVisible)
+            {
+                cityTitleVisible = live;
+                menuStage.gameObject.SetActive(!live);
+                if (live)
+                    titleBackdrop.Begin();
+            }
+            if (live)
+            {
+                titleBackdrop.Position(followCamera);
+                city.Animate(followCamera.transform.position, followCamera.farClipPlane);
+                return;
+            }
+
             float time = Time.unscaledTime;
             float arc = -37 + Mathf.Sin(time * .23f) * 8f;
             Vector3 dolly = Quaternion.Euler(0, arc, 0) * Vector3.back * (4.66f + Mathf.Sin(time * .17f) * .24f);
@@ -619,12 +651,14 @@ namespace CostaLivre
         {
             inMenu = true;
             pauseMenu = pause;
+            cityTitleVisible = false;
+            titleShownAt = Time.unscaledTime;
             menuStage.gameObject.SetActive(!pause);
             Time.timeScale = session?.Online == true ? 1 : 0;
             SetCursor(false);
-            ApplyWorldHour();
             if (!pause)
                 UpdateMenuPreview();
+            ApplyWorldHour();
         }
 
         private void ReturnToMainMenu()
@@ -656,6 +690,7 @@ namespace CostaLivre
                 EquipWeapon(menu.SelectedWeapon);
             }
             inMenu = false;
+            cityTitleVisible = false;
             menuStage.gameObject.SetActive(false);
             Time.timeScale = 1;
             PositionCamera(false, true);
@@ -1012,6 +1047,8 @@ namespace CostaLivre
             float? hour = null;
             if (!inMenu || pauseMenu)
                 hour = session.Online ? session.WorldHour : HarborDaylight.Advance(HarborDaylight.StartHour, soloDaySeconds);
+            else if (cityTitleVisible)
+                hour = titleBackdrop.Hour;
             var weather = hour.HasValue ? HarborWeather.Conditions.At(hour.Value) : default;
             worldWeather = weather;
             menu.SetWorldHour(hour, weather);
@@ -1046,7 +1083,7 @@ namespace CostaLivre
             harbor.SetUltraVisuals(menu.Ultra, menu.FullTextures);
             if (worldLoadFailed)
                 CostaUi.Update(false);
-            if (worldLoading || worldLoadFailed)
+            if (blockingWorldLoad || worldLoadFailed)
                 return;
 
             if (worldReady)
@@ -1066,6 +1103,8 @@ namespace CostaLivre
                 return;
             if (inMenu)
             {
+                if (!worldReady && !worldLoading && menu.LiveTitle && Time.unscaledTime > titleShownAt + 1.2f)
+                    WithWorld(null);
                 if (menu.CapturingKey)
                 {
                     menu.ReadBinding();
@@ -2560,7 +2599,7 @@ namespace CostaLivre
 
         private void OnGUI()
         {
-            if (worldLoading || worldLoadFailed)
+            if (blockingWorldLoad || worldLoadFailed)
             {
                 loadingScreen.Draw(loadingPhase, loadingProgress, worldLoadFailed, ReloadScene);
                 if (worldLoadFailed)
@@ -2582,6 +2621,8 @@ namespace CostaLivre
                     cityMap.EventTitle = livingWorld?.ActiveEventTitle;
                 }
             }
+            if (cityTitleVisible)
+                titleBackdrop.DrawTransition();
             DrawInterface();
             if (!inMenu && overlay == FieldOverlay.None)
                 transitions.Draw();
@@ -2713,7 +2754,7 @@ namespace CostaLivre
                 session.Online ? session.Local.wantedLevel : wantedLevel, notice, prompt, stamina / FullStamina,
                 session.Online ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat) : arrestProgress,
                 car != null ? car.Speed : -1, session.Online ? session.Local.health : encounter.Health,
-                IsPolice ? session.Local.armor : -1, arsenal, CostaTouch.Available, gamepad);
+                IsPolice ? session.Local.armor : -1, arsenal, CostaTouch.Available, gamepad, menu.HudMode, aimingPose);
         }
 
         private Vector3? MissionLocation()

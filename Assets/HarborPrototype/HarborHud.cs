@@ -5,6 +5,11 @@ namespace CostaLivre
 {
     internal sealed class HarborHud
     {
+        internal enum Mode { Full, Contextual, Minimal }
+        private float mapVisibility = 1, kitVisibility, healthVisibility, armorVisibility, staminaVisibility, speedVisibility;
+        private float equipmentUntil, displayedSpeed;
+        private (int slot, int loaded) lastEquipment;
+
         private static readonly Color Panel = new(0.059f, 0.078f, 0.079f, 0.87f);
         private static readonly Color Edge = new(0.37f, 0.42f, 0.40f, 0.72f);
         private static readonly Color Muted = new(0.63f, 0.67f, 0.63f);
@@ -32,12 +37,40 @@ namespace CostaLivre
 
         internal void DrawRun(Vector3 player, float heading, Vector3? destination, Vector3 viewport, float side,
             string objective, float timer, int wantedLevel, string notice, string prompt, float stamina, float arrest, float speed,
-            int health, int armor, HarborArsenal arsenal, bool touch, bool gamepad)
+            int health, int armor, HarborArsenal arsenal, bool touch, bool gamepad, Mode mode, bool aiming)
         {
             Matrix4x4 old = GUI.matrix;
             Begin(out float width, out float height);
 
-            map.DrawMini(new Rect(18, 39, 152, 112), player, heading, destination);
+            Color color = GUI.color;
+            bool driving = speed >= 0;
+            bool full = mode == Mode.Full;
+            bool contextual = mode == Mode.Contextual;
+            bool danger = wantedLevel > 0 || arrest > 0 || aiming;
+            float damping = 1 - Mathf.Exp(-Mathf.Min(Time.unscaledDeltaTime, .08f) * 15);
+            var equipment = (arsenal.Slot, arsenal.Loaded);
+            if (equipment != lastEquipment)
+            {
+                lastEquipment = equipment;
+                equipmentUntil = Time.unscaledTime + 2.6f;
+            }
+
+            mapVisibility = Approach(mapVisibility, full || (contextual && (driving || destination.HasValue || danger)), damping);
+            kitVisibility = Approach(kitVisibility, !driving && (full || aiming || arsenal.Reloading ||
+                (contextual && (danger || Time.unscaledTime < equipmentUntil))), damping);
+            staminaVisibility = Approach(staminaVisibility, !driving && (full || stamina < .97f), damping);
+            healthVisibility = Approach(healthVisibility, health >= 0 && (full || health < 80 || (contextual && danger)), damping);
+            armorVisibility = Approach(armorVisibility, armor >= 0 && (full || (contextual && (danger || armor < CostaSession.PoliceArmor))), damping);
+            speedVisibility = Approach(speedVisibility, driving, damping);
+            if (driving)
+                displayedSpeed = speed;
+
+            if (mapVisibility > 0)
+            {
+                GUI.color = Fade(color, mapVisibility);
+                map.DrawMini(new Rect(18, 39 - (1 - mapVisibility) * 8, 152, 112), player, heading, destination);
+                GUI.color = color;
+            }
 
             float statusX = touch ? 186 : width - 277;
             float statusY = 18;
@@ -59,38 +92,42 @@ namespace CostaLivre
                 Chip(statusX, statusY, status, Paper, 258);
             }
 
-            bool showStamina = speed < 0 && stamina < 0.99f;
-            bool showHealth = health >= 0;
-            bool showArmor = armor >= 0;
-            float stackHeight = (speed >= 0 ? 50 : 0) + (showStamina ? 27 : 0) + (showHealth ? 29 : 0) + (showArmor ? 27 : 0);
-            float meterY = touch ? 158 : height - 24 - stackHeight;
-            if (speed >= 0)
+            float stackHeight = 50 * speedVisibility + 27 * staminaVisibility + 29 * healthVisibility + 27 * armorVisibility;
+            float meterY = touch ? 39 + 119 * mapVisibility : height - 24 - stackHeight;
+            if (speedVisibility > 0)
             {
-                DrawSpeedometer(18, meterY, speed);
-                meterY += 50;
+                GUI.color = Fade(color, speedVisibility);
+                DrawSpeedometer(18, meterY, displayedSpeed);
+                meterY += 50 * speedVisibility;
             }
-            else if (showStamina)
+            if (staminaVisibility > 0)
             {
+                GUI.color = Fade(color, staminaVisibility);
                 DrawMeter(18, meterY, L("Stamina", "Fôlego"), stamina, HarborBlockout.Mint);
-                meterY += 27;
+                meterY += 27 * staminaVisibility;
             }
-            if (showHealth)
+            if (healthVisibility > 0 && health >= 0)
             {
+                GUI.color = Fade(color, healthVisibility);
                 Color hpColor = health > 55 ? new Color(0.42f, 0.80f, 0.54f)
                     : health > 25 ? HarborBlockout.Amber : Danger;
                 DrawMeter(18, meterY, L($"Health {health}", $"Vida {health}"), health / 100f, hpColor, 152, 26);
-                meterY += 29;
+                meterY += 29 * healthVisibility;
             }
-            if (showArmor)
+            if (armorVisibility > 0 && armor >= 0)
+            {
+                GUI.color = Fade(color, armorVisibility);
                 DrawMeter(18, meterY, L($"Armor {armor}", $"Colete {armor}"),
                     armor / (float)CostaSession.PoliceArmor, HarborBlockout.Mint, 152, 24);
-
-            if (speed < 0)
-            {
-                DrawLoadout(width, height, arsenal, touch, gamepad);
-                if (arsenal.HasFirearm)
-                    DrawCrosshair(width / 2, height / 2, arsenal.HitVisible);
             }
+            if (kitVisibility > 0)
+            {
+                GUI.color = Fade(color, kitVisibility);
+                DrawLoadout(width, height + (1 - kitVisibility) * 8, arsenal, touch, gamepad);
+            }
+            GUI.color = color;
+            if (!driving && arsenal.HasFirearm && (full || aiming || arsenal.HitVisible))
+                DrawCrosshair(width / 2, height / 2, arsenal.HitVisible);
 
             if (notice.Length > 0)
                 CenterChip(width, touch ? 85 : 20, notice, HarborBlockout.Mint, 410);
@@ -118,6 +155,16 @@ namespace CostaLivre
             }
             GUI.matrix = old;
         }
+
+        private static float Approach(float value, bool visible, float damping)
+        {
+            float target = visible ? 1 : 0;
+            float next = Mathf.Lerp(value, target, damping);
+            return Mathf.Abs(target - next) < .005f ? target : next;
+        }
+
+        private static Color Fade(Color color, float visibility) =>
+            new(color.r, color.g, color.b, color.a * visibility);
 
         private void DrawSpeedometer(float x, float y, float speed)
         {
@@ -271,7 +318,7 @@ namespace CostaLivre
         private static void Box(Rect rect, Color color)
         {
             Color originalColor = GUI.color;
-            GUI.color = color;
+            GUI.color = originalColor * color;
             GUI.DrawTexture(rect, Texture2D.whiteTexture);
             GUI.color = originalColor;
         }

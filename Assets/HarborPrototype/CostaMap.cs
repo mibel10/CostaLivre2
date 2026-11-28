@@ -658,7 +658,7 @@ namespace CostaLivre
             if (Event.current.type != EventType.Repaint)
                 return;
             Color previous = GUI.color;
-            GUI.color = color;
+            GUI.color = previous * color;
             GUI.DrawTexture(area, Texture2D.whiteTexture);
             GUI.color = previous;
         }

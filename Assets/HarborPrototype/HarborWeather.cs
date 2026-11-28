@@ -115,6 +115,7 @@ namespace CostaLivre
             rain = emitter.AddComponent<ParticleSystem>();
             var main = rain.main;
             main.playOnAwake = false;
+            main.useUnscaledTime = true;
             main.maxParticles = 1150;
             main.startSpeed = 0;
             main.startSize = new ParticleSystem.MinMaxCurve(0.012f, 0.026f);

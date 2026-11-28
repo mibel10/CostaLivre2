@@ -83,6 +83,12 @@ namespace CostaLivre
         internal void FlushGraphics() => graphics.Flush();
         internal void SetWorldHour(float? hour, HarborWeather.Conditions weather) => graphics.SetWorldHour(hour, weather);
         internal int GraphicsPreset => graphics.Preset;
+        internal HarborHud.Mode HudMode { get; private set; } =
+            (HarborHud.Mode)Mathf.Clamp(PlayerPrefs.GetInt("CostaHudMode", 1), 0, 2);
+        private int titleBackground = Mathf.Clamp(PlayerPrefs.GetInt("CostaCityTitle", -1), -1, 1);
+        internal bool LiveTitle => titleBackground < 0 ? GraphicsPreset >= 2 : titleBackground == 1;
+        internal bool LoadoutPage => page == ScreenPage.Loadout;
+
         internal int StreetLightBudget => graphics.StreetLightBudget;
         internal bool Ultra => graphics.Preset == HarborGraphics.MaxPreset;
         internal bool FullTextures => graphics.TextureQuality == 3;
@@ -667,6 +673,34 @@ namespace CostaLivre
             {
                 MusicVolume = music;
                 PlayerPrefs.SetFloat("CostaMusicVolume", music);
+            }
+
+            float hudY = frame + 168;
+            Text(new Rect(x, hudY, 108, 32), "HUD", label, Paper);
+            SetHud(new Rect(x + 113, hudY, 103, 32), L("Full", "Completo"), HarborHud.Mode.Full);
+            SetHud(new Rect(x + 223, hudY, 112, 32), L("Contextual", "Contextual"), HarborHud.Mode.Contextual);
+            SetHud(new Rect(x + 342, hudY, 105, 32), L("Minimal", "Mínimo"), HarborHud.Mode.Minimal);
+
+            float titleY = hudY + 40;
+            Text(new Rect(x, titleY, 110, 32), L("Title scene", "Fundo do menu"), label, Paper);
+            if (MenuButton(new Rect(x + 113, titleY, 120, 32), L("Live city", "Cidade ao vivo"), LiveTitle))
+            {
+                titleBackground = 1;
+                PlayerPrefs.SetInt("CostaCityTitle", titleBackground);
+            }
+            if (MenuButton(new Rect(x + 240, titleY, 118, 32), L("Lightweight", "Leve"), !LiveTitle))
+            {
+                titleBackground = 0;
+                PlayerPrefs.SetInt("CostaCityTitle", titleBackground);
+            }
+        }
+
+        private void SetHud(Rect rect, string label, HarborHud.Mode mode)
+        {
+            if (MenuButton(rect, label, HudMode == mode))
+            {
+                HudMode = mode;
+                PlayerPrefs.SetInt("CostaHudMode", (int)mode);
             }
         }
 

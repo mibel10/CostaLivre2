@@ -10,13 +10,16 @@ namespace CostaLivre
         private enum ScreenPage { Deploy, Loadout, Options, Jobs, Online }
         private enum SettingsPage { Controls, Graphics, Display, Language }
 
-        private static readonly Color Paper = new(0.98f, 0.95f, 0.89f);
-        private static readonly Color Grey = new(0.73f, 0.78f, 0.78f);
-        private static readonly Color Copper = new(1.00f, 0.72f, 0.45f);
-        private static readonly Color Carbon = new(0.037f, 0.063f, 0.078f, 0.94f);
-        private static readonly Color Line = new(0.24f, 0.33f, 0.37f, 0.82f);
-        private static readonly Color Hover = new(0.12f, 0.22f, 0.27f, 0.97f);
-        private static readonly Color Rail = new(0.023f, 0.040f, 0.052f, 0.88f);
+        private static readonly Color Paper = new(0.99f, 0.96f, 0.91f);
+        private static readonly Color Grey = new(0.76f, 0.84f, 0.85f);
+        private static readonly Color Copper = new(0.98f, 0.66f, 0.34f);
+        private static readonly Color Coral = new(0.95f, 0.42f, 0.44f);
+        private static readonly Color Turquoise = new(0.18f, 0.82f, 0.80f);
+        private static readonly Color Carbon = new(0.055f, 0.082f, 0.125f, 0.90f);
+        private static readonly Color Line = new(0.28f, 0.48f, 0.54f, 0.65f);
+        private static readonly Color Hover = new(0.11f, 0.24f, 0.32f, 0.96f);
+        private static readonly Color Rail = new(0.038f, 0.058f, 0.100f, 0.86f);
+        private static readonly GUIContent MeasureContent = new();
 
         private readonly struct MenuFrame
         {
@@ -62,6 +65,7 @@ namespace CostaLivre
         }
 
         private readonly Texture2D gradient;
+        private readonly Texture2D accentBar;
         private ScreenPage page;
         private float pageChanged = -2f;
         private SettingsPage settings;
@@ -138,17 +142,36 @@ namespace CostaLivre
             for (int y = 0; y < gradient.height; y++)
             {
                 float vertical = y / (gradient.height - 1f);
-                float edge = Mathf.Pow(Mathf.Abs(vertical * 2f - 1f), 3f) * 0.55f;
+                float edge = Mathf.Pow(Mathf.Abs(vertical * 2f - 1f), 3f) * 0.45f;
+                float warmBottom = Mathf.Clamp01(1f - vertical * 2.1f);
                 for (int x = 0; x < gradient.width; x++)
                 {
                     float horizontal = x / (gradient.width - 1f);
-                    float shade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.28f, 0.83f, horizontal));
-                    colors[y * gradient.width + x] = new Color(0.025f, 0.052f, 0.072f,
-                        Mathf.Lerp(edge, 0.98f, shade));
+                    float shade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.24f, 0.80f, horizontal));
+                    Color baseTint = Color.Lerp(new Color(0.042f, 0.068f, 0.125f), new Color(0.12f, 0.065f, 0.11f), warmBottom * 0.65f);
+                    baseTint.a = Mathf.Lerp(edge, 0.92f, shade);
+                    colors[y * gradient.width + x] = baseTint;
                 }
             }
             gradient.SetPixels32(colors);
             gradient.Apply(false, true);
+
+            accentBar = new Texture2D(64, 1, TextureFormat.RGBA32, false)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+            var barPixels = new Color32[accentBar.width];
+            for (int x = 0; x < accentBar.width; x++)
+            {
+                float t = x / (accentBar.width - 1f);
+                Color c = t < 0.5f
+                    ? Color.Lerp(Coral, Copper, t * 2f)
+                    : Color.Lerp(Copper, Turquoise, (t - 0.5f) * 2f);
+                barPixels[x] = c;
+            }
+            accentBar.SetPixels32(barPixels);
+            accentBar.Apply(false, true);
             AudioListener.volume = Volume;
         }
 
@@ -225,8 +248,8 @@ namespace CostaLivre
             float left = (frame.Width - cardWidth) * 0.5f;
             float top = (frame.Height - cardHeight) * 0.5f + PageOffset();
             float x = left + 16;
-            Fill(new Rect(left, top, cardWidth, cardHeight), new Color(0.027f, 0.051f, 0.068f, 0.95f));
-            Fill(new Rect(left, top, cardWidth, 2), Copper);
+            Fill(new Rect(left, top, cardWidth, cardHeight), new Color(0.042f, 0.068f, 0.115f, 0.95f));
+            GUI.DrawTexture(new Rect(left, top, cardWidth, 3), accentBar);
 
             if (DeployPage)
             {
@@ -300,60 +323,75 @@ namespace CostaLivre
             float end = frame.Width - 24;
             if (frame.Compact)
             {
-                Fill(new Rect(0, 0, frame.Width, 74), Rail);
-                Fill(new Rect(24, 36, end - 24, 1), Line);
-                Fill(new Rect(24, 16, 16, 3), Copper);
-                Text(new Rect(49, 3, 260, 29), "COSTA LIVRE 2", subhead, Paper);
-                if (MenuButton(new Rect(end - 82, 2, 82, 32), L("Quit", "Sair"), false))
+                Fill(new Rect(0, 0, frame.Width, 78), Rail);
+                GUI.DrawTexture(new Rect(0, 0, frame.Width, 3), accentBar);
+                Fill(new Rect(24, 38, end - 24, 1), Line);
+                Text(new Rect(24, 7, 290, 29), "COSTA LIVRE 2", subhead, Paper);
+                if (MenuButton(new Rect(end - 82, 5, 82, 30), L("Quit", "Sair"), false))
                     quit();
 
                 float gap = 6;
                 int count = sessionActive ? 4 : 5;
                 float width = Mathf.Min(152, (end - 24 - (count - 1) * gap) / count);
                 float x = 24;
-                Tab(new Rect(x, 42, width, 36), ScreenPage.Deploy, L("Play", "Jogar"));
+                Tab(new Rect(x, 43, width, 34), ScreenPage.Deploy, L("Play", "Jogar"));
                 x += width + gap;
-                Tab(new Rect(x, 42, width, 36), ScreenPage.Loadout, L("Loadout", "Equipamento"));
+                Tab(new Rect(x, 43, width, 34), ScreenPage.Loadout, L("Loadout", "Equipamento"));
                 x += width + gap;
-                Tab(new Rect(x, 42, width, 36), ScreenPage.Options, L("Options", "Opções"));
+                Tab(new Rect(x, 43, width, 34), ScreenPage.Options, L("Options", "Opções"));
                 x += width + gap;
                 if (!sessionActive)
                 {
-                    Tab(new Rect(x, 42, width, 36), ScreenPage.Jobs, L("Jobs", "Missões"));
+                    Tab(new Rect(x, 43, width, 34), ScreenPage.Jobs, L("Jobs", "Missões"));
                     x += width + gap;
                 }
-                Tab(new Rect(x, 42, width, 36), ScreenPage.Online, "Multiplayer");
+                Tab(new Rect(x, 43, width, 34), ScreenPage.Online, "Multiplayer");
                 return;
             }
 
-            Fill(new Rect(24, 24, 188, frame.Height - 48), Rail);
-            Fill(new Rect(211, 24, 1, frame.Height - 48), Line);
-            Fill(new Rect(41, 44, 20, 3), Copper);
-            Text(new Rect(41, 54, 158, 41), "COSTA LIVRE 2", subhead, Paper);
-            float rail = Mathf.Max(116, frame.Height * 0.22f);
-            Tab(new Rect(40, rail, 156, 43), ScreenPage.Deploy, L("Play", "Jogar"));
-            Tab(new Rect(40, rail + 50, 156, 43), ScreenPage.Loadout, L("Loadout", "Equipamento"));
-            Tab(new Rect(40, rail + 100, 156, 43), ScreenPage.Options, L("Options", "Opções"));
+            Fill(new Rect(24, 24, 194, frame.Height - 48), Rail);
+            GUI.DrawTexture(new Rect(24, 24, 194, 3), accentBar);
+            Fill(new Rect(217, 24, 1, frame.Height - 48), Line);
+            Text(new Rect(40, 42, 166, 30), "COSTA LIVRE 2", subhead, Paper);
+            Text(new Rect(40, 68, 166, 20), "SANTA LUZ · BR", label, Turquoise);
+            float rail = Mathf.Max(118, frame.Height * 0.22f);
+            Tab(new Rect(38, rail, 162, 43), ScreenPage.Deploy, L("Play", "Jogar"));
+            Tab(new Rect(38, rail + 50, 162, 43), ScreenPage.Loadout, L("Loadout", "Equipamento"));
+            Tab(new Rect(38, rail + 100, 162, 43), ScreenPage.Options, L("Options", "Opções"));
             if (!sessionActive)
-                Tab(new Rect(40, rail + 150, 156, 43), ScreenPage.Jobs, L("Jobs", "Missões"));
-            Tab(new Rect(40, rail + (sessionActive ? 150 : 200), 156, 43), ScreenPage.Online, "Multiplayer");
-            if (MenuButton(new Rect(40, frame.Height - 84, 156, 42), L("Quit", "Sair"), false))
+                Tab(new Rect(38, rail + 150, 162, 43), ScreenPage.Jobs, L("Jobs", "Missões"));
+            Tab(new Rect(38, rail + (sessionActive ? 150 : 200), 162, 43), ScreenPage.Online, "Multiplayer");
+            if (MenuButton(new Rect(38, frame.Height - 84, 162, 42), L("Quit", "Sair"), false))
                 quit();
         }
 
         private void DrawDeploy(float x, float y, bool resume, bool sessionActive,
             Action deploy, Action continueRun)
         {
-            Fill(new Rect(x, y, 42, 3), Copper);
-            Text(new Rect(x - 2, y + 12, 516, 91), sessionActive ? "Multiplayer" : "Santa Luz", hero, Paper);
+            GUI.DrawTexture(new Rect(x, y - 8, 92, 4), accentBar);
+            string tag = sessionActive
+                ? L("ONLINE SESSION · SANTA LUZ", "SESSÃO ONLINE · SANTA LUZ")
+                : L("BRAZILIAN COAST · OPEN WORLD", "LITORAL BRASILEIRO · MUNDO ABERTO");
+            Text(new Rect(x, y + 4, 460, 22), tag, label, Turquoise);
+
+            string title = sessionActive ? "Multiplayer" : "Santa Luz";
+            Text(new Rect(x, y + 29, 520, 88), title, hero, new Color(0f, 0f, 0f, 0.55f));
+            Text(new Rect(x - 2, y + 26, 520, 88), title, hero, Paper);
+
             string action = resume ? L("Resume", "Continuar") : L("Enter the city", "Entrar na cidade");
-            Rect enter = new(x, y + 117, 264, 60);
+            Rect enter = new(x, y + 124, 280, 58);
             if (MenuButton(enter, action, true))
                 (resume ? continueRun : deploy)();
-            Text(new Rect(enter.xMax - 31, enter.y, 28, enter.height), "›", subhead, Rail);
+            Text(new Rect(enter.xMax - 32, enter.y, 28, enter.height), "›", subhead, Rail);
             if (resume && !sessionActive &&
-                MenuButton(new Rect(x, enter.yMax + 8, 264, 42), L("Restart", "Recomeçar"), false))
+                MenuButton(new Rect(x, enter.yMax + 10, 280, 42), L("Restart", "Recomeçar"), false))
                 deploy();
+
+            float hintY = resume && !sessionActive ? enter.yMax + 62 : enter.yMax + 16;
+            string hint = CostaTouch.Available
+                ? L("Tap to explore Santa Luz", "Toque para explorar Santa Luz")
+                : L("ENTER  Play   ·   ESC  Pause   ·   M  Map", "ENTER  Jogar   ·   ESC  Pausar   ·   M  Mapa");
+            Text(new Rect(x, hintY, 440, 22), hint, label, Grey);
         }
 
         private void DrawJobs(float x, float top, CostaJobs jobs, Action<int> select)
@@ -734,6 +772,7 @@ namespace CostaLivre
             graphics.Release();
             PlayerPrefs.Save();
             UnityEngine.Object.Destroy(gradient);
+            UnityEngine.Object.Destroy(accentBar);
         }
 
         private void Tab(Rect bounds, ScreenPage id, string name)
@@ -755,15 +794,26 @@ namespace CostaLivre
         private bool MenuButton(Rect bounds, string name, bool selected, bool centered = false)
         {
             bool hover = bounds.Contains(Event.current.mousePosition) || CostaUi.Hovering(bounds);
-            Fill(bounds, selected ? Copper : hover ? Hover : Carbon);
-            if (!selected)
-                Fill(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), Line);
+            if (selected)
+            {
+                GUI.DrawTexture(bounds, accentBar);
+                if (hover)
+                    Fill(bounds, new Color(1f, 1f, 1f, 0.10f));
+            }
+            else
+            {
+                Fill(bounds, hover ? Hover : Carbon);
+                Fill(new Rect(bounds.x, bounds.yMax - 1, bounds.width, 1), hover ? Turquoise : Line);
+                if (hover)
+                    Fill(new Rect(bounds.x, bounds.y, 3, bounds.height), Turquoise);
+            }
             Color before = GUI.contentColor;
-            GUI.contentColor = selected ? Carbon : Paper;
+            GUI.contentColor = selected ? new Color(0.04f, 0.06f, 0.09f) : Paper;
             GUIStyle style = centered ? centeredButton : button;
             int fontSize = style.fontSize;
-            float available = bounds.width - 8;
-            float required = style.CalcSize(new GUIContent(name)).x;
+            float available = bounds.width - 10;
+            MeasureContent.text = name;
+            float required = style.CalcSize(MeasureContent).x;
             if (required > available)
                 style.fontSize = Mathf.Max(11, Mathf.FloorToInt(fontSize * available / required));
             bool pressed = CostaUi.Button(bounds, name, style);

@@ -21,10 +21,10 @@ namespace CostaLivre
 
         private static readonly Shot[] Shots =
         {
-            new(new(44, 14, 24), new(49, 17, 18), new(-6, 4, 29), 6.15f, 49),
-            new(new(51, 27, 228), new(52, 28, 244), new(-22, 3, 264), 15.9f, 45),
-            new(new(34, 23, 451), new(41, 24, 466), new(-28, 4, 490), 18.35f, 45),
-            new(new(46, 31, 681), new(52, 32, 700), new(-28, 4, 719), 21.75f, 46)
+            new(new(44, 14, 24), new(49, 17, 18), new(-6, 4, 29), 9.4f, 49),
+            new(new(51, 27, 228), new(52, 28, 244), new(-22, 3, 264), 16.4f, 45),
+            new(new(34, 23, 451), new(41, 24, 466), new(-28, 4, 490), 18.1f, 45),
+            new(new(46, 31, 681), new(52, 32, 700), new(-28, 4, 719), 20.8f, 46)
         };
         private const float ShotLength = 13f;
         private float start;

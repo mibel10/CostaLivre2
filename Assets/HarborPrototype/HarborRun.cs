@@ -555,29 +555,43 @@ namespace CostaLivre
             menuStage = new GameObject("Menu preview set").transform;
             menuStage.SetParent(transform);
             menuStage.position = MenuActorPosition;
-            Color pavement = new(0.21f, 0.25f, 0.27f);
-            Color wall = new(0.19f, 0.25f, 0.26f);
-            Color steel = new(0.30f, 0.36f, 0.36f);
-            harbor.Part(menuStage, PrimitiveType.Cube, "Preview floor", new(0, -0.16f, 0), new(28, 0.3f, 20), pavement);
-            harbor.Part(menuStage, PrimitiveType.Cube, "Preview warehouse", new(0, 3.1f, 5), new(27, 6.2f, 0.33f), wall);
+            Color deck = new(0.84f, 0.78f, 0.68f);
+            Color stucco = new(0.90f, 0.63f, 0.52f);
+            Color cream = new(0.94f, 0.89f, 0.80f);
+            Color teal = new(0.14f, 0.62f, 0.66f);
+            harbor.Part(menuStage, PrimitiveType.Cube, "Preview floor", new(0, -0.16f, 0), new(28, 0.3f, 20), deck);
+            harbor.Part(menuStage, PrimitiveType.Cube, "Preview terrace wall", new(0, 3.1f, 5), new(27, 6.2f, 0.33f), stucco);
             for (int i = -6; i <= 6; i++)
-                harbor.Part(menuStage, PrimitiveType.Cube, "Warehouse cladding", new(i * 1.35f, 3f, 4.78f),
-                    new(0.14f, 6, 0.16f), steel);
-            harbor.Part(menuStage, PrimitiveType.Cube, "Warehouse safety band", new(0, 0.57f, 4.75f),
-                new(21, 0.13f, 0.18f), new Color(0.63f, 0.43f, 0.25f));
+                harbor.Part(menuStage, PrimitiveType.Cube, "Art Deco pilaster", new(i * 1.65f, 3.1f, 4.78f),
+                    new(0.22f, 6.1f, 0.18f), cream);
+            harbor.Part(menuStage, PrimitiveType.Cube, "Terrace dado band", new(0, 0.62f, 4.74f),
+                new(24, 0.22f, 0.20f), teal);
+            harbor.Part(menuStage, PrimitiveType.Cube, "Neon accent coral", new(0, 4.55f, 4.72f),
+                new(16, 0.12f, 0.10f), new Color(0.98f, 0.44f, 0.56f), finish: HarborBlockout.Finish.Paint);
+            harbor.Part(menuStage, PrimitiveType.Cube, "Neon accent cyan", new(0, 4.28f, 4.72f),
+                new(12, 0.09f, 0.10f), new Color(0.20f, 0.86f, 0.86f), finish: HarborBlockout.Finish.Paint);
 
-            menuKey = MenuLight("Warm dock key", new(-3,3.1f,-2), new Color(1,.72f,.49f), 6f, true);
-            menuFill = MenuLight("Blue quay rim", new(2.8f,2.7f,3.6f), new Color(.36f,.74f,1), 3.4f, false);
-            for (int i = 0; i < 4; i++)
+            menuKey = MenuLight("Warm tropical key", new(-3, 3.2f, -2.2f), new Color(1f, 0.80f, 0.56f), 6.8f, true);
+            menuFill = MenuLight("Turquoise sea rim", new(2.9f, 2.7f, 3.4f), new Color(0.26f, 0.82f, 0.92f), 4.0f, false);
+
+            // Stylized coastal planter + mini tropical palm beside the protagonist
+            harbor.Part(menuStage, PrimitiveType.Cube, "Terrace planter", new(2.35f, 0.36f, 2.65f), new(1.25f, 0.72f, 1.25f), cream);
+            var palmTrunk = harbor.Part(menuStage, PrimitiveType.Cylinder, "Preview palm trunk", new(2.35f, 1.95f, 2.65f),
+                new(0.18f, 1.55f, 0.18f), new Color(0.45f, 0.34f, 0.23f)).transform;
+            palmTrunk.localRotation = Quaternion.Euler(0, 0, -6f);
+            for (int i = 0; i < 5; i++)
             {
-                var crate = harbor.Part(menuStage, PrimitiveType.Cube, "Cargo stack", new(3.6f + i*1.12f,.58f,2.9f),
-                    new(1.02f,1.16f,.94f), Color.Lerp(steel, new Color(.52f,.32f,.22f), i*.19f));
-                crate.transform.localRotation = Quaternion.Euler(0, i*4f - 8, 0);
+                float a = i * (Mathf.PI * 2f / 5f);
+                Vector3 dir = new(Mathf.Cos(a), 0f, Mathf.Sin(a));
+                var frond = harbor.Part(menuStage, PrimitiveType.Cube, "Preview palm frond",
+                    new Vector3(2.48f, 3.45f, 2.65f) + dir * 0.92f,
+                    new Vector3(0.42f, 0.06f, 1.85f), i % 2 == 0 ? new Color(0.16f, 0.52f, 0.26f) : new Color(0.24f, 0.62f, 0.31f)).transform;
+                frond.localRotation = Quaternion.LookRotation(dir) * Quaternion.Euler(22f, 0f, 0f);
             }
 
-            menuBody = harbor.Person("Loadout preview", menuStage, MenuActorPosition, new Color(0.94f, 0.93f, 0.87f));
+            menuBody = harbor.Person("Loadout preview", menuStage, MenuActorPosition, new Color(0.95f, 0.93f, 0.88f));
             menuLook = new CostaLook(harbor, menuBody);
-            menuBody.Root.rotation = Quaternion.Euler(0, 215f, 0);
+            menuBody.Root.rotation = Quaternion.Euler(0, 212f, 0);
             menuWeaponMount = new GameObject("Preview weapons").transform;
             menuWeaponMount.SetParent(menuBody.Root, false);
             menuWeapons = new Transform[HarborArsenal.WeaponNames.Length];

@@ -65,4 +65,5 @@ run_unity_build() {
     fi
 
     echo "OK: Build $target concluido!"
+    grep -F " build saved at " "$log_file" | tail -n 1 || true
 }

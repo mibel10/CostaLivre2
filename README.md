@@ -39,7 +39,7 @@ New-Item -ItemType Directory -Force Builds/Windows | Out-Null
 ### Android e Xbox
 
 - **Android** — ative a plataforma Android em **Build Profiles** e use **Costa Livre → Build → Android APK**. O APK sai em `Builds/Android/CostaLivre2.apk`. Para automatizar, use `-buildTarget Android -executeMethod CostaLivre.Editor.CostaPlatformBuild.Android` com as opções de projeto e log acima. Defina `COSTA_BUILD_OUTPUT` para mudar o destino. [Builds Android no Unity](https://docs.unity.com/en-us/engine/6000.3/manual/platform-specific/android/building-and-delivering/build-process)
-- **Xbox** — no Windows com acesso aprovado ao módulo Xbox do Unity e ao Microsoft GDK, ative o alvo correspondente e use **Costa Livre → Build → Xbox Series X|S** ou **Xbox One**. As saídas padrão ficam em `Builds/XboxSeries` e `Builds/XboxOne`. Para detalhes do ambiente e da implantação, consulte a documentação inclusa no módulo Xbox. [Plataformas fechadas no Unity](https://docs.unity.com/en-us/engine/6000.3/manual/building-and-publishing/build-settings/build-profiles-reference)
+- **Xbox em Dev Mode** — no Windows com o módulo Universal Windows Platform da Unity e as ferramentas UWP/C++ do Visual Studio, execute `build_xbox.bat` ou `build.ps1 -Target xbox`. O script gera o projeto UWP x64 em `Builds/UWP` e empacota o `.appx`. [Plataformas fechadas no Unity](https://docs.unity.com/en-us/engine/6000.3/manual/building-and-publishing/build-settings/build-profiles-reference)
 
 ## Requisitos de PC estimados
 

@@ -49,6 +49,12 @@ namespace CostaLivre
         private readonly AnimationClipPlayable[] tracks;
         private readonly PlayableGraph graph;
         private readonly AnimationMixerPlayable mixer;
+        private AnimationMixerPlayable locomotionOutput;
+        private AnimatorControllerPlayable locomotion;
+        private static readonly int Lateral = Animator.StringToHash("Lateral");
+        private static readonly int Forward = Animator.StringToHash("Forward");
+        private static readonly int Stride = Animator.StringToHash("Stride");
+        private float directionalBlend, gaitStride;
         private readonly Transform rightShoulder;
         private readonly Transform rightElbow;
         private readonly Transform rightHand;
@@ -93,6 +99,8 @@ namespace CostaLivre
 
         internal Vector3 WeaponHand => rightHand.position;
         internal Transform Head { get; }
+        private readonly Transform jaw, leftEye, rightEye;
+        private readonly Quaternion jawRest, leftEyeRest, rightEyeRest;
         internal Transform Chest { get; }
 
         internal HarborCharacter(Art art, string name, Transform parent, Vector3 position, Material material)
@@ -140,6 +148,12 @@ namespace CostaLivre
                 mesh.transform.localRotation *= Quaternion.Euler(0, 180, 0);
 
             Head = Find(bones, "head");
+            jaw = Array.Find(bones, bone => bone.name == "jaw");
+            leftEye = Array.Find(bones, bone => bone.name == "eye_L");
+            rightEye = Array.Find(bones, bone => bone.name == "eye_R");
+            jawRest = jaw != null ? jaw.localRotation : Quaternion.identity;
+            leftEyeRest = leftEye != null ? leftEye.localRotation : Quaternion.identity;
+            rightEyeRest = rightEye != null ? rightEye.localRotation : Quaternion.identity;
             Chest = Find(bones, "chest");
             rightShoulder = Find(bones, "upperarm_R");
             rightElbow = Find(bones, "forearm_R");
@@ -203,6 +217,20 @@ namespace CostaLivre
                 tracks[i].SetTime(phases[i] * duration);
             }
 
+            if (locomotion.IsValid())
+            {
+                bool gait = IsGait(activeMotion);
+                directionalBlend = Mathf.MoveTowards(directionalBlend, gait ? 1 : 0, dt * 9);
+                locomotionOutput.SetInputWeight(0, 1 - directionalBlend);
+                locomotionOutput.SetInputWeight(1, directionalBlend);
+                if (gait || directionalBlend > 0)
+                {
+                    locomotion.SetFloat(Lateral, travelBlend.x);
+                    locomotion.SetFloat(Forward, travelBlend.y);
+                    gaitStride = Mathf.Repeat(gaitStride + dt * gaitSpeed / Mathf.Max(clips[requested].length, .12f), 1);
+                    locomotion.SetFloat(Stride, gaitStride);
+                }
+            }
             graph.Evaluate(0);
             mesh.transform.localPosition = Vector3.zero;
             UpdateTurnLean(snap, dt);
@@ -217,6 +245,43 @@ namespace CostaLivre
                     Head.rotation = Quaternion.AngleAxis(glance * 4f * (1 - aimBlend), Root.up) * Head.rotation;
                 }
             }
+        }
+
+        internal void Speak(float mouth, float expression, float progress, Vector3 target)
+        {
+            if (jaw != null)
+                jaw.rotation = Quaternion.AngleAxis(Mathf.Clamp01(mouth) * 20, Root.right) * jaw.parent.rotation * jawRest;
+            float emphasis = Mathf.Sin(progress * Mathf.PI);
+            Head.rotation = Quaternion.AngleAxis(expression * emphasis * 7 + mouth * 1.75f, Root.right) * Head.rotation;
+            if (leftEye != null && rightEye != null)
+            {
+                Quaternion look = Quaternion.AngleAxis(emphasis * expression * 9, Root.up);
+                leftEye.rotation = look * leftEye.parent.rotation * leftEyeRest;
+                rightEye.rotation = look * rightEye.parent.rotation * rightEyeRest;
+            }
+            if (progress is > .08f and < .88f && target != Root.position)
+                PlayGesture(Gesture.Reach, (progress - .08f) / .8f, target, .4f + .2f * expression);
+        }
+
+        internal void ClearExpression()
+        {
+            if (jaw != null) jaw.localRotation = jawRest;
+            if (leftEye != null) leftEye.localRotation = leftEyeRest;
+            if (rightEye != null) rightEye.localRotation = rightEyeRest;
+        }
+
+        internal void EnableDirectionalBlendTree()
+        {
+            RuntimeAnimatorController controller = Resources.Load<RuntimeAnimatorController>("Harbor/DirectionalGait");
+            if (controller == null)
+                return;
+            locomotion = AnimatorControllerPlayable.Create(graph, controller);
+            locomotionOutput = AnimationMixerPlayable.Create(graph, 2);
+            graph.Connect(mixer, 0, locomotionOutput, 0);
+            graph.Connect(locomotion, 0, locomotionOutput, 1);
+            locomotionOutput.SetInputWeight(0, 1);
+            var output = (AnimationPlayableOutput)graph.GetOutput(0);
+            output.SetSourcePlayable(locomotionOutput);
         }
 
         internal void DirectionalGait(Vector3 velocity, float maximumSpeed, float turn, float braking)
@@ -236,7 +301,7 @@ namespace CostaLivre
                 pivotTime = pivotLength;
             }
 
-            if (IsGait(activeMotion))
+            if (IsGait(activeMotion) && !locomotion.IsValid())
             {
                 float contactPhase = 2 * Mathf.PI * Clock;
                 float stride = Mathf.Sin(contactPhase);

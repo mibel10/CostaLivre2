@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 83dd432b2c1197b828cbcfc6f473271f, type: 3}
+  m_Name: SignedRecord
+  m_EditorClassIdentifier:
+  shots:
+  - seconds: 3.26
+    dissolve: 0.4
+    fieldOfView: 50
+    start: {x: -2.5, y: 2.12, z: 3.16}
+    finish: {x: -2, y: 1.95, z: 2.7}
+    lookAt: {x: 0.25, y: 1.44, z: 0.15}
+  - seconds: 3.08
+    dissolve: 0.38
+    fieldOfView: 39
+    start: {x: 1.59, y: 1.82, z: 2.32}
+    finish: {x: 1.26, y: 1.8, z: 2.27}
+    lookAt: {x: 0, y: 1.58, z: 0}
+  lines:
+  - start: 1.06
+    seconds: 5.08
+    voice: {fileID: 8300000, guid: 6b60208fb4dfed3f2b8ac1a73292a458, type: 3}
+    gestureTarget: {x: 1.3, y: 1.05, z: 1.46}
+    expression: 0.57
+    portuguese: "Os nomes j\u00e1 est\u00e3o no papel. Amanh\u00e3, a cidade vai saber o que fizeram aqui."
+    english: "The names are on the record. Tomorrow, this city will know what they did here."

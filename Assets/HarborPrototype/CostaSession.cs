@@ -60,6 +60,7 @@ namespace CostaLivre
             public float arrestThreat;
             public int outfit;
             public int vehicle = -1;
+            public int seatIndex;
             public int seat = -1;
             public int lift = -1;
             public int doorCar = -1;
@@ -86,6 +87,10 @@ namespace CostaLivre
             public float lean;
             public float frontDamage;
             public float rearDamage;
+            public int tireMask;
+            public int glassMask;
+            public bool fuelBurning;
+            public bool wrecked;
             [NonSerialized] internal bool TuneChosen;
         }
 
@@ -968,6 +973,25 @@ namespace CostaLivre
             for (int i = 0; i < hostCars.Length; i++)
             {
                 Vehicle vehicle = hostCars[i];
+                if (sceneVehicles[i].TickCombat(delta, null, out bool exploded))
+                {
+                    vehicle.fuelBurning = sceneVehicles[i].FuelBurning;
+                    vehicle.wrecked = sceneVehicles[i].Wrecked;
+                    if (exploded)
+                    {
+                        vehicle.speed = 0;
+                        foreach (Peer occupant in peers)
+                        {
+                            if (occupant.Ready && occupant.Pose.vehicle == i)
+                            {
+                                ReleaseVehicle(occupant);
+                                occupant.Pose.pos = vehicle.pos + Vector3.right * 2.1f;
+                                occupant.Pose.health = Mathf.Max(1, occupant.Pose.health - 45);
+                                occupant.Pose.revision++;
+                            }
+                        }
+                    }
+                }
                 if (vehicle.driver != 0 || Mathf.Abs(vehicle.speed) < 0.05f)
                     continue;
 
@@ -1270,22 +1294,49 @@ namespace CostaLivre
                     {
                         Vehicle car = hostCars[msg.index];
                         CostaVehicle vehicle = sceneVehicles[msg.index];
-                        if (car.driver == 0 && now >= doorBusyUntil[msg.index] && Mathf.Abs(car.speed) < 3f
+                        int freeSeat = car.driver == 0 ? 0 : FindFreePassengerSeat(msg.index, vehicle.SeatCount);
+                        if (freeSeat >= 0 && !car.wrecked && now >= doorBusyUntil[msg.index] && Mathf.Abs(car.speed) < 3f
                             && !avatar.crouched && avatar.rollPose < 0 && Supported(avatar.pos)
                             && Near(car.pos, avatar.pos, 4f)
                             && vehicle.TryBoard(avatar.pos, car.pos, Quaternion.Euler(0, car.yaw, 0), out int side, out Vector3 step))
                         {
-                            car.driver = avatar.id;
-                            if (!car.TuneChosen && sceneVehicles[msg.index].Customizable && peer.Account.mods[msg.index] != 0)
+                            if (freeSeat == 0)
                             {
-                                car.tune = peer.Account.mods[msg.index];
-                                car.TuneChosen = true;
-                                sceneVehicles[msg.index].ApplyBuild(car.tune);
+                                car.driver = avatar.id;
+                                if (!car.TuneChosen && sceneVehicles[msg.index].Customizable && peer.Account.mods[msg.index] != 0)
+                                {
+                                    car.tune = peer.Account.mods[msg.index];
+                                    car.TuneChosen = true;
+                                    sceneVehicles[msg.index].ApplyBuild(car.tune);
+                                }
+                                car.speed = 0;
                             }
-                            car.speed = 0;
                             avatar.vehicle = msg.index;
+                            avatar.seatIndex = freeSeat;
                             StartDoorMotion(peer, msg.index, side, avatar.pos, step, car, now, CostaVehicleMotion.EnterTime);
                             avatar.pos = car.pos;
+                        }
+                    }
+                    break;
+                case "seat":
+                    if (avatar.vehicle >= 0 && avatar.vehicle < hostCars.Length)
+                    {
+                        int vIdx = avatar.vehicle;
+                        Vehicle car = hostCars[vIdx];
+                        int seatCount = sceneVehicles[vIdx].SeatCount;
+                        for (int step = 1; step < seatCount; step++)
+                        {
+                            int candidate = (avatar.seatIndex + step) % seatCount;
+                            if (!SeatOccupied(vIdx, candidate))
+                            {
+                                if (avatar.seatIndex == 0 && car.driver == avatar.id)
+                                    car.driver = 0;
+                                avatar.seatIndex = candidate;
+                                if (candidate == 0)
+                                    car.driver = avatar.id;
+                                avatar.revision++;
+                                break;
+                            }
                         }
                     }
                     break;
@@ -1553,6 +1604,16 @@ namespace CostaLivre
             else
             {
                 Vehicle car = hostCars[avatar.vehicle];
+                if (avatar.seatIndex > 0 || car.driver != avatar.id)
+                {
+                    peer.LastPose = now;
+                    avatar.pos = car.pos;
+                    avatar.yaw = Mathf.Repeat(pose.yaw, 360);
+                    avatar.aiming = pose.aiming;
+                    avatar.aimPitch = Finite(pose.aimPitch) ? Mathf.Clamp(pose.aimPitch, -25f, 55f) : 0;
+                    avatar.running = avatar.standing = avatar.crouched = avatar.moving = false;
+                    return true;
+                }
                 CostaVehicle rules = sceneVehicles[avatar.vehicle];
                 float speed = CostaVehicle.DecodeSpeed(pose.held);
                 float acceleration = Mathf.Sign(speed) != Mathf.Sign(car.speed) ? rules.BrakePower
@@ -1676,7 +1737,8 @@ namespace CostaLivre
 
         private static bool CanEquip(Peer peer, int index)
         {
-            return peer.Pose.playing && peer.Pose.vehicle < 0 && index >= 0 && index < HarborArsenal.WeaponNames.Length
+            bool vehicleAllowed = peer.Pose.vehicle < 0 || index == 0 || index == 2;
+            return peer.Pose.playing && vehicleAllowed && index >= 0 && index < HarborArsenal.WeaponNames.Length
                 && (WeaponInventory(peer) & (1 << index)) != 0;
         }
 
@@ -1748,6 +1810,22 @@ namespace CostaLivre
 
             if (victim == null)
             {
+                if (cover.collider != null && sceneVehicles != null)
+                {
+                    for (int v = 0; v < sceneVehicles.Length; v++)
+                    {
+                        if (!sceneVehicles[v].OwnsCollider(cover.collider))
+                            continue;
+                        if (sceneVehicles[v].TryHitLocalized(cover.point, damage, null, out _))
+                        {
+                            hostCars[v].tireMask = sceneVehicles[v].TireMask;
+                            hostCars[v].glassMask = sceneVehicles[v].GlassMask;
+                            hostCars[v].fuelBurning = sceneVehicles[v].FuelBurning;
+                            hostCars[v].wrecked = sceneVehicles[v].Wrecked;
+                        }
+                        break;
+                    }
+                }
                 if (scenery != null && cover.collider != null)
                 {
                     bool broken = scenery.Hit(cover.collider, damage);
@@ -2047,6 +2125,23 @@ namespace CostaLivre
             if (car.driver == peer.Pose.id)
                 car.driver = 0;
             peer.Pose.vehicle = -1;
+            peer.Pose.seatIndex = 0;
+        }
+
+        private bool SeatOccupied(int vehicleIndex, int seatIndex)
+        {
+            foreach (Peer p in peers)
+                if (p.Ready && p.Pose.vehicle == vehicleIndex && p.Pose.seatIndex == seatIndex)
+                    return true;
+            return false;
+        }
+
+        private int FindFreePassengerSeat(int vehicleIndex, int seatCount)
+        {
+            for (int s = 1; s < seatCount; s++)
+                if (!SeatOccupied(vehicleIndex, s))
+                    return s;
+            return -1;
         }
 
         private static bool ValidPoint(Vector3 point) => Finite(point.x) && Finite(point.y) && Finite(point.z)

@@ -113,16 +113,31 @@ namespace CostaLivre
                 if (transitioning)
                     continue;
                 bool bike = avatar.vehicle >= 0 && avatar.vehicle < cars.Length && cars[avatar.vehicle].IsBike;
-                model.Body.Root.gameObject.SetActive(avatar.vehicle < 0 || bike);
+                bool openPassenger = avatar.vehicle >= 0 && avatar.vehicle < cars.Length && !bike && avatar.seatIndex >= 2;
+                model.Body.Root.gameObject.SetActive(avatar.vehicle < 0 || bike || openPassenger);
 
-                if (bike)
+                if (avatar.vehicle >= 0 && avatar.vehicle < cars.Length)
                 {
                     CostaVehicle car = cars[avatar.vehicle];
-                    Quaternion rotation = car.Root.rotation * Quaternion.Euler(11, 0, car.RiderLean);
-                    Vector3 seat = car.Root.TransformPoint(new Vector3(0, 0.85f, -0.27f));
-                    model.Body.Root.SetPositionAndRotation(seat - rotation * Vector3.up * 0.94f, rotation);
-                    if (InView(model.Body.Root.position))
-                        model.Body.Ride();
+                    PlayShot(model, avatar, camera.transform.position);
+                    if (bike)
+                    {
+                        Quaternion rotation = car.Root.rotation * Quaternion.Euler(11, 0, car.RiderLean);
+                        Vector3 seat = car.Root.TransformPoint(car.GetSeatLocalOffset(avatar.seatIndex));
+                        model.Body.Root.SetPositionAndRotation(seat - rotation * Vector3.up * 0.94f, rotation);
+                        if (InView(model.Body.Root.position))
+                            model.Body.Ride();
+                    }
+                    else if (openPassenger)
+                    {
+                        Vector3 seat = car.Root.TransformPoint(car.GetSeatLocalOffset(avatar.seatIndex));
+                        model.Body.Root.SetPositionAndRotation(seat - Vector3.up * 0.94f, Quaternion.Euler(0, avatar.yaw, 0));
+                        if (InView(model.Body.Root.position))
+                        {
+                            model.Body.Animate(HarborCharacter.Motion.Idle);
+                            DrawWeapon(model, avatar);
+                        }
+                    }
                 }
                 else if (avatar.vehicle < 0)
                 {

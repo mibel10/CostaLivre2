@@ -456,6 +456,7 @@ namespace CostaLivre
                     }
                     car.ApplyBuild(tuned);
                     car.SetDamage(Vector2.zero);
+                    car.ResetCombat();
                     worldInteractive.AddReputation(player.transform.position, 35);
                     ShowWorldNotice(L("Vehicle tuned & repaired! (+Rep)", "Veículo ajustado e reparado! (+Rep)"));
                 });
@@ -1066,9 +1067,11 @@ namespace CostaLivre
                 if (!relevant) continue;
                 CostaSession.Vehicle vehicle = session.Cars[i];
                 cars[i].ApplyBuild(vehicle.tune);
-                if (i != avatar.vehicle || netRevision != avatar.revision)
-                    syncCars |= cars[i].ApplyNetwork(vehicle.pos, vehicle.yaw, vehicle.speed, joined || i == avatar.vehicle, vehicle.lean);
+                bool isPassengerHere = i == avatar.vehicle && avatar.seatIndex > 0;
+                if (i != avatar.vehicle || netRevision != avatar.revision || isPassengerHere)
+                    syncCars |= cars[i].ApplyNetwork(vehicle.pos, vehicle.yaw, vehicle.speed, joined || (i == avatar.vehicle && !isPassengerHere), vehicle.lean);
                 cars[i].SetDamage(new Vector2(vehicle.frontDamage, vehicle.rearDamage));
+                cars[i].ApplyCombatState(vehicle.tireMask, vehicle.glassMask, vehicle.fuelBurning, vehicle.wrecked, effects);
             }
 
             if (syncCars)
@@ -1405,6 +1408,27 @@ namespace CostaLivre
             {
                 robberies.Refresh();
                 pendingVehicleSync = CoastIdleVehicles(defer: car != null && !interaction);
+                for (int i = 0; i < cars.Length; i++)
+                {
+                    if (cars[i].TickCombat(Time.deltaTime, effects, out bool exploded) && exploded)
+                    {
+                        if (cars[i] == car)
+                        {
+                            CostaVehicle wreckedCar = car;
+                            car = null;
+                            player.enabled = true;
+                            player.transform.position = wreckedCar.Root.position + wreckedCar.Root.right * 2.2f + Vector3.up * 0.2f;
+                            playerModel.gameObject.SetActive(true);
+                            arsenal.SetVisible(true);
+                            encounter.TakeDamage(45);
+                            ShowWorldNotice(L("Vehicle exploded!", "O veículo explodiu!"));
+                        }
+                        else if ((cars[i].Root.position - player.transform.position).sqrMagnitude < 10f * 10f)
+                        {
+                            encounter.TakeDamage(30);
+                        }
+                    }
+                }
             }
             cargoPack.SetActive(CurrentBag.Count > 0 || state == RunState.Escape
                 || !session.Online && encounter.CarryingLoot);
@@ -1462,30 +1486,86 @@ namespace CostaLivre
 
             if (car != null)
             {
-                Vector2 steering = MovementInput();
-                if (!touch.Down(TouchControl.Move) && Gamepad.current != null && move.activeControl?.device is not Keyboard)
-                    steering.y = accelerate.ReadValue<float>() - reverse.ReadValue<float>();
-                engineThrottle = steering.y;
-                float previousSpeed = car.Speed;
-                bool braking = Held(jump, TouchControl.Jump);
-                bool nitro = Held(sprint, TouchControl.Sprint);
-                if (car.Drive(steering, braking, nitro) || pendingVehicleSync)
-                    Physics.SyncTransforms();
-                if (previousSpeed - car.Speed > Mathf.Max(2.6f, Time.deltaTime * 24f))
-                    CameraKick(Mathf.Clamp01((previousSpeed - car.Speed) / 16f) * 0.62f);
-                effects.Brake(previousSpeed, braking && Pressed(jump, TouchControl.Jump) ? 0 : car.Speed);
-                effects.Skid(car.Slip, car.Speed);
+                bool isPassenger = session.Online && session.Local.seatIndex > 0;
+                if (session.Online && Keyboard.current?.hKey.wasPressedThisFrame == true)
+                    session.Request("seat", 0);
+
+                if (!isPassenger)
+                {
+                    Vector2 steering = MovementInput();
+                    if (!touch.Down(TouchControl.Move) && Gamepad.current != null && move.activeControl?.device is not Keyboard)
+                        steering.y = accelerate.ReadValue<float>() - reverse.ReadValue<float>();
+                    engineThrottle = steering.y;
+                    float previousSpeed = car.Speed;
+                    bool braking = Held(jump, TouchControl.Jump);
+                    bool nitro = Held(sprint, TouchControl.Sprint);
+                    if (car.Drive(steering, braking, nitro) || pendingVehicleSync)
+                        Physics.SyncTransforms();
+                    if (previousSpeed - car.Speed > Mathf.Max(2.6f, Time.deltaTime * 24f))
+                        CameraKick(Mathf.Clamp01((previousSpeed - car.Speed) / 16f) * 0.62f);
+                    effects.Brake(previousSpeed, braking && Pressed(jump, TouchControl.Jump) ? 0 : car.Speed);
+                    effects.Skid(car.Slip, car.Speed);
+                }
+                else
+                {
+                    engineThrottle = 0f;
+                }
+
+                int localSeat = session.Online ? session.Local.seatIndex : 0;
+                Vector3 seatWorld = car.Root.TransformPoint(car.GetSeatLocalOffset(localSeat));
                 player.transform.position = car.Root.position;
                 if (car.IsBike)
                 {
                     Quaternion attitude = car.Root.rotation * Quaternion.Euler(11, 0, car.RiderLean);
-                    Vector3 seat = car.Root.TransformPoint(new Vector3(0, 0.85f, -0.27f));
-                    playerModel.SetPositionAndRotation(seat - attitude * Vector3.up * 0.94f, attitude);
+                    playerModel.SetPositionAndRotation(seatWorld - attitude * Vector3.up * 0.94f, attitude);
                     playerBody.Ride();
                 }
-                yaw = Mathf.LerpAngle(yaw, car.Root.eulerAngles.y, 1 - Mathf.Exp(-Time.deltaTime * 6f));
-                pitch = Mathf.Lerp(pitch, 15f, 1 - Mathf.Exp(-Time.deltaTime * 4f));
-                PositionCamera(false);
+
+                // Drive-by free aim & shooting (Pistol = 0, SMG = 2)
+                bool canDriveBy = (arsenal.Slot == 0 || arsenal.Slot == 2) && arsenal.Owned(arsenal.Slot);
+                if (!canDriveBy && (Held(aim, TouchControl.Aim) || Pressed(shoot, TouchControl.Fire)))
+                {
+                    if (arsenal.Owned(2)) EquipWeapon(2);
+                    else if (arsenal.Owned(0)) EquipWeapon(0);
+                    canDriveBy = (arsenal.Slot == 0 || arsenal.Slot == 2) && arsenal.Owned(arsenal.Slot);
+                }
+                bool driveByAiming = canDriveBy && !arsenal.Reloading && Held(aim, TouchControl.Aim)
+                    && (touch.Down(TouchControl.Aim) || Cursor.lockState == CursorLockMode.Locked || aim.activeControl?.device is Gamepad);
+                aimingPose = driveByAiming;
+
+                if (!driveByAiming && !isPassenger)
+                {
+                    yaw = Mathf.LerpAngle(yaw, car.Root.eulerAngles.y, 1 - Mathf.Exp(-Time.deltaTime * 6f));
+                    pitch = Mathf.Lerp(pitch, 15f, 1 - Mathf.Exp(-Time.deltaTime * 4f));
+                }
+                PositionCamera(driveByAiming);
+
+                if (canDriveBy && driveByAiming)
+                {
+                    bool fireEnabled = !recapturing && (touch.Down(TouchControl.Fire) || Cursor.lockState == CursorLockMode.Locked || shoot.activeControl?.device is Gamepad);
+                    bool firePressed = fireEnabled && Pressed(shoot, TouchControl.Fire);
+                    bool fireHeld = fireEnabled && Held(shoot, TouchControl.Fire);
+                    if (Pressed(reload, TouchControl.Reload) || (arsenal.Loaded == 0 && (firePressed || fireHeld)))
+                    {
+                        if (!session.Online) arsenal.Reload();
+                        else if (!arsenal.Reloading && arsenal.Loaded < arsenal.Capacity && Time.unscaledTime >= nextReloadRequest)
+                        {
+                            nextReloadRequest = Time.unscaledTime + 0.25f;
+                            session.Request("reload", arsenal.Slot);
+                        }
+                    }
+                    if (arsenal.Update(followCamera, playerBody, pitch, firePressed, fireHeld, true, false,
+                        ResolveSoloHit, effects, -1f, true))
+                    {
+                        score.Combat();
+                        livingWorld?.AlertDanger(player.transform.position, 36f);
+                        if (session.Online)
+                            session.Fire(arsenal.Slot, arsenal.ShotDirection, CaptureNetworkPose());
+                        else
+                            StartPursuit(0.25f, combat: true);
+                    }
+                }
+
                 UpdateCityJobs(false);
                 if (pursuit)
                     UpdatePursuit();
@@ -2170,7 +2250,9 @@ namespace CostaLivre
             float distance = 3.25f * 3.25f;
             for (int i = 0; i < cars.Length; i++)
             {
-                if (session.Online && (!session.CarRelevant(i) || session.Cars[i].driver != 0))
+                if (session.Online && !session.CarRelevant(i))
+                    continue;
+                if (cars[i].Wrecked)
                     continue;
                 if (!session.Online && encounter.Active && encounter.ReservesVehicle(i))
                     continue;
@@ -2566,6 +2648,23 @@ namespace CostaLivre
                 return;
             if (HitGuard(hit.collider, damage))
                 return;
+            if (cars != null)
+            {
+                for (int i = 0; i < cars.Length; i++)
+                {
+                    if (cars[i] != car && cars[i].OwnsCollider(hit.collider))
+                    {
+                        if (cars[i].TryHitLocalized(hit.point, damage, effects, out string partHit))
+                        {
+                            arsenal.ShowHit();
+                            if (!string.IsNullOrEmpty(partHit))
+                                ShowWorldNotice(partHit);
+                            return;
+                        }
+                        break;
+                    }
+                }
+            }
 
             bool broken = harbor.Damage.Hit(hit.collider, damage);
             if (primary || broken)

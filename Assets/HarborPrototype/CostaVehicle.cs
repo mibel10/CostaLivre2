@@ -105,6 +105,7 @@ namespace CostaLivre
             rearRest = rearPanel.localPosition;
             Renderer[] renderers = shell.GetComponentsInChildren<Renderer>();
             SetupCustomization(art,!service && !traffic,paint,renderers);
+            InitCombat(renderers);
             runningLights = System.Array.FindAll(renderers, renderer => renderer.name is "Headlight" or "Headlamp" or "Tail light" or "Tail lamp");
             foreach (Renderer renderer in runningLights)
                 renderer.sharedMaterial = art.RunningLightMaterial(renderer.sharedMaterial);
@@ -382,6 +383,7 @@ namespace CostaLivre
         internal void Reset()
         {
             speed = slip = chassisPitch = chassisRoll = 0;
+            ResetCombat();
             SetDamage(Vector2.zero);
             System.Array.Clear(springTravel, 0, springTravel.Length);
             System.Array.Clear(springSpeed, 0, springSpeed.Length);
@@ -470,22 +472,32 @@ namespace CostaLivre
                 NitroCharge = Mathf.Min(1f, NitroCharge + dt * 0.14f);
 
             float before = speed;
-            float top = boosting ? TopSpeed * 1.32f : TopSpeed;
+            if (Wrecked)
+            {
+                speed = Mathf.MoveTowards(speed, 0f, BrakeAcceleration * dt);
+                slip = 0f;
+                AnimateChassis(dt, 0f, (speed - before) / dt, null, false);
+                return false;
+            }
+            float effectiveGrip = TireGrip * CombatGripFactor;
+            float effectiveTop = TopSpeed * CombatTopSpeedFactor;
+            float top = boosting ? effectiveTop * 1.32f : effectiveTop;
             float target = braking ? 0 : input.y >= 0 ? top * input.y : ReverseSpeed * input.y;
             float accelBase = boosting ? Acceleration * 1.48f : Acceleration;
-            float acceleration = braking || Mathf.Sign(target) != Mathf.Sign(speed) ? BrakePower * TireGrip
-                : Mathf.Abs(input.y) > 0.03f ? accelBase * Mathf.Lerp(.64f, 1, TireGrip) : 4.4f;
+            float acceleration = braking || Mathf.Sign(target) != Mathf.Sign(speed) ? BrakePower * effectiveGrip
+                : Mathf.Abs(input.y) > 0.03f ? accelBase * Mathf.Lerp(.64f, 1, effectiveGrip) : 4.4f;
             speed = Mathf.MoveTowards(speed, target, acceleration * dt);
             float y = Root.eulerAngles.y;
-            float steer = input.x * Mathf.Sign(speed) * Mathf.Lerp(92, 48, Speed / TopSpeed) * steeringStrength;
+            float steer = input.x * Mathf.Sign(speed) * Mathf.Lerp(92, 48, Speed / Mathf.Max(1f, effectiveTop)) * steeringStrength
+                + CombatSteerDrift * Mathf.Clamp01(Speed / 6f);
             float cornerLoad = Mathf.Abs(steer) * Speed * Mathf.Deg2Rad;
-            float available = Mathf.Lerp(3.1f, IsBike ? 10.5f : 8.2f, TireGrip) * (braking ? .69f : 1);
+            float available = Mathf.Lerp(3.1f, IsBike ? 10.5f : 8.2f, effectiveGrip) * (braking ? .69f : 1);
             float excess = Mathf.Clamp01((cornerLoad - available) / 10f);
             float slipLimit = IsBike ? 8 : 13;
             float targetSlip = -Mathf.Sign(steer) * excess * slipLimit;
             if (Speed < 3)
                 targetSlip = 0;
-            slip = Mathf.Lerp(slip, targetSlip, 1 - Mathf.Exp(-dt * Mathf.Lerp(3.5f, 11f, TireGrip)));
+            slip = Mathf.Lerp(slip, targetSlip, 1 - Mathf.Exp(-dt * Mathf.Lerp(3.5f, 11f, effectiveGrip)));
             steer *= 1 - .26f * excess;
             if (Speed < .04f)
             {

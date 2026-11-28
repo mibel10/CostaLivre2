@@ -113,6 +113,7 @@ namespace CostaLivre
             public int id;
             public int credits;
             public int bankPersonal, bankBusiness, transaction;
+            public int ownedVehicles, territoryVault;
             public CostaLedger.Entry[] bankHistory;
             public CostaCampaign.Progress campaign;
             public int evidence;
@@ -183,6 +184,7 @@ namespace CostaLivre
             public int[] vehicleIds;
             public int credits;
             public int bankPersonal, bankBusiness, transaction;
+            public int ownedVehicles, territoryVault;
             public int evidence;
             public CrewOrder crew;
             public int weapons;
@@ -609,6 +611,8 @@ namespace CostaLivre
                 Cash = frame.credits;
                 BankPersonal = frame.bankPersonal;
                 BankBusiness = frame.bankBusiness;
+                OwnedVehicles = frame.ownedVehicles;
+                TerritoryVault = frame.territoryVault;
                 StaminaRefill = frame.staminaRefill;
                 nextTransaction = Mathf.Max(nextTransaction,frame.transaction);
                 WeaponMask = frame.weapons;
@@ -905,6 +909,8 @@ namespace CostaLivre
                 snapshot.credits = peer.Credits;
                 snapshot.bankPersonal = peer.Account.personal;
                 snapshot.bankBusiness = peer.Account.business;
+                snapshot.ownedVehicles = peer.Account.ownedVehicles;
+                snapshot.territoryVault = peer.Account.territoryVault;
                 if (peer.SentHistory != peer.Account.history || peer.SentCampaign != peer.Account.campaign)
                 {
                     peer.SentHistory = peer.Account.history;
@@ -1019,6 +1025,15 @@ namespace CostaLivre
                     break;
                 case "bank":
                     ReceiveBank(peer,msg);
+                    break;
+                case "dealer":
+                    ReceiveDealer(peer, msg);
+                    break;
+                case "garage":
+                    ReceiveGarageSummon(peer, msg);
+                    break;
+                case "vault":
+                    ReceiveCollectVault(peer, msg);
                     break;
                 case "crew":
                     UseCrew(peer, msg.index, now);

@@ -38,6 +38,8 @@ namespace CostaLivre
         private int nextTransaction;
         internal int BankPersonal { get; private set; }
         internal int BankBusiness { get; private set; }
+        internal int OwnedVehicles { get; private set; }
+        internal int TerritoryVault { get; private set; }
         internal CostaLedger.Entry[] BankHistory { get; private set; }
         internal void BankRequest(CostaLedger.Operation op, int amount, int recipient)
         {
@@ -150,5 +152,60 @@ namespace CostaLivre
 
         private bool Reward(Peer peer, int amount) => amount > 0 && ledger.Apply(peer.Account,CostaLedger.Operation.Reward,amount);
         private bool Purchase(Peer peer,int amount,int weapon) => ledger.Apply(peer.Account,CostaLedger.Operation.Purchase,amount,weapon:weapon);
+
+        internal void DealerRequest(int vehicleIndex, bool bank) =>
+            Send(new Frame { type = "dealer", id = vehicleIndex, amount = bank ? 1 : 0, transaction = ++nextTransaction });
+
+        internal void GarageSummonRequest(int vehicleIndex) =>
+            Send(new Frame { type = "garage", id = vehicleIndex, transaction = ++nextTransaction });
+
+        internal void CollectVaultRequest() =>
+            Send(new Frame { type = "vault", transaction = ++nextTransaction });
+
+        private void ReceiveDealer(Peer peer, Frame msg)
+        {
+            int idx = msg.id;
+            if (peer.Pose.vehicle >= 0 || msg.transaction <= 0
+                || !CostaDealership.AtDealership(peer.Pose.pos)
+                || !CostaDealership.FindListing(idx, out var listing))
+                return;
+            bool ok = ledger.BuyVehicle(peer.Account, idx, listing.Price, msg.transaction, msg.amount == 1);
+            SetNotice(peer, ok ? 36 : 37);
+        }
+
+        private void ReceiveGarageSummon(Peer peer, Frame msg)
+        {
+            int idx = msg.id;
+            if (peer.Pose.vehicle >= 0 || idx < 0 || idx >= hostCars.Length
+                || (peer.Account.ownedVehicles & (1 << idx)) == 0
+                || hostCars[idx].driver != 0)
+            {
+                SetNotice(peer, 37);
+                return;
+            }
+            if (!CostaDealership.TryFindDeliverySpot(peer.Pose.pos, peer.Pose.yaw, out Vector3 spot, out float heading))
+            {
+                SetNotice(peer, 37);
+                return;
+            }
+            hostCars[idx].pos = spot;
+            hostCars[idx].yaw = heading;
+            hostCars[idx].speed = 0f;
+            hostCars[idx].tune = peer.Account.mods[idx];
+            hostCars[idx].TuneChosen = true;
+            sceneVehicles[idx].ApplyBuild(hostCars[idx].tune);
+            if (sceneVehicles[idx].SetAuthoritativePose(spot, heading))
+                Physics.SyncTransforms();
+            SetNotice(peer, 36);
+        }
+
+        private void ReceiveCollectVault(Peer peer, Frame msg)
+        {
+            if (peer.Pose.vehicle >= 0 || msg.transaction <= 0
+                || (!AtBank(peer.Pose.pos) && !CostaDealership.AtGarage(peer.Pose.pos, null, true)))
+                return;
+            bool ok = ledger.CollectTerritoryVault(peer.Account, msg.transaction, out _);
+            SetNotice(peer, ok ? 36 : 37);
+        }
     }
 }

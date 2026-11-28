@@ -105,12 +105,19 @@ namespace CostaLivre
                     if (!jobs.Ledger.PropertyBilling(account,0,CostaJobs.BankDay,!account.autoProperty))
                         bankingMessage = L("Transaction declined","Transação recusada");
             }
-            GUI.Label(new Rect(18,214,575,26), online ? session.CurrentNotice : bankingMessage ?? "");
+            int vault = online ? session.TerritoryVault : account.territoryVault;
+            if (vault > 0)
+            {
+                if (CostaUi.Button(new Rect(18, 210, 575, 28),
+                    L($"Collect Territory Vault (+${vault:N0})", $"Coletar Cofre dos Territórios (+${vault:N0})"), serviceButton))
+                    CollectTerritoryVault();
+            }
+            GUI.Label(new Rect(18, vault > 0 ? 240 : 214, 575, 24), online ? session.CurrentNotice : bankingMessage ?? "");
             var history = online ? session.BankHistory : account.history;
-            GUI.Label(new Rect(18,245,575,24),L("Recent transactions","Transações recentes"));
+            GUI.Label(new Rect(18, vault > 0 ? 266 : 245, 575, 22), L("Recent transactions","Transações recentes"));
             CacheBankRows(history);
             for (int row = 0; row < bankRows.Length && bankRows[row] != null; row++)
-                GUI.Label(new Rect(18,274+row*20,575,20),bankRows[row]);
+                GUI.Label(new Rect(18, (vault > 0 ? 290 : 274) + row * 19, 575, 19), bankRows[row]);
             EndServiceFrame();
         }
 
@@ -125,6 +132,8 @@ namespace CostaLivre
             CostaLedger.Operation.Payroll => L("Salary","Salário"),
             CostaLedger.Operation.PropertyFee => L("Property fee","Taxa de imóvel"),
             CostaLedger.Operation.Workshop => L("Workshop","Oficina"),
+            CostaLedger.Operation.Dealer => L("Dealership","Concessionária"),
+            CostaLedger.Operation.TerritoryIncome => L("Territory income","Renda de território"),
             _ => L("Purchase","Compra")
         };
 

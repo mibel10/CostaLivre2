@@ -98,6 +98,7 @@ namespace CostaLivre
             new(new Vector3(-20f, 0f, CostaCity.Districts[0].Center - 8.2f), Kind.Landmark, "Drift Trial", "Desafio de Drift"),
             new(new Vector3(-42f, 0f, CostaCity.Districts[1].Center - 8.2f), Kind.Landmark, "Street Race", "Corrida de Rua"),
             new(new Vector3(18f, 0f, CostaCity.Districts[1].Center + 13f), Kind.Shop, "Antutu Tuners", "Tunagem Antutu"),
+            new(CostaDealership.SantaLuzShowroom, Kind.Shop, "Costa Motors", "Concessionária Costa Motors"),
             new(new Vector3(14f, 0f, CostaCity.Districts[2].Center + 12f), Kind.Shop, "Neon Arcade", "Arcade Neon"),
             new(new Vector3(-72f, 0f, CostaCity.Districts[2].Center - 14f), Kind.Landmark, "Vice Nights Club", "Boate Vice Nights")
         };
@@ -179,6 +180,7 @@ namespace CostaLivre
         internal Vector3? EventPoint { get; set; }
         internal string EventTitle { get; set; }
         internal Vector3? PoliceSearchCenter { get; set; }
+        internal CostaTerritorySystem Territories { get; set; }
         private static readonly Color EventColor = new(.80f, .55f, 1f);
         private static readonly Color AlarmColor = new(1f, .28f, .22f);
 
@@ -202,6 +204,7 @@ namespace CostaLivre
                 * Matrix4x4.TRS(-center, Quaternion.identity, Vector3.one);
             Fill(new Rect(-size.x, -size.y, size.x * 3, size.y * 3), Water);
             GUI.DrawTexture(projection.Area(MapBounds), mapBase);
+            DrawTerritories(projection);
             Vector3? goal = Waypoint ?? objective;
             if (goal is Vector3 location)
                 DrawRoute(player, location, projection, Waypoint.HasValue ? Route : Accent);
@@ -247,6 +250,31 @@ namespace CostaLivre
             Label(new Rect(north.x - 5, north.y - 8, 14, 16), "N", markerText, Text);
             PlayerArrow(center, 0);
             GUI.EndGroup();
+        }
+
+        private void DrawTerritories(Projection projection)
+        {
+            if (Territories == null || Event.current.type != EventType.Repaint)
+                return;
+            int contested = Territories.ContestedZone;
+            float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 7f);
+            var zones = Territories.Zones;
+            for (int i = 0; i < zones.Length; i++)
+            {
+                Rect r = projection.Area(zones[i].Bounds);
+                Color fill = CostaTerritorySystem.FactionMapColor(zones[i].Owner);
+                if (i == contested)
+                    fill = Color.Lerp(fill, new Color(0.98f, 0.20f, 0.18f, 0.48f), pulse);
+                Fill(r, fill);
+                Color border = i == contested
+                    ? Color.Lerp(Color.white, AlarmColor, pulse)
+                    : CostaTerritorySystem.FactionSolidColor(zones[i].Owner);
+                border.a = i == contested ? 0.95f : 0.55f;
+                Fill(new Rect(r.x, r.y, r.width, 1.5f), border);
+                Fill(new Rect(r.x, r.yMax - 1.5f, r.width, 1.5f), border);
+                Fill(new Rect(r.x, r.y, 1.5f, r.height), border);
+                Fill(new Rect(r.xMax - 1.5f, r.y, 1.5f, r.height), border);
+            }
         }
 
         private void DrawAlarm(Vector2 position)
@@ -358,6 +386,7 @@ namespace CostaLivre
             if (!CostaUi.TouchPointer && CostaUi.Pick(mapArea))
                 PickDestination(projection, CostaUi.Position, size);
             DrawBase(size, projection);
+            DrawTerritories(projection);
             if (objective is Vector3 tracked)
                 PinDot(projection.Point(tracked), Accent, 9);
             if (Waypoint is Vector3 pinned)
@@ -410,10 +439,20 @@ namespace CostaLivre
             DrawLegend(lx, ly + 174, Route, L("Your waypoint", "Seu marcador"));
             DrawLegend(lx, ly + 201, ColorFor(Kind.Vendor), L("Loot exchange", "Posto de venda"));
             DrawLegend(lx, ly + 223, AlarmColor, L("Robbery in progress", "Roubo em andamento"));
+            if (Territories != null)
+            {
+                Label(new Rect(lx, ly + 252, legend.width - 30, 20),
+                    L($"TERRITORIES ({Territories.OwnedCount()}/{CostaTerritorySystem.TerritoryCount})",
+                      $"TERRITÓRIOS ({Territories.OwnedCount()}/{CostaTerritorySystem.TerritoryCount})"), small, Accent);
+                DrawLegend(lx, ly + 276, CostaTerritorySystem.FactionSolidColor(0), CostaTerritorySystem.FactionName(0));
+                DrawLegend(lx, ly + 298, CostaTerritorySystem.FactionSolidColor(1), CostaTerritorySystem.FactionName(1));
+                DrawLegend(lx, ly + 320, CostaTerritorySystem.FactionSolidColor(2), CostaTerritorySystem.FactionName(2));
+                DrawLegend(lx, ly + 342, CostaTerritorySystem.FactionSolidColor(3), CostaTerritorySystem.FactionName(3));
+            }
             if (Waypoint.HasValue)
-                Label(new Rect(lx, ly + 248, legend.width - 30, 23), WaypointTitle, small, Route);
+                Label(new Rect(lx, legend.yMax - 122, legend.width - 30, 23), WaypointTitle, small, Route);
             else
-                Label(new Rect(lx, ly + 248, legend.width - 30, 23), L("Click to set a waypoint", "Clique para marcar"), small, Muted);
+                Label(new Rect(lx, legend.yMax - 122, legend.width - 30, 23), L("Click to set a waypoint", "Clique para marcar"), small, Muted);
             if (Button(new Rect(lx, legend.yMax - 94, 41, 31), "−", false))
                 zoom = Mathf.Max(0.90f, zoom / 1.25f);
             if (Button(new Rect(lx + 48, legend.yMax - 94, 41, 31), "+", false))

@@ -13,7 +13,7 @@ namespace CostaLivre
 {
     public sealed partial class HarborRun : MonoBehaviour
     {
-        private enum FieldOverlay { None, Map, Shop, Bag, Vendor, Elevator, Bank, Workshop, Campaign }
+        private enum FieldOverlay { None, Map, Shop, Bag, Vendor, Elevator, Bank, Workshop, Campaign, Dealership, Garage }
         private enum RunState { FindCargo, Escape, Delivered, Caught }
 
         private sealed class Guard
@@ -47,6 +47,7 @@ namespace CostaLivre
         private CostaVenueLife venues;
         private CostaWorldInteractive worldInteractive;
         private CostaPoliceSystem policeSystem;
+        private CostaTerritorySystem territories;
         private CostaLivingWorld livingWorld;
         private CostaMinigames minigames;
         private HarborWeather atmosphere;
@@ -365,6 +366,7 @@ namespace CostaLivre
         private IEnumerable<float> BuildWorld()
         {
             harbor.Build();
+            CostaDealership.BuildShowroomKiosk(harbor);
             loadingPhase = L("Building Santa Luz and the coastal highway", "Montando Santa Luz e a rodovia costeira");
             yield return 0.14f;
 
@@ -487,6 +489,8 @@ namespace CostaLivre
             harbor.ReleaseNavigationSources();
             navMeshInstance = NavMesh.AddNavMeshData(navMesh);
             policeSystem = new CostaPoliceSystem(harbor, transform, effects, GuardPosts);
+            territories = new CostaTerritorySystem(harbor, transform, jobs.Account.territoryMask);
+            cityMap.Territories = territories;
             ResetRun();
             SetCursor(false);
             loadingPhase = L("Santa Luz is ready", "Santa Luz está pronta");
@@ -833,6 +837,7 @@ namespace CostaLivre
             venues?.Release();
             livingWorld?.Release();
             policeSystem?.Release();
+            territories?.Release();
             ReleaseWorkshop();
             city?.Interiors.Release();
             traffic?.Release();
@@ -1232,6 +1237,7 @@ namespace CostaLivre
             if (overlay != FieldOverlay.None)
             {
                 if (overlay == FieldOverlay.Workshop) UpdateWorkshopCamera();
+                else if (overlay is FieldOverlay.Dealership or FieldOverlay.Garage) UpdateShowroomCamera();
                 if (Pressed(openMenu, TouchControl.Menu) || (overlay == FieldOverlay.Map && Pressed(mapKey, TouchControl.Map))
                     || (overlay == FieldOverlay.Bag && Pressed(bagKey, TouchControl.Bag)))
                     CloseOverlay();
@@ -1259,6 +1265,7 @@ namespace CostaLivre
             {
                 livingWorld?.Update(player.transform.position, InteriorHour, pursuit);
                 minigames?.UpdateWorldActivity(player.transform.position, car);
+                UpdateTerritories();
             }
             if (vehicleMotion.Active)
             {
@@ -1311,6 +1318,10 @@ namespace CostaLivre
                 OpenOverlay(FieldOverlay.Bag);
                 return;
             }
+            if (car == null && Keyboard.current?.gKey.wasPressedThisFrame == true)
+            {
+                SummonOwnedVehicle(FindFirstOwnedVehicle());
+            }
             if (session.Online && session.Local.held > 0)
                 return;
 
@@ -1353,6 +1364,16 @@ namespace CostaLivre
             if (interaction && CanOpenWorkshop())
             {
                 OpenWorkshop();
+                return;
+            }
+            if (interaction && CanOpenDealership())
+            {
+                OpenDealership();
+                return;
+            }
+            if (interaction && CanOpenGarage())
+            {
+                OpenGarage();
                 return;
             }
             TrySaveStage();
@@ -1437,7 +1458,8 @@ namespace CostaLivre
                 engineThrottle = steering.y;
                 float previousSpeed = car.Speed;
                 bool braking = Held(jump, TouchControl.Jump);
-                if (car.Drive(steering, braking) || pendingVehicleSync)
+                bool nitro = Held(sprint, TouchControl.Sprint);
+                if (car.Drive(steering, braking, nitro) || pendingVehicleSync)
                     Physics.SyncTransforms();
                 if (previousSpeed - car.Speed > Mathf.Max(2.6f, Time.deltaTime * 24f))
                     CameraKick(Mathf.Clamp01((previousSpeed - car.Speed) / 16f) * 0.62f);
@@ -1574,7 +1596,7 @@ namespace CostaLivre
 
         private void CloseOverlay()
         {
-            if (overlay == FieldOverlay.Workshop) ReleaseWorkshop();
+            if (overlay is FieldOverlay.Workshop or FieldOverlay.Dealership or FieldOverlay.Garage) ReleaseWorkshop();
             if (overlay != FieldOverlay.None)
                 effects.Play(Cue.PanelClose, 0.27f);
             bagPanel?.Hide();
@@ -2473,6 +2495,8 @@ namespace CostaLivre
 
         private void ResolveSoloHit(RaycastHit hit, int damage, bool primary)
         {
+            if (territories != null && territories.TryDamageCollider(hit.collider, damage, player.transform.position, ShowWorldNotice))
+                return;
             if (HitGuard(hit.collider, damage))
                 return;
 
@@ -2555,10 +2579,46 @@ namespace CostaLivre
             }
         }
 
+        private void UpdateTerritories()
+        {
+            if (territories == null)
+                return;
+            territories.Update(
+                player.transform.position,
+                rollClock > 0,
+                session.Online,
+                (mask, bonus, message) =>
+                {
+                    jobs.Ledger.SaveTerritoryState(jobs.Account, mask);
+                    if (bonus > 0)
+                        jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Reward, bonus);
+                    worldInteractive?.AddReputation(player.transform.position, 45);
+                    effects.Play(bonus > 0 ? Cue.Reward : Cue.Alert);
+                    ShowWorldNotice(message);
+                },
+                (income, message) =>
+                {
+                    jobs.Ledger.SaveTerritoryState(jobs.Account, territories.PlayerMask(), income);
+                    ShowWorldNotice(message);
+                },
+                ShowWorldNotice);
+
+            if (territories.DamageThisFrame > 0)
+            {
+                encounter.TakeDamage(territories.DamageThisFrame);
+                effects.CombatFeedback(territories.DamageSource ?? player.transform.position, territories.DamageThisFrame);
+                CameraKick(Mathf.Clamp01(territories.DamageThisFrame / 22f) * 0.4f);
+                impactStrength = Mathf.Clamp01(territories.DamageThisFrame / 24f);
+                if (encounter.Health <= 0)
+                    TriggerSoloDeath(fromContract: false);
+            }
+        }
+
         private void TriggerSoloDeath(bool fromContract)
         {
             if (deathScreen.BlocksGameplay)
                 return;
+            territories?.ResetActiveWar();
             aimingPose = false;
             vehicleMotion.Clear();
             arsenal.HideEffects();
@@ -2618,6 +2678,7 @@ namespace CostaLivre
         private void ResetRun(bool resetJob = true)
         {
             deathScreen.Cancel();
+            territories?.ResetActiveWar();
             if (!session.Online)
                 harbor.Damage.Reset();
             effects.ResetCombat();
@@ -2838,6 +2899,16 @@ namespace CostaLivre
                 DrawWorkshop();
                 return;
             }
+            if (overlay == FieldOverlay.Dealership)
+            {
+                DrawDealership();
+                return;
+            }
+            if (overlay == FieldOverlay.Garage)
+            {
+                DrawGarage();
+                return;
+            }
             if (overlay == FieldOverlay.Bank)
             {
                 DrawBank();
@@ -2925,6 +2996,12 @@ namespace CostaLivre
                 };
             if (notice.Length == 0 && pursuit && policeSystem != null && policeSystem.StatusBanner.Length > 0)
                 notice = policeSystem.StatusBanner;
+            if (notice.Length == 0 && !session.Online && territories != null && territories.Banner.Length > 0)
+                notice = territories.Banner;
+            if (notice.Length == 0 && car != null && car.HasNitro)
+                notice = car.NitroActive
+                    ? L($"NITRO BOOST · {car.NitroCharge:P0}", $"NITRO ATIVO · {car.NitroCharge:P0}")
+                    : L($"Nitro ready ({car.NitroCharge:P0}) · Hold Shift", $"Nitro pronto ({car.NitroCharge:P0}) · Segure Shift");
             cityMap.PoliceSearchCenter = !session.Online && pursuit && policeSystem != null && !policeSystem.PlayerSpotted
                 ? policeSystem.LastKnownPosition : null;
             hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? session.ActivityTime : jobs.Remaining,
@@ -2977,6 +3054,10 @@ namespace CostaLivre
                 return L($"{use} Campaign",$"{use} Campanha");
             if (CanOpenWorkshop())
                 return L($"{use} Workshop",$"{use} Oficina");
+            if (CanOpenDealership())
+                return L($"{use} Costa Motors Dealership", $"{use} Concessionária Costa Motors");
+            if (CanOpenGarage())
+                return L($"{use} Personal Garage", $"{use} Garagem Própria");
             if (!session.Online && car == null && livingWorld != null)
             {
                 string evPrompt = livingWorld.EventPrompt(player.transform.position, use);

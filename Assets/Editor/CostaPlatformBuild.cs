@@ -31,11 +31,20 @@ namespace CostaLivre.Editor
             output = Path.GetFullPath(string.IsNullOrWhiteSpace(output) ? defaultOutput : output);
             Directory.CreateDirectory(Path.GetDirectoryName(output));
             bool appBundle = EditorUserBuildSettings.buildAppBundle;
+            bool useCompactIl2Cpp = target == BuildTarget.Android &&
+                Environment.GetEnvironmentVariable("COSTA_ANDROID_COMPACT_IL2CPP") == "1";
+            var previousCodeGeneration = useCompactIl2Cpp
+                ? PlayerSettings.GetIl2CppCodeGeneration(NamedBuildTarget.Android) : default;
             StripCrossCompiledStp = target == BuildTarget.StandaloneWindows64 && Application.platform != RuntimePlatform.WindowsEditor;
             try
             {
                 if (target == BuildTarget.Android)
                     EditorUserBuildSettings.buildAppBundle = false;
+                if (useCompactIl2Cpp)
+                {
+                    PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.Android, Il2CppCodeGeneration.OptimizeSize);
+                    Debug.Log("Android IL2CPP: optimizing generated code size for this build.");
+                }
                 BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
                 {
                     scenes = EditorBuildSettings.scenes.Where(scene => scene.enabled).Select(scene => scene.path).ToArray(),
@@ -51,6 +60,8 @@ namespace CostaLivre.Editor
             }
             finally
             {
+                if (useCompactIl2Cpp)
+                    PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.Android, previousCodeGeneration);
                 StripCrossCompiledStp = false;
                 EditorUserBuildSettings.buildAppBundle = appBundle;
             }

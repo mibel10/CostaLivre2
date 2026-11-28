@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
 using static CostaLivre.CostaText;
+using Cue = CostaLivre.CostaEffects.Cue;
 
 namespace CostaLivre
 {

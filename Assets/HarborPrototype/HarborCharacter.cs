@@ -102,6 +102,10 @@ namespace CostaLivre
         private readonly Transform jaw, leftEye, rightEye;
         private readonly Quaternion jawRest, leftEyeRest, rightEyeRest;
         internal Transform Chest { get; }
+        internal Transform LeftForearm => leftElbow;
+        internal Transform LeftHand => leftHand;
+        internal Transform LeftFoot => leftFoot;
+        internal Transform RightFoot => rightFoot;
 
         internal HarborCharacter(Art art, string name, Transform parent, Vector3 position, Material material)
         {

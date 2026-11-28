@@ -8,7 +8,7 @@ namespace CostaLivre
     internal sealed class CostaLedger
     {
         internal const int Limit = 1000000000;
-        internal enum Operation { Deposit, Withdraw, ToBusiness, ToPersonal, Transfer, Reward, Purchase, Workshop, Payroll, PropertyFee }
+        internal enum Operation { Deposit, Withdraw, ToBusiness, ToPersonal, Transfer, Reward, Purchase, Workshop, Payroll, PropertyFee, Dealer, TerritoryIncome }
         [Serializable] internal sealed class Entry
         {
             public string id;
@@ -36,6 +36,10 @@ namespace CostaLivre
             public CostaCampaign.Progress campaign;
             public CostaCheckpoint checkpoint;
             public long[] mods = new long[16];
+            public int ownedVehicles;
+            public int activeGarageVehicle = -1;
+            public int territoryMask;
+            public int territoryVault;
         }
 
         [Serializable] private sealed class Book
@@ -346,6 +350,95 @@ namespace CostaLivre
                 if (Write())
                     return true;
                 account.checkpoint = prior;
+                return false;
+            }
+        }
+
+        internal bool BuyVehicle(Account account, int vehicleIndex, int price, int serial = 0, bool fromBank = false)
+        {
+            lock (gate)
+            {
+                if (!available || bankWrite != null || vehicleIndex < 0 || vehicleIndex >= 16
+                    || price <= 0 || price > Limit || serial < 0 || serial != 0 && serial <= account.serial
+                    || (account.ownedVehicles & (1 << vehicleIndex)) != 0
+                    || !Array.Exists(book.accounts, a => a == account))
+                    return false;
+                int cash = account.cash, personal = account.personal;
+                if (fromBank) personal -= price; else cash -= price;
+                if (cash < 0 || personal < 0)
+                    return false;
+                var prev = (account.cash, account.personal, account.serial, account.history, account.ownedVehicles, account.activeGarageVehicle);
+                account.cash = cash;
+                account.personal = personal;
+                if (serial != 0) account.serial = serial;
+                account.ownedVehicles |= 1 << vehicleIndex;
+                account.activeGarageVehicle = vehicleIndex;
+                Append(account, Operation.Dealer, -price, Guid.NewGuid().ToString("N"));
+                if (Write())
+                    return true;
+                (account.cash, account.personal, account.serial, account.history, account.ownedVehicles, account.activeGarageVehicle) = prev;
+                return false;
+            }
+        }
+
+        internal bool SetGarageVehicle(Account account, int vehicleIndex)
+        {
+            lock (gate)
+            {
+                if (!available || bankWrite != null || vehicleIndex < 0 || vehicleIndex >= 16
+                    || (account.ownedVehicles & (1 << vehicleIndex)) == 0
+                    || !Array.Exists(book.accounts, a => a == account))
+                    return false;
+                int prev = account.activeGarageVehicle;
+                account.activeGarageVehicle = vehicleIndex;
+                if (Write())
+                    return true;
+                account.activeGarageVehicle = prev;
+                return false;
+            }
+        }
+
+        internal bool SaveTerritoryState(Account account, int mask, int vaultDelta = 0)
+        {
+            lock (gate)
+            {
+                if (!available || bankWrite != null || !Array.Exists(book.accounts, a => a == account))
+                    return false;
+                int prevMask = account.territoryMask;
+                int prevVault = account.territoryVault;
+                account.territoryMask = mask;
+                account.territoryVault = Mathf.Clamp(account.territoryVault + vaultDelta, 0, Limit);
+                if (Write())
+                    return true;
+                account.territoryMask = prevMask;
+                account.territoryVault = prevVault;
+                return false;
+            }
+        }
+
+        internal bool CollectTerritoryVault(Account account, int serial, out int collected)
+        {
+            collected = 0;
+            lock (gate)
+            {
+                if (!available || bankWrite != null || account.territoryVault <= 0
+                    || serial < 0 || serial != 0 && serial <= account.serial
+                    || !Array.Exists(book.accounts, a => a == account))
+                    return false;
+                int amount = Mathf.Min(account.territoryVault, Limit - account.cash);
+                if (amount <= 0)
+                    return false;
+                var prev = (account.cash, account.territoryVault, account.serial, account.history);
+                account.cash += amount;
+                account.territoryVault -= amount;
+                if (serial != 0) account.serial = serial;
+                Append(account, Operation.TerritoryIncome, amount, Guid.NewGuid().ToString("N"));
+                if (Write())
+                {
+                    collected = amount;
+                    return true;
+                }
+                (account.cash, account.territoryVault, account.serial, account.history) = prev;
                 return false;
             }
         }

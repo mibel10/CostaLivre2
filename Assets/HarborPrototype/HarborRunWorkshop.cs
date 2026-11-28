@@ -135,7 +135,7 @@ namespace CostaLivre
             for (int i=0;i<CostaBuildTuning.Count;i++)
             {
                 Part p = (Part)i;
-                Rect row = new(12+(i/9)*99,53+(i%9)*36,96,32);
+                Rect row = new(12+(i/11)*99,50+(i%11)*32,96,29);
                 GUI.enabled = CostaBuildTuning.Allowed(p,0,vehicle.IsBike);
                 if (CostaUi.Button(row,WorkshopLabel(p),serviceButton))
                 {
@@ -157,8 +157,9 @@ namespace CostaLivre
             }
             else
             {
-                if (CostaUi.Button(new Rect(219,307,70,30),"◂",serviceButton)) selectedValue = (selectedValue+3)%4;
-                if (CostaUi.Button(new Rect(520,307,70,30),"▸",serviceButton)) selectedValue = (selectedValue+1)%4;
+                int count = CostaBuildTuning.MaxOption(selectedPart) + 1;
+                if (CostaUi.Button(new Rect(219,307,70,30),"◂",serviceButton)) selectedValue = (selectedValue + count - 1) % count;
+                if (CostaUi.Button(new Rect(520,307,70,30),"▸",serviceButton)) selectedValue = (selectedValue + 1) % count;
             }
             long old = vehicle.Build;
             long next = CostaBuildTuning.Change(old,selectedPart,selectedValue);
@@ -201,6 +202,10 @@ namespace CostaLivre
             Part.Color => selectedValue == 0 ? L("Original","Original") : $"#{selectedValue:X6}",
             Part.Paint => selectedValue switch { 1 => L("Metallic","Metálica"),2 => L("Matte","Fosca"),
                 3 => L("Pearl","Perolada"),_ => L("Original","Original") },
+            Part.Underglow => selectedValue switch { 1 => L("Vice Pink","Rosa Vice"), 2 => L("Tropical Cyan","Ciano Tropical"),
+                3 => L("Solar Gold","Ouro Solar"), _ => L("Off","Desligado") },
+            Part.WindowTint => selectedValue > 0 ? L("Dark tint","Fumê escuro") : L("Clear","Padrão"),
+            Part.Nitro => selectedValue > 0 ? L("Turbo boost (Shift)","Nitro Turbo (Shift)") : L("Stock","Padrão"),
             _ => selectedValue == 0 ? L("Original","Original") : $"{L("Level","Nível")} {selectedValue}"
         };
 
@@ -211,7 +216,9 @@ namespace CostaLivre
             Part.Lights => L("Lights","Faróis"),Part.Mirrors => L("Mirrors","Retrovisores"),Part.Paint => L("Paint","Pintura"),
             Part.Stripe => L("Livery","Faixa"),Part.Seats => L("Seats","Bancos"),Part.CabinLight => L("Cabin light","Luz cabine"),
             Part.Engine => L("Engine","Motor"),Part.Gearbox => L("Gearbox","Câmbio"),Part.Brakes => L("Brakes","Freios"),
-            Part.Suspension => L("Spring","Suspensão"),Part.Grip => L("Grip","Aderência"),_ => L("Color","Cor")
+            Part.Suspension => L("Spring","Suspensão"),Part.Grip => L("Grip","Aderência"),
+            Part.Underglow => L("Underglow","Neon"),Part.WindowTint => L("Tint","Fumê"),Part.Nitro => "Nitro",
+            _ => L("Color","Cor")
         };
     }
 }

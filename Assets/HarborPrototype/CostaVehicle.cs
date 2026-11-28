@@ -39,6 +39,9 @@ namespace CostaLivre
         private readonly MaterialPropertyBlock lampProperties = new();
         private int lampsLevel = -1;
         internal float Grip { get; set; } = 1;
+        internal float NitroCharge { get; private set; } = 1f;
+        internal bool NitroActive { get; private set; }
+        internal bool HasNitro => CostaBuildTuning.HasNitro(appliedBuild);
         internal float Slip => Mathf.Abs(slip);
         internal Vector2 Damage => new(frontDamage, rearDamage);
         internal float Speed => Mathf.Abs(speed);
@@ -454,15 +457,24 @@ namespace CostaLivre
             return changed;
         }
 
-        internal bool Drive(Vector2 input, bool braking)
+        internal bool Drive(Vector2 input, bool braking, bool nitro = false)
         {
             float dt = Time.deltaTime;
             if (dt <= 0)
                 return false;
+            bool boosting = nitro && HasNitro && !braking && input.y > 0.1f && NitroCharge > 0.04f;
+            NitroActive = boosting;
+            if (boosting)
+                NitroCharge = Mathf.Max(0f, NitroCharge - dt * 0.32f);
+            else if (HasNitro)
+                NitroCharge = Mathf.Min(1f, NitroCharge + dt * 0.14f);
+
             float before = speed;
-            float target = braking ? 0 : input.y >= 0 ? TopSpeed * input.y : ReverseSpeed * input.y;
+            float top = boosting ? TopSpeed * 1.32f : TopSpeed;
+            float target = braking ? 0 : input.y >= 0 ? top * input.y : ReverseSpeed * input.y;
+            float accelBase = boosting ? Acceleration * 1.48f : Acceleration;
             float acceleration = braking || Mathf.Sign(target) != Mathf.Sign(speed) ? BrakePower * TireGrip
-                : Mathf.Abs(input.y) > 0.03f ? Acceleration * Mathf.Lerp(.64f, 1, TireGrip) : 4.4f;
+                : Mathf.Abs(input.y) > 0.03f ? accelBase * Mathf.Lerp(.64f, 1, TireGrip) : 4.4f;
             speed = Mathf.MoveTowards(speed, target, acceleration * dt);
             float y = Root.eulerAngles.y;
             float steer = input.x * Mathf.Sign(speed) * Mathf.Lerp(92, 48, Speed / TopSpeed) * steeringStrength;

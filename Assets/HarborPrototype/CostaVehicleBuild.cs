@@ -39,6 +39,7 @@ namespace CostaLivre
                     "Deformable front trim" or "Deformable rear trim" => BuildPart.Bumper,
                     "Headlight" or "Headlamp" => BuildPart.Lights,
                     "Mirror" => BuildPart.Mirrors,
+                    "Glazing" or "Swept glazing" or "Windshield" => BuildPart.WindowTint,
                     _ => null
                 };
                 if (part.HasValue) styling.Add((renderer,renderer.transform.localScale,part.Value));
@@ -84,6 +85,10 @@ namespace CostaLivre
                         paintBlock.SetColor(BaseColor,level == 2 ? new(.58f,.84f,1f) : level == 3 ? new(1f,.75f,.36f) : Color.white);
                         break;
                     case BuildPart.Mirrors: mesh.localScale = target.Scale * (1 + level*.11f); break;
+                    case BuildPart.WindowTint:
+                        paintBlock.SetColor(BaseColor, level > 0 ? new Color(0.03f, 0.045f, 0.06f) : target.Mesh.sharedMaterial.color);
+                        paintBlock.SetFloat(Smoothness, level > 0 ? 0.96f : 0.90f);
+                        break;
                 }
                 target.Mesh.SetPropertyBlock(paintBlock);
                 paintBlock.Clear();
@@ -143,6 +148,32 @@ namespace CostaLivre
                 light.range = 1.7f;
                 light.intensity = .72f;
                 light.shadows = LightShadows.None;
+            }
+            int underglow = Option(build, BuildPart.Underglow);
+            if (underglow > 0)
+            {
+                Color neon = underglow switch
+                {
+                    1 => new Color(0.98f, 0.28f, 0.62f),
+                    2 => new Color(0.14f, 0.88f, 0.88f),
+                    _ => new Color(0.98f, 0.72f, 0.22f)
+                };
+                GameObject glow = workshopArt.Part(addOns, PrimitiveType.Cube, "Underglow neon",
+                    new(0, 0.14f, 0), IsBike ? new(0.28f, 0.035f, 1.35f) : new(1.52f, 0.038f, 3.25f), neon);
+                var glowRenderer = glow.GetComponent<Renderer>();
+                Material mat = workshopArt.RunningLightMaterial(glowRenderer.sharedMaterial);
+                glowRenderer.sharedMaterial = mat;
+                var glowBlock = new MaterialPropertyBlock();
+                glowBlock.SetColor("_EmissionColor", neon * 2.6f);
+                glowRenderer.SetPropertyBlock(glowBlock);
+                glowRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
+            if (HasNitro(build))
+            {
+                GameObject bottle = workshopArt.Part(addOns, PrimitiveType.Cylinder, "Nitro canister",
+                    IsBike ? new(-0.24f, 0.54f, -0.58f) : new(0f, 0.34f, -2.18f),
+                    new(0.085f, 0.22f, 0.085f), new Color(0.14f, 0.62f, 0.96f), finish: HarborBlockout.Finish.Metal);
+                bottle.transform.localRotation = Quaternion.Euler(0, 0, 90);
             }
         }
 

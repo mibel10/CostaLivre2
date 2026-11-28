@@ -68,6 +68,11 @@ namespace CostaLivre
         private float blendDuration;
         private float gaitSpeed = 1;
         private float turnLean;
+        private Vector2 travelBlend;
+        private float pivotTime, pivotAngle, pivotLength;
+        private readonly Vector3[] contactPosition = new Vector3[2];
+        private readonly bool[] heldContact = new bool[2];
+        private float brakingPose;
         private float aimBlend;
         private float pitchLean;
         private float lateralLean;
@@ -173,6 +178,7 @@ namespace CostaLivre
             {
                 aimBlend = crouchDrop = lateralLean = pitchLean = 0;
                 footBlend[0] = footBlend[1] = 0;
+                ClearFootContacts();
             }
             blend = Mathf.MoveTowards(blend, 1, dt / Mathf.Max(blendDuration, 0.01f));
             float eased = Mathf.SmoothStep(0, 1, blend);
@@ -211,6 +217,56 @@ namespace CostaLivre
                     Head.rotation = Quaternion.AngleAxis(glance * 4f * (1 - aimBlend), Root.up) * Head.rotation;
                 }
             }
+        }
+
+        internal void DirectionalGait(Vector3 velocity, float maximumSpeed, float turn, float braking)
+        {
+            float dt = Mathf.Min(Time.unscaledDeltaTime, .08f);
+            Vector3 local = Root.InverseTransformDirection(velocity);
+            float speed = Mathf.Max(maximumSpeed, .01f);
+            Vector2 input = Vector2.ClampMagnitude(new Vector2(local.x, local.z) / speed, 1);
+            travelBlend = Vector2.Lerp(travelBlend, input, 1 - Mathf.Exp(-dt * 22));
+            brakingPose = Mathf.Lerp(brakingPose, braking, 1 - Mathf.Exp(-dt * (braking > brakingPose ? 25 : 12)));
+
+            if (Mathf.Abs(turn) >= 42 && pivotTime <= 0)
+            {
+                float angle = Mathf.Abs(turn);
+                pivotAngle = Mathf.Sign(turn) * (angle < 68 ? 45 : angle < 135 ? 90 : 180);
+                pivotLength = Mathf.Lerp(.19f, .33f, Mathf.Abs(pivotAngle) / 180);
+                pivotTime = pivotLength;
+            }
+
+            if (IsGait(activeMotion))
+            {
+                float contactPhase = 2 * Mathf.PI * Clock;
+                float stride = Mathf.Sin(contactPhase);
+                float sideways = Mathf.Clamp(travelBlend.x * 2.5f, -1, 1);
+                float forward = Mathf.Clamp(travelBlend.y * 2.5f, -1, 1);
+                float strideYaw = Mathf.Atan2(sideways, .1f + Mathf.Abs(forward)) * Mathf.Rad2Deg * .40f;
+                float reverse = Mathf.Max(0, -forward) * 2;
+                leftThigh.rotation = Quaternion.AngleAxis(strideYaw, Root.up) *
+                    Quaternion.AngleAxis(stride * (sideways * 11 + reverse * 15), Root.forward) * leftThigh.rotation;
+                rightThigh.rotation = Quaternion.AngleAxis(strideYaw, Root.up) *
+                    Quaternion.AngleAxis(-stride * (sideways * 11 - reverse * 15), Root.forward) * rightThigh.rotation;
+            }
+
+            Chest.rotation = Quaternion.AngleAxis(-brakingPose * 11, Root.right) * Chest.rotation;
+            if (pivotTime <= 0)
+                return;
+            pivotTime = Mathf.Max(0, pivotTime - dt);
+            float pose = Mathf.Sin(Mathf.PI * (1 - pivotTime / pivotLength));
+            Transform lead = pivotAngle < 0 ? leftThigh : rightThigh;
+            lead.rotation = Quaternion.AngleAxis(pivotAngle * pose * .19f, Root.up) *
+                Quaternion.AngleAxis(-pose * 12, Root.right) * lead.rotation;
+            Chest.rotation = Quaternion.AngleAxis(-pivotAngle * pose * .14f, Root.up) * Chest.rotation;
+            mesh.transform.localPosition += Vector3.down * (pose * .036f);
+        }
+
+        internal void ClearFootContacts()
+        {
+            heldContact[0] = heldContact[1] = false;
+            pivotTime = brakingPose = 0;
+            travelBlend = Vector2.zero;
         }
 
         private static bool IsGait(Motion motion) => motion is Motion.Walk or Motion.Run;
@@ -290,6 +346,7 @@ namespace CostaLivre
                 best = hit.distance;
             }
             float influence = 0;
+            Vector3 planarCorrection = Vector3.zero;
             float alpha = 1 - Mathf.Exp(-Time.unscaledDeltaTime * 24f);
             if (best < float.PositiveInfinity)
             {
@@ -297,15 +354,30 @@ namespace CostaLivre
                 float gap = Vector3.Dot(animated - target, Vector3.up);
                 // Only planted or penetrating feet are corrected. Preserve the swing of the other foot.
                 influence = gap < 0 ? 1 : 1 - Mathf.InverseLerp(0.025f, 0.17f, gap);
+                if (ownCollider != null && activeMotion < Motion.Jump)
+                {
+                    Vector3 separation = contactPosition[index] - target;
+                    separation.y = 0;
+                    if (!heldContact[index] || gap > .12f || separation.sqrMagnitude > .38f * .38f)
+                    {
+                        contactPosition[index] = target;
+                        separation = Vector3.zero;
+                        heldContact[index] = gap < .085f;
+                    }
+                    if (heldContact[index])
+                        planarCorrection = Vector3.ClampMagnitude(separation, .28f);
+                }
                 float correction = Mathf.Clamp(target.y - animated.y, -0.18f, 0.27f);
                 footHeightCorrection[index] = footBlend[index] < 0.03f ? correction
                     : Mathf.Lerp(footHeightCorrection[index], correction, alpha);
                 footNormal[index] = Vector3.Slerp(footNormal[index], selected.normal, alpha);
             }
+            else
+                heldContact[index] = false;
             footBlend[index] = Mathf.Lerp(footBlend[index], influence, alpha);
             if (footBlend[index] > 0.025f)
             {
-                Vector3 target = animated + Vector3.up * (footHeightCorrection[index] * footBlend[index]);
+                Vector3 target = animated + (planarCorrection + Vector3.up * footHeightCorrection[index]) * footBlend[index];
                 AlignLimb(thigh, calf, foot, target, Root.forward);
                 foot.rotation = Quaternion.Slerp(Quaternion.identity,
                     Quaternion.FromToRotation(Vector3.up, footNormal[index]), footBlend[index]) * foot.rotation;

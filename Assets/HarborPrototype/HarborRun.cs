@@ -2174,6 +2174,8 @@ namespace CostaLivre
             float landingRecovery = landing > 0 ? landingSeverity * (landing / landingDuration) : 0;
             Vector3 desired = direction * (speed * Mathf.Lerp(1f, 0.69f, landingRecovery));
             Vector3 previousVelocity = groundVelocity;
+            float turnAngle = 0;
+            float brakeWeight = 0;
             Vector3 velocity;
             if (rolling)
             {
@@ -2187,7 +2189,12 @@ namespace CostaLivre
                 groundVelocity = Vector3.ClampMagnitude(groundVelocity, speed);
                 bool braking = desired.sqrMagnitude < groundVelocity.sqrMagnitude
                     || Vector3.Dot(desired, groundVelocity) < 0;
-                float acceleration = grounded ? (braking ? 38f : running ? 29f : 32f) : 13f;
+                float velocityRatio = groundVelocity.magnitude / Mathf.Max(speed, .01f);
+                float alignment = Vector3.Dot(groundVelocity.normalized, desired.normalized);
+                brakeWeight = Mathf.Clamp01(velocityRatio * (braking ? 1.15f - .32f * alignment : 0));
+                float acceleration = grounded
+                    ? (braking ? Mathf.Lerp(29, 43, velocityRatio) : Mathf.Lerp(running ? 34 : 37, 25, velocityRatio))
+                    : 13f;
                 if (aiming && grounded)
                     acceleration = 46f;
                 velocity = Vector3.MoveTowards(groundVelocity, desired, acceleration * step);
@@ -2205,6 +2212,7 @@ namespace CostaLivre
                             facing = Quaternion.LookRotation(toward);
                     }
                 }
+                turnAngle = Mathf.DeltaAngle(playerModel.eulerAngles.y, facing.eulerAngles.y);
                 playerModel.rotation = Quaternion.RotateTowards(playerModel.rotation, facing, turnRate * step);
             }
 
@@ -2278,6 +2286,8 @@ namespace CostaLivre
                 ? Mathf.Sin(Mathf.PI * (1f - landing / landingDuration)) * Mathf.Lerp(0.23f, 1f, landingSeverity) : 0;
             playerBody.BodyMotion(groundVelocity, (groundVelocity - previousVelocity) / Mathf.Max(step, 0.001f),
                 grounded, crouching, compression, wallReaction);
+            if (grounded && landing <= 0)
+                playerBody.DirectionalGait(groundVelocity, speed, turnAngle, brakeWeight);
             if (crouching)
                 playerBody.CrouchPose();
             if (grounded)
@@ -2313,6 +2323,7 @@ namespace CostaLivre
 
         private void ResetFootMotion()
         {
+            playerBody?.ClearFootContacts();
             groundVelocity = Vector3.zero;
             airbornePeak = player.transform.position.y;
             landing = landingSeverity = wallReaction = cameraImpulse = gestureEnds = 0;

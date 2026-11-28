@@ -19,6 +19,17 @@ namespace CostaLivre
         private int ended;
 
         private readonly SemaphoreSlim guestSlots = new(CostaSession.MaxPlayers - 1);
+        private readonly SemaphoreSlim controlSend = new(1, 1);
+
+        [Serializable]
+        private sealed class RoomMeta
+        {
+            public string name;
+            public string host;
+            public bool @public;
+            public int players;
+            public int maxPlayers;
+        }
 
         internal string Code { get; private set; } = "";
         internal bool Ended => Volatile.Read(ref ended) != 0;
@@ -169,6 +180,42 @@ namespace CostaLivre
         {
             lock (gate)
                 return incoming.TryDequeue(out wire);
+        }
+
+        internal void UpdateListing(string roomName, string hostName, bool isPublic, int players, int maxPlayers)
+        {
+            if (disposed || Ended || control.State != WebSocketState.Open)
+                return;
+            string json = UnityEngine.JsonUtility.ToJson(new RoomMeta
+            {
+                name = string.IsNullOrWhiteSpace(roomName) ? "Santa Luz" : roomName.Trim(),
+                host = string.IsNullOrWhiteSpace(hostName) ? "Jogador" : hostName.Trim(),
+                @public = isPublic,
+                players = Math.Max(1, players),
+                maxPlayers = Math.Max(2, maxPlayers)
+            });
+            byte[] payload = Encoding.UTF8.GetBytes("meta " + json);
+            _ = SendControlAsync(payload);
+        }
+
+        private async Task SendControlAsync(byte[] payload)
+        {
+            try
+            {
+                await controlSend.WaitAsync(close.Token).ConfigureAwait(false);
+                try
+                {
+                    if (!disposed && control.State == WebSocketState.Open)
+                        await control.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, close.Token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    controlSend.Release();
+                }
+            }
+            catch (Exception exception) when (CostaWire.NetworkException(exception) || exception is ObjectDisposedException)
+            {
+            }
         }
 
         public void Dispose()

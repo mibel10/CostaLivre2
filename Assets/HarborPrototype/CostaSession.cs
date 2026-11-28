@@ -300,6 +300,11 @@ namespace CostaLivre
         private float noticeUntil;
         private string playerName = "";
         private string status = "";
+        private string hostedRoomName = "";
+        private bool hostedPublicRoom = true;
+        private int hostedTcpPort;
+        private float nextRoomBroadcast;
+        private int lastListedPlayers = -1;
 
         internal Avatar[] Players { get; private set; } = Array.Empty<Avatar>();
         internal Vehicle[] Cars { get; private set; }
@@ -354,9 +359,15 @@ namespace CostaLivre
                 initialHomes[i] = Mathf.RoundToInt(vehicles[i].Root.eulerAngles.y);
         }
 
-        internal void Start(string name, string address, int port, bool host, string relayAddress = null)
+        internal void Start(string name, string address, int port, bool host, string relayAddress = null,
+            string roomName = "", bool publicRoom = true)
         {
             Dispose();
+            hostedRoomName = string.IsNullOrWhiteSpace(roomName) ? SafeName(name) + " · Santa Luz" : roomName.Trim();
+            hostedPublicRoom = publicRoom;
+            hostedTcpPort = 0;
+            lastListedPlayers = -1;
+            nextRoomBroadcast = 0f;
             Uri relay = null;
             IPAddress ip = null;
             bool useNoray = relayAddress == CostaNorayRoom.Service;
@@ -414,6 +425,7 @@ namespace CostaLivre
                     listener = new TcpListener(relayed ? IPAddress.Loopback : IPAddress.Any, relayed ? 0 : port);
                     listener.Start(MaxPlayers);
                     port = ((IPEndPoint)listener.LocalEndpoint).Port;
+                    hostedTcpPort = port;
                     hostCars = new Vehicle[sceneVehicles.Length];
                     doorBusyUntil = new float[hostCars.Length];
                     for (int i = 0; i < hostCars.Length; i++)
@@ -790,6 +802,23 @@ namespace CostaLivre
 
             if (left)
                 Rebalance();
+            if (hostedPublicRoom)
+            {
+                int count = Mathf.Max(1, CountPlayers());
+                if (internetRoom != null)
+                {
+                    if (count != lastListedPlayers)
+                    {
+                        lastListedPlayers = count;
+                        internetRoom.UpdateListing(hostedRoomName, playerName, true, count, MaxPlayers);
+                    }
+                }
+                else if (norayRoom == null && hostedTcpPort > 0 && now >= nextRoomBroadcast)
+                {
+                    nextRoomBroadcast = now + 1.5f;
+                    CostaRoomBrowser.BroadcastHost(hostedRoomName, playerName, hostedTcpPort, count, MaxPlayers, Protocol);
+                }
+            }
             TickInteriors(now, delta);
             TickPayroll(now);
             TickGetaways(now);

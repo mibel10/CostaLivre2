@@ -7,9 +7,46 @@ const maxGuests = 15;
 const rooms = new Map();
 const tickets = new Map();
 const websocket = new WebSocketServer({ noServer: true, maxPayload: 32772 });
+
+function cleanText(value, limit, fallback) {
+    if (typeof value !== 'string') return fallback;
+    const trimmed = value.replace(/[\r\n\t\0]/g, ' ').trim().slice(0, limit);
+    return trimmed.length > 0 ? trimmed : fallback;
+}
+
+function publicRoomsPayload() {
+    const list = [];
+    for (const [code, room] of rooms) {
+        if (!room.isPublic || room.host.readyState !== WebSocket.OPEN || room.guests.size >= maxGuests)
+            continue;
+        list.push({
+            code,
+            name: room.name,
+            host: room.hostName,
+            players: Math.max(1, room.players || (1 + room.guests.size)),
+            maxPlayers: room.maxPlayers || (maxGuests + 1)
+        });
+    }
+    return JSON.stringify({ rooms: list });
+}
+
 const server = createServer((request, response) => {
-    response.writeHead(request.url === '/health' ? 200 : 404, { 'content-type': 'text/plain' });
-    response.end(request.url === '/health' ? 'Costa Livre 2 relay\n' : 'Not found\n');
+    if (request.method === 'GET' && request.url === '/health') {
+        response.writeHead(200, { 'content-type': 'text/plain' });
+        response.end('Costa Livre 2 relay\n');
+        return;
+    }
+    if (request.method === 'GET' && request.url === '/rooms') {
+        response.writeHead(200, {
+            'content-type': 'application/json; charset=utf-8',
+            'cache-control': 'no-store',
+            'access-control-allow-origin': '*'
+        });
+        response.end(publicRoomsPayload());
+        return;
+    }
+    response.writeHead(404, { 'content-type': 'text/plain' });
+    response.end('Not found\n');
 });
 
 function reject(socket, status) {
@@ -21,10 +58,42 @@ function createRoom(host) {
     do {
         code = randomBytes(5).toString('hex').toUpperCase();
     } while (rooms.has(code));
-    const room = { host, guests: new Set() };
+    const room = {
+        host,
+        guests: new Set(),
+        name: 'Santa Luz',
+        hostName: 'Jogador',
+        isPublic: false,
+        players: 1,
+        maxPlayers: 12
+    };
     rooms.set(code, room);
     host.send('room ' + code);
-    host.on('message', () => host.terminate());
+    host.on('message', (data, binary) => {
+        if (binary || data.length > 512) {
+            host.terminate();
+            return;
+        }
+        const text = data.toString('utf8');
+        if (!text.startsWith('meta ')) {
+            host.terminate();
+            return;
+        }
+        try {
+            const meta = JSON.parse(text.slice(5));
+            room.name = cleanText(meta.name, 32, 'Santa Luz');
+            room.hostName = cleanText(meta.host, 20, 'Jogador');
+            room.isPublic = meta.public === true;
+            const reported = Number(meta.players);
+            if (Number.isInteger(reported) && reported >= 1 && reported <= maxGuests + 1)
+                room.players = reported;
+            const cap = Number(meta.maxPlayers);
+            if (Number.isInteger(cap) && cap >= 2 && cap <= maxGuests + 1)
+                room.maxPlayers = cap;
+        } catch {
+            host.terminate();
+        }
+    });
     host.on('close', () => {
         rooms.delete(code);
         for (const guest of room.guests) guest.terminate();

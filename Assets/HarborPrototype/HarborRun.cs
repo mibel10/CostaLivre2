@@ -269,12 +269,13 @@ namespace CostaLivre
             ShowMenu();
         }
 
-        private void Connect(string name, string address, int port, bool host, string relay = null) =>
+        private void Connect(string name, string address, int port, bool host, string relay = null,
+            string roomName = "", bool publicRoom = true) =>
             WithWorld(() =>
             {
                 CaptureSoloVehicles();
                 soloConnectionPending = true;
-                session.Start(name, address, port, host, relay);
+                session.Start(name, address, port, host, relay, roomName, publicRoom);
             });
 
         private void CaptureSoloVehicles()
@@ -812,6 +813,7 @@ namespace CostaLivre
             cinematics?.Release();
             harbor?.Mirrors?.Release();
             session?.Dispose();
+            onlinePanel?.Release();
             jobs?.Ledger.FinishBank(wait:true);
             remotes?.Dispose();
             menu?.Release();

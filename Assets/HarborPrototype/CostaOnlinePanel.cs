@@ -23,9 +23,9 @@ namespace CostaLivre
         private string ip = "127.0.0.1";
         private string port = "7777";
         private bool internet = true;
-        private const string OldDefaultRelay = "https://costalivre2-mibel10-relay.onrender.com";
-        private string relay = PlayerPrefs.GetString("CostaRelayAddress", "");
-        private string ConfiguredRelay => relay == OldDefaultRelay ? "" : relay.Trim();
+        private const string DefaultRelay = "https://costalivre2-mibel10-relay.onrender.com";
+        private string relay = PlayerPrefs.GetString("CostaRelayAddress", DefaultRelay);
+        private string ConfiguredRelay => string.IsNullOrWhiteSpace(relay) ? DefaultRelay : relay.Trim();
         private bool showServer;
         private string inputError = "";
         private string invite = "";
@@ -314,7 +314,7 @@ namespace CostaLivre
             {
                 if (!SaveServer())
                     return;
-                endpoint = relay.Length == 0 ? CostaNorayRoom.Service : relay;
+                endpoint = ConfiguredRelay;
             }
             SavePlayerPrefs();
             connect(name, "", number, true, endpoint, roomName, publicRoom);

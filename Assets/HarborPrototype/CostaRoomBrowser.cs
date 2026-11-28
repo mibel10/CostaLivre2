@@ -28,6 +28,7 @@ namespace CostaLivre
             internal int Players;
             internal int MaxPlayers;
             internal bool IsLan;
+            internal bool Locked;
             internal string Address;       // IPv4 for LAN, room code for Internet
             internal int Port;
             internal string RelayEndpoint; // HTTPS/WSS server URL for Internet rooms
@@ -44,6 +45,7 @@ namespace CostaLivre
             public int port;
             public int players;
             public int maxPlayers;
+            public bool locked;
         }
 
         [Serializable]
@@ -54,6 +56,7 @@ namespace CostaLivre
             public string host;
             public int players;
             public int maxPlayers;
+            public bool locked;
         }
 
         [Serializable]
@@ -78,7 +81,7 @@ namespace CostaLivre
             get { lock (gate) return lastInternetStatus; }
         }
 
-        internal static void BroadcastHost(string roomName, string hostName, int tcpPort, int players, int maxPlayers, int protocol)
+        internal static void BroadcastHost(string roomName, string hostName, int tcpPort, int players, int maxPlayers, int protocol, bool locked = false)
         {
             if (tcpPort <= 0 || tcpPort > 65535)
                 return;
@@ -96,7 +99,8 @@ namespace CostaLivre
                     host = string.IsNullOrWhiteSpace(hostName) ? "Jogador" : hostName.Trim(),
                     port = tcpPort,
                     players = Mathf.Max(1, players),
-                    maxPlayers = Mathf.Max(2, maxPlayers)
+                    maxPlayers = Mathf.Max(2, maxPlayers),
+                    locked = locked
                 });
                 byte[] bytes = Encoding.UTF8.GetBytes(json);
                 sharedBroadcaster.Send(bytes, bytes.Length, new IPEndPoint(IPAddress.Broadcast, DiscoveryPort));
@@ -214,6 +218,7 @@ namespace CostaLivre
                             Players = Mathf.Max(1, beacon.players),
                             MaxPlayers = Mathf.Max(2, beacon.maxPlayers),
                             IsLan = true,
+                            Locked = beacon.locked,
                             Address = ip,
                             Port = beacon.port,
                             RelayEndpoint = null,
@@ -259,6 +264,7 @@ namespace CostaLivre
                             Players = Mathf.Max(1, dto.players),
                             MaxPlayers = Mathf.Max(2, dto.maxPlayers),
                             IsLan = false,
+                            Locked = dto.locked,
                             Address = dto.code,
                             Port = 0,
                             RelayEndpoint = relayUrl,

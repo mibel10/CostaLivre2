@@ -270,12 +270,12 @@ namespace CostaLivre
         }
 
         private void Connect(string name, string address, int port, bool host, string relay = null,
-            string roomName = "", bool publicRoom = true) =>
+            string roomName = "", bool publicRoom = true, string password = "") =>
             WithWorld(() =>
             {
                 CaptureSoloVehicles();
                 soloConnectionPending = true;
-                session.Start(name, address, port, host, relay, roomName, publicRoom);
+                session.Start(name, address, port, host, relay, roomName, publicRoom, password);
             });
 
         private void CaptureSoloVehicles()
@@ -891,7 +891,7 @@ namespace CostaLivre
 
         private void TickNetwork()
         {
-            if (!session.Online && !session.Connecting && !session.Hosting && !wasOnline)
+            if (!session.Online && !session.Connecting && !session.Hosting && !session.Migrating && !wasOnline)
                 return;
 
             int priorHeat = session.Local?.wantedLevel ?? 0;
@@ -929,6 +929,8 @@ namespace CostaLivre
 
             if (!session.Online)
             {
+                if (session.Migrating)
+                    return;
                 if (soloConnectionPending && !session.Connecting && !session.Hosting)
                 {
                     soloConnectionPending = false;
@@ -1263,6 +1265,8 @@ namespace CostaLivre
                     CoastIdleVehicles();
                 return;
             }
+            if (HandleChatInput())
+                return;
             if (!session.Online)
             {
                 livingWorld?.Update(player.transform.position, InteriorHour, pursuit);
@@ -2863,6 +2867,7 @@ namespace CostaLivre
                 DrawInterface();
             if (!inMenu && overlay == FieldOverlay.None)
             {
+                DrawOnlineChat();
                 transitions.Draw();
                 deathScreen.Draw();
             }

@@ -123,6 +123,9 @@ namespace CostaLivre
             public bool hasWorldHour;
             public float worldHour;
             public string name;
+            public string password;
+            public string chatText;
+            public int hostId;
             public string challenge;
             public string publicKey;
             public string signature;
@@ -160,6 +163,7 @@ namespace CostaLivre
             public int protocol = Protocol;
             public bool hasWorldHour = true;
             public float worldHour;
+            public int hostId;
             public int humans, policeCount;
             public RosterEntry[] roster;
             public bool[] sites;
@@ -236,6 +240,7 @@ namespace CostaLivre
             internal float HeatUntil;
             internal float NextCrime;
             internal float NextInteriorUse;
+            internal float NextChat;
             internal float NextPayroll;
             internal float NextTreatment;
             internal int ArrestTarget;
@@ -298,13 +303,41 @@ namespace CostaLivre
         private readonly Queue<int> noticeEvents = new();
         private bool requestedHost;
         private float noticeUntil;
+        internal readonly struct ChatMessage
+        {
+            internal readonly string Sender;
+            internal readonly string Text;
+            internal readonly float Time;
+            internal readonly bool System;
+
+            internal ChatMessage(string sender, string text, float time, bool system = false)
+            {
+                Sender = sender;
+                Text = text;
+                Time = time;
+                System = system;
+            }
+        }
+
+        private readonly List<ChatMessage> chatLog = new();
+        internal IReadOnlyList<ChatMessage> ChatMessages => chatLog;
+
         private string playerName = "";
         private string status = "";
         private string hostedRoomName = "";
         private bool hostedPublicRoom = true;
+        private string hostedPassword = "";
+        private string clientPassword = "";
         private int hostedTcpPort;
         private float nextRoomBroadcast;
         private int lastListedPlayers = -1;
+        private int sessionHostId;
+        private string joinedRelayAddress = "";
+        private string joinedRoomCode = "";
+        private bool explicitLeave;
+        private float migrationAt = -1f;
+        private bool migrationWillHost;
+        internal bool Migrating => migrationAt >= 0f;
 
         internal Avatar[] Players { get; private set; } = Array.Empty<Avatar>();
         internal Vehicle[] Cars { get; private set; }
@@ -360,14 +393,55 @@ namespace CostaLivre
         }
 
         internal void Start(string name, string address, int port, bool host, string relayAddress = null,
-            string roomName = "", bool publicRoom = true)
+            string roomName = "", bool publicRoom = true, string password = "")
+        {
+            StartInternal(name, address, port, host, relayAddress, roomName, publicRoom, password, claimCode: null);
+        }
+
+        internal void Leave()
+        {
+            explicitLeave = true;
+            migrationAt = -1f;
+            Dispose();
+            status = L("Left session.", "Você saiu da sessão.");
+        }
+
+        internal void SendChat(string raw)
+        {
+            if (!Online || string.IsNullOrWhiteSpace(raw))
+                return;
+            string clean = raw.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            if (clean.Length == 0)
+                return;
+            if (clean.Length > 110)
+                clean = clean.Substring(0, 110);
+            Send(new Frame { type = "chat", chatText = clean });
+        }
+
+        private void PushChat(string sender, string text, bool system = false)
+        {
+            chatLog.Add(new ChatMessage(sender, text, Time.unscaledTime, system));
+            if (chatLog.Count > 12)
+                chatLog.RemoveAt(0);
+        }
+
+        private void StartInternal(string name, string address, int port, bool host, string relayAddress,
+            string roomName, bool publicRoom, string password, string claimCode)
         {
             Dispose();
+            explicitLeave = false;
+            migrationAt = -1f;
             hostedRoomName = string.IsNullOrWhiteSpace(roomName) ? SafeName(name) + " · Santa Luz" : roomName.Trim();
             hostedPublicRoom = publicRoom;
+            hostedPassword = (password ?? "").Trim();
+            if (hostedPassword.Length > 16) hostedPassword = hostedPassword.Substring(0, 16);
+            clientPassword = hostedPassword;
             hostedTcpPort = 0;
             lastListedPlayers = -1;
             nextRoomBroadcast = 0f;
+            sessionHostId = 0;
+            joinedRelayAddress = relayAddress ?? "";
+            joinedRoomCode = !host && !string.IsNullOrEmpty(address) ? address.Trim().ToUpperInvariant() : claimCode ?? "";
             Uri relay = null;
             IPAddress ip = null;
             bool useNoray = relayAddress == CostaNorayRoom.Service;
@@ -451,7 +525,9 @@ namespace CostaLivre
                     RelayAddress = relay.GetLeftPart(UriPartial.Authority);
                     if (host)
                         internetRoom = new CostaInternetRoom(relay);
-                    connecting = host ? internetRoom.Host(port, token) : CostaInternetRoom.Join(relay, address, token);
+                    connecting = host
+                        ? (string.IsNullOrEmpty(claimCode) ? internetRoom.Host(port, token) : internetRoom.Claim(port, claimCode, token))
+                        : CostaInternetRoom.Join(relay, address, token);
                 }
                 connectDeadline = Time.realtimeSinceStartup + (useNoray || relay != null ? 18f : 8f);
                 status = L("Connecting…", "Conectando…");
@@ -472,6 +548,26 @@ namespace CostaLivre
             float elapsed = Mathf.Max(0, now - lastClock);
             float delta = Mathf.Min(elapsed, .10f);
             lastClock = now;
+
+            if (migrationAt >= 0f)
+            {
+                if (now >= migrationAt)
+                {
+                    bool becomeHost = migrationWillHost;
+                    migrationAt = -1f;
+                    if (becomeHost)
+                    {
+                        StartInternal(playerName, "", 7777, true, joinedRelayAddress, hostedRoomName, hostedPublicRoom, clientPassword, joinedRoomCode);
+                        PushChat("", L("You are now the new host!", "Você assumiu como novo anfitrião!"), system: true);
+                    }
+                    else
+                    {
+                        StartInternal(playerName, joinedRoomCode, 0, false, joinedRelayAddress, hostedRoomName, hostedPublicRoom, clientPassword, null);
+                        PushChat("", L("Reconnecting to new host…", "Reconectando ao novo anfitrião…"), system: true);
+                    }
+                }
+                return;
+            }
 
             if (internetRoom?.Ended == true || norayRoom?.Ended == true && connecting == null)
             {
@@ -537,6 +633,18 @@ namespace CostaLivre
                     }
                     continue;
                 }
+                if (frame != null && frame.protocol == Protocol && frame.type == "wrong_password")
+                {
+                    explicitLeave = true;
+                    Dispose();
+                    status = L("Incorrect room password.", "Senha da sala incorreta.");
+                    return;
+                }
+                if (frame != null && frame.protocol == Protocol && frame.type == "chat" && !string.IsNullOrEmpty(frame.chatText))
+                {
+                    PushChat(string.IsNullOrEmpty(frame.name) ? "?" : frame.name, frame.chatText);
+                    continue;
+                }
                 if (frame != null && frame.protocol == Protocol && frame.type == "notice")
                 {
                     noticeEvents.Enqueue(frame.notice);
@@ -580,6 +688,8 @@ namespace CostaLivre
                 }
 
                 identity = frame.id;
+                if (frame.hostId > 0)
+                    sessionHostId = frame.hostId;
                 Players = frame.players;
                 ReceiveVehicleSlice(frame);
                 if (frame.pong == nextPingSequence && pingSent > 0)
@@ -638,6 +748,30 @@ namespace CostaLivre
 
             if (connection.Closed || now >= nextWatchdog)
             {
+                if (!explicitLeave && !Hosting && Local != null
+                    && !string.IsNullOrEmpty(joinedRelayAddress)
+                    && joinedRelayAddress != CostaNorayRoom.Service
+                    && CostaInternetRoom.ValidCode(joinedRoomCode, 10, CostaInternetRoom.UpperHex))
+                {
+                    int localId = Local.id;
+                    int elected = int.MaxValue;
+                    foreach (Avatar a in Players)
+                        if (a != null && a.id > 0 && a.id != sessionHostId && a.id < elected)
+                            elected = a.id;
+                    bool becomeHost = elected == localId || elected == int.MaxValue;
+                    string savedRelay = joinedRelayAddress;
+                    string savedCode = joinedRoomCode;
+                    Dispose();
+                    joinedRelayAddress = savedRelay;
+                    joinedRoomCode = savedCode;
+                    migrationWillHost = becomeHost;
+                    migrationAt = now + (becomeHost ? 0.25f : 1.65f);
+                    status = becomeHost
+                        ? L("Host left. Taking over room…", "Anfitrião saiu. Assumindo a sala…")
+                        : L("Host left. Migrating room…", "Anfitrião saiu. Migrando sala…");
+                    PushChat("", status, system: true);
+                    return;
+                }
                 Dispose();
                 status = L("Disconnected.", "Conexão encerrada.");
                 return;
@@ -740,6 +874,12 @@ namespace CostaLivre
                             peer.Wire.Dispose();
                             break;
                         }
+                        if (hostedPassword.Length > 0 && peers.Exists(other => other.Ready)
+                            && !string.Equals(message.password ?? "", hostedPassword, StringComparison.Ordinal))
+                        {
+                            _ = peer.Wire.Reject(JsonUtility.ToJson(new Frame { type = "wrong_password", protocol = Protocol }));
+                            break;
+                        }
                         peer.ResumeKey = resumeKey;
                         peer.Account = ledger.Get(resumeKey);
                         peer.Weapons = peer.Account.weapons;
@@ -805,18 +945,19 @@ namespace CostaLivre
             if (hostedPublicRoom)
             {
                 int count = Mathf.Max(1, CountPlayers());
+                bool locked = hostedPassword.Length > 0;
                 if (internetRoom != null)
                 {
                     if (count != lastListedPlayers)
                     {
                         lastListedPlayers = count;
-                        internetRoom.UpdateListing(hostedRoomName, playerName, true, count, MaxPlayers);
+                        internetRoom.UpdateListing(hostedRoomName, playerName, true, count, MaxPlayers, locked);
                     }
                 }
                 else if (norayRoom == null && hostedTcpPort > 0 && now >= nextRoomBroadcast)
                 {
                     nextRoomBroadcast = now + 1.5f;
-                    CostaRoomBrowser.BroadcastHost(hostedRoomName, playerName, hostedTcpPort, count, MaxPlayers, Protocol);
+                    CostaRoomBrowser.BroadcastHost(hostedRoomName, playerName, hostedTcpPort, count, MaxPlayers, Protocol, locked);
                 }
             }
             TickInteriors(now, delta);
@@ -912,6 +1053,7 @@ namespace CostaLivre
                 return;
             IndexEntities();
             world.worldHour = WorldHour;
+            world.hostId = identity;
             world.interiors = interiors?.States;
             world.dispatch = dispatch;
             world.opportunity = opportunity;
@@ -1063,6 +1205,24 @@ namespace CostaLivre
                     break;
                 case "vault":
                     ReceiveCollectVault(peer, msg);
+                    break;
+                case "chat":
+                    if (now >= peer.NextChat && !string.IsNullOrWhiteSpace(msg.chatText))
+                    {
+                        peer.NextChat = now + 0.55f;
+                        string clean = msg.chatText.Replace('\r', ' ').Replace('\n', ' ').Trim();
+                        if (clean.Length > 110) clean = clean.Substring(0, 110);
+                        if (clean.Length > 0)
+                        {
+                            string packet = JsonUtility.ToJson(new Frame
+                            {
+                                type = "chat", protocol = Protocol, name = peer.Pose.name, chatText = clean
+                            });
+                            foreach (Peer recipient in peers)
+                                if (recipient.Ready)
+                                    recipient.Wire?.Send(packet);
+                        }
+                    }
                     break;
                 case "crew":
                     UseCrew(peer, msg.index, now);
@@ -1980,7 +2140,7 @@ namespace CostaLivre
                 RSAParameters identityKey = clientIdentity.ExportParameters(false);
                 Send(new Frame
                 {
-                    type = "hello", protocol = Protocol, name = playerName,
+                    type = "hello", protocol = Protocol, name = playerName, password = clientPassword,
                     publicKey = Convert.ToBase64String(identityKey.Modulus),
                     signature = Convert.ToBase64String(clientIdentity.SignData(nonce, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1))
                 });

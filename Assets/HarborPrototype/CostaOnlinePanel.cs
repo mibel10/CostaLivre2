@@ -10,7 +10,7 @@ namespace CostaLivre
         private enum LobbyTab { Matches, Create, Manual }
 
         internal delegate void ConnectHandler(string playerName, string address, int port, bool host,
-            string relay, string roomName, bool publicRoom);
+            string relay, string roomName, bool publicRoom, string password);
 
         private CostaSession session;
         private readonly ConnectHandler connect;
@@ -19,6 +19,9 @@ namespace CostaLivre
         private LobbyTab tab = LobbyTab.Matches;
         private string name = PlayerPrefs.GetString("CostaMultiplayerName", "Jogador");
         private string roomName = PlayerPrefs.GetString("CostaRoomName", "Santa Luz Livre");
+        private string roomPassword = "";
+        private string joinPassword = "";
+        private CostaRoomBrowser.RoomEntry pendingLockedRoom;
         private bool publicRoom = true;
         private string ip = "127.0.0.1";
         private string port = "7777";
@@ -122,7 +125,7 @@ namespace CostaLivre
                 session.Request("police");
             if (Button(new Rect(x + 242, row + 32, 156, 31), L("Leave", "Sair da sessão"), true))
             {
-                session.Dispose();
+                session.Leave();
                 return;
             }
             if (session.NetworkRoundTrip > 0)
@@ -170,6 +173,25 @@ namespace CostaLivre
             }
 
             float listY = y + 36;
+            if (pendingLockedRoom != null)
+            {
+                Fill(new Rect(x + 8, listY, 390, 152), RowBg);
+                Label(new Rect(x + 18, listY + 12, 370, 24),
+                    L("Password required: ", "Senha necessária: ") + pendingLockedRoom.Name, labels, Gold);
+                joinPassword = Input(new Rect(x + 18, listY + 46, 370, 34), joinPassword, 16, 7, TouchScreenKeyboardType.Default);
+                if (Button(new Rect(x + 18, listY + 96, 178, 34), L("Join room", "Entrar na sala"), !connecting))
+                {
+                    var target = pendingLockedRoom;
+                    pendingLockedRoom = null;
+                    JoinDiscoveredRoom(target, joinPassword);
+                }
+                if (Button(new Rect(x + 210, listY + 96, 178, 34), L("Back", "Voltar"), true))
+                {
+                    pendingLockedRoom = null;
+                    joinPassword = "";
+                }
+                return;
+            }
             if (discovered.Count == 0)
             {
                 Fill(new Rect(x + 8, listY, 390, 168), RowBg);
@@ -202,12 +224,20 @@ namespace CostaLivre
                 float ry = listY + (i - start) * 48;
                 Fill(new Rect(x + 8, ry, 390, 42), RowBg);
                 Fill(new Rect(x + 8, ry, 4, 42), room.IsLan ? Turquoise : Gold);
-                Label(new Rect(x + 18, ry + 2, 210, 20), room.Name, labels, Text);
+                Label(new Rect(x + 18, ry + 2, 210, 20), (room.Locked ? "[🔒] " : "") + room.Name, labels, Text);
                 Label(new Rect(x + 18, ry + 21, 210, 18),
-                    $"{room.HostName}  ·  {(room.IsLan ? "LAN" : "NET")}", labels, Muted);
+                    $"{room.HostName}  ·  {(room.IsLan ? "LAN" : "NET")}{(room.Locked ? " · " + L("Locked", "Com senha") : "")}", labels, Muted);
                 Label(new Rect(x + 236, ry + 10, 62, 22), $"{room.Players}/{room.MaxPlayers}", labels, Gold);
                 if (Button(new Rect(x + 306, ry + 6, 84, 30), L("Join", "Entrar"), !connecting))
-                    JoinDiscoveredRoom(room);
+                {
+                    if (room.Locked)
+                    {
+                        pendingLockedRoom = room;
+                        joinPassword = "";
+                    }
+                    else
+                        JoinDiscoveredRoom(room, "");
+                }
             }
 
             if (pages > 1)
@@ -223,8 +253,10 @@ namespace CostaLivre
 
         private void DrawCreateRoom(float x, float y, bool connecting)
         {
-            Label(new Rect(x + 8, y, 360, 20), L("PLAYER NAME", "SEU NOME"), labels, Muted);
-            name = Input(new Rect(x + 8, y + 22, 390, 32), name, 20, 1, TouchScreenKeyboardType.Default);
+            Label(new Rect(x + 8, y, 185, 20), L("PLAYER NAME", "SEU NOME"), labels, Muted);
+            Label(new Rect(x + 206, y, 192, 20), L("PASSWORD (OPTIONAL)", "SENHA (OPCIONAL)"), labels, Muted);
+            name = Input(new Rect(x + 8, y + 22, 188, 32), name, 20, 1, TouchScreenKeyboardType.Default);
+            roomPassword = Input(new Rect(x + 206, y + 22, 192, 32), roomPassword, 16, 8, TouchScreenKeyboardType.Default);
 
             Label(new Rect(x + 8, y + 60, 360, 20), L("ROOM NAME", "NOME DA SALA"), labels, Muted);
             roomName = Input(new Rect(x + 8, y + 82, 390, 32), roomName, 32, 6, TouchScreenKeyboardType.Default);
@@ -294,14 +326,14 @@ namespace CostaLivre
             }
         }
 
-        private void JoinDiscoveredRoom(CostaRoomBrowser.RoomEntry room)
+        private void JoinDiscoveredRoom(CostaRoomBrowser.RoomEntry room, string pwd)
         {
             inputError = "";
             SavePlayerPrefs();
             if (room.IsLan)
-                connect(name, room.Address, room.Port, false, null, room.Name, true);
+                connect(name, room.Address, room.Port, false, null, room.Name, true, pwd);
             else
-                connect(name, room.Address, 0, false, room.RelayEndpoint, room.Name, true);
+                connect(name, room.Address, 0, false, room.RelayEndpoint, room.Name, true, pwd);
         }
 
         private void StartHost()
@@ -317,7 +349,7 @@ namespace CostaLivre
                 endpoint = ConfiguredRelay;
             }
             SavePlayerPrefs();
-            connect(name, "", number, true, endpoint, roomName, publicRoom);
+            connect(name, "", number, true, endpoint, roomName, publicRoom, roomPassword);
         }
 
         private void StartManualJoin()
@@ -340,7 +372,7 @@ namespace CostaLivre
                 }
             }
             SavePlayerPrefs();
-            connect(name, address, number, false, endpoint, "", false);
+            connect(name, address, number, false, endpoint, "", false, joinPassword);
         }
 
         private void SavePlayerPrefs()
@@ -376,6 +408,8 @@ namespace CostaLivre
                     case 4: relay = keyboard.text; break;
                     case 5: invite = keyboard.text; break;
                     case 6: roomName = keyboard.text; break;
+                    case 7: joinPassword = keyboard.text; break;
+                    case 8: roomPassword = keyboard.text; break;
                 }
             }
             keyboard = null;

@@ -17,14 +17,15 @@ function cleanText(value, limit, fallback) {
 function publicRoomsPayload() {
     const list = [];
     for (const [code, room] of rooms) {
-        if (!room.isPublic || room.host.readyState !== WebSocket.OPEN || room.guests.size >= maxGuests)
+        if (!room.isPublic || room.migrating || room.host.readyState !== WebSocket.OPEN || room.guests.size >= maxGuests)
             continue;
         list.push({
             code,
             name: room.name,
             host: room.hostName,
             players: Math.max(1, room.players || (1 + room.guests.size)),
-            maxPlayers: room.maxPlayers || (maxGuests + 1)
+            maxPlayers: room.maxPlayers || (maxGuests + 1),
+            locked: room.hasPassword === true
         });
     }
     return JSON.stringify({ rooms: list });
@@ -53,21 +54,13 @@ function reject(socket, status) {
     socket.end('HTTP/1.1 ' + status + '\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
 }
 
-function createRoom(host) {
-    let code;
-    do {
-        code = randomBytes(5).toString('hex').toUpperCase();
-    } while (rooms.has(code));
-    const room = {
-        host,
-        guests: new Set(),
-        name: 'Santa Luz',
-        hostName: 'Jogador',
-        isPublic: false,
-        players: 1,
-        maxPlayers: 12
-    };
-    rooms.set(code, room);
+function attachHostHandlers(code, room, host) {
+    room.host = host;
+    room.migrating = false;
+    if (room.migrateTimer) {
+        clearTimeout(room.migrateTimer);
+        room.migrateTimer = null;
+    }
     host.send('room ' + code);
     host.on('message', (data, binary) => {
         if (binary || data.length > 512) {
@@ -84,6 +77,7 @@ function createRoom(host) {
             room.name = cleanText(meta.name, 32, 'Santa Luz');
             room.hostName = cleanText(meta.host, 20, 'Jogador');
             room.isPublic = meta.public === true;
+            room.hasPassword = meta.locked === true;
             const reported = Number(meta.players);
             if (Number.isInteger(reported) && reported >= 1 && reported <= maxGuests + 1)
                 room.players = reported;
@@ -95,9 +89,49 @@ function createRoom(host) {
         }
     });
     host.on('close', () => {
-        rooms.delete(code);
+        if (room.host !== host) return;
+        const hadGuests = room.guests.size > 0;
         for (const guest of room.guests) guest.terminate();
+        room.guests.clear();
+        if (hadGuests) {
+            room.migrating = true;
+            room.migrateTimer = setTimeout(() => {
+                if (room.migrating) rooms.delete(code);
+            }, 12000);
+        } else {
+            rooms.delete(code);
+        }
     });
+}
+
+function createRoom(host) {
+    let code;
+    do {
+        code = randomBytes(5).toString('hex').toUpperCase();
+    } while (rooms.has(code));
+    const room = {
+        host,
+        guests: new Set(),
+        name: 'Santa Luz',
+        hostName: 'Jogador',
+        isPublic: false,
+        hasPassword: false,
+        players: 1,
+        maxPlayers: 12,
+        migrating: false,
+        migrateTimer: null
+    };
+    rooms.set(code, room);
+    attachHostHandlers(code, room, host);
+}
+
+function claimRoom(code, newHost) {
+    const room = rooms.get(code);
+    if (!room || !room.migrating) {
+        newHost.terminate();
+        return;
+    }
+    attachHostHandlers(code, room, newHost);
 }
 
 function addGuest(room, guest) {
@@ -144,10 +178,14 @@ server.on('upgrade', (request, socket, head) => {
     if (path === '/host' && rooms.size < maxRooms) {
         handle = createRoom;
     } else {
+        const claim = /^\/claim\/([A-F0-9]{10})$/.exec(path);
         const join = /^\/join\/([A-F0-9]{10})$/.exec(path);
         const peer = /^\/peer\/([a-f0-9]{32})$/.exec(path);
+        const claimTarget = claim && rooms.get(claim[1]);
         const room = join && rooms.get(join[1]);
-        if (room && room.host.readyState === WebSocket.OPEN && room.guests.size < maxGuests)
+        if (claimTarget && claimTarget.migrating)
+            handle = newHost => claimRoom(claim[1], newHost);
+        else if (room && !room.migrating && room.host.readyState === WebSocket.OPEN && room.guests.size < maxGuests)
             handle = guest => addGuest(room, guest);
         else if (peer && tickets.has(peer[1]))
             handle = hostPeer => pair(peer[1], hostPeer);

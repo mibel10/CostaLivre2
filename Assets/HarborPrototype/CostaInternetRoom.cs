@@ -27,6 +27,7 @@ namespace CostaLivre
             public string name;
             public string host;
             public bool @public;
+            public bool locked;
             public int players;
             public int maxPlayers;
         }
@@ -81,9 +82,15 @@ namespace CostaLivre
         internal const string UpperHex = "0123456789ABCDEF";
         private const string LowerHex = "0123456789abcdef";
 
-        internal async Task<CostaWire> Host(int port, CancellationToken token)
+        internal Task<CostaWire> Host(int port, CancellationToken token) =>
+            OpenHost(new Uri(relay, "host"), port, token);
+
+        internal Task<CostaWire> Claim(int port, string existingCode, CancellationToken token) =>
+            OpenHost(new Uri(relay, "claim/" + existingCode), port, token);
+
+        private async Task<CostaWire> OpenHost(Uri target, int port, CancellationToken token)
         {
-            await control.ConnectAsync(new Uri(relay, "host"), token).ConfigureAwait(false);
+            await control.ConnectAsync(target, token).ConfigureAwait(false);
             var buffer = new byte[64];
             string message = await ReadControl(buffer, token).ConfigureAwait(false);
             if (!message.StartsWith("room ", StringComparison.Ordinal) || !ValidCode(message.Substring(5), 10, UpperHex))
@@ -182,7 +189,7 @@ namespace CostaLivre
                 return incoming.TryDequeue(out wire);
         }
 
-        internal void UpdateListing(string roomName, string hostName, bool isPublic, int players, int maxPlayers)
+        internal void UpdateListing(string roomName, string hostName, bool isPublic, int players, int maxPlayers, bool locked = false)
         {
             if (disposed || Ended || control.State != WebSocketState.Open)
                 return;
@@ -191,6 +198,7 @@ namespace CostaLivre
                 name = string.IsNullOrWhiteSpace(roomName) ? "Santa Luz" : roomName.Trim(),
                 host = string.IsNullOrWhiteSpace(hostName) ? "Jogador" : hostName.Trim(),
                 @public = isPublic,
+                locked = locked,
                 players = Math.Max(1, players),
                 maxPlayers = Math.Max(2, maxPlayers)
             });

@@ -56,6 +56,7 @@ namespace CostaLivre
         private CostaEncounter encounter;
         private CostaRobberies robberies;
         private CostaHostageSystem hostages;
+        private CostaStealthHeist stealthHeist;
         private int soloLootSite = -1;
         private float soloLootProgress;
         private CostaMap cityMap;
@@ -465,6 +466,7 @@ namespace CostaLivre
             city.UpdateHouseDoors(jobs, false, snap: true);
             robberies = new CostaRobberies(harbor);
             hostages = new CostaHostageSystem(harbor, transform);
+            stealthHeist = new CostaStealthHeist(harbor, transform);
             cityMap = new CostaMap(city.Footprints);
             cityMap.Prepare();
             gunShop = new CostaGunShop();
@@ -1660,6 +1662,26 @@ namespace CostaLivre
                         }
                     }
                 }
+            }
+
+            if (!session.Online && stealthHeist != null)
+            {
+                bool kickPressed = Pressed(reload, TouchControl.Reload);
+                bool stealthUsed = stealthHeist.Update(
+                    player.transform.position,
+                    new Vector2(groundVelocity.x, groundVelocity.z).magnitude,
+                    crouching,
+                    Held(sprint, TouchControl.Sprint),
+                    interaction,
+                    kickPressed,
+                    shotFiredThisFrame && arsenal.HasFirearm,
+                    jobs,
+                    effects,
+                    Time.deltaTime,
+                    ShowWorldNotice,
+                    () => StartPursuit(0.4f, combat: true));
+                if (stealthUsed)
+                    interaction = false;
             }
 
             bool originalInteraction = harborJob && state == RunState.FindCargo
@@ -3112,6 +3134,8 @@ namespace CostaLivre
             effects.DrawCombat(followCamera);
             hostages?.DrawHud(followCamera, soloLootSite, soloLootProgress,
                 soloLootSite >= 0 ? hostages.GetLootSpeedMultiplier(soloLootSite) : 1f);
+            if (!session.Online)
+                stealthHeist?.DrawHud(followCamera);
             if (session.Online)
                 remotes.DrawNames(followCamera);
 
@@ -3291,6 +3315,8 @@ namespace CostaLivre
                 return L($"{use} Take loot · {title}", $"{use} Pegar saque · {title}");
             }
 
+            if (!session.Online && stealthHeist != null && stealthHeist.Prompt.Length > 0)
+                return stealthHeist.Prompt;
             int property = session.Online ? -1 : jobs.NearbyProperty(player.transform.position);
             if (property >= 0 && !jobs.Owned(property))
                 return L($"{use} Buy Vila {property + 1:00}  ·  {Money(CostaJobs.Prices[property])}",

@@ -85,8 +85,15 @@ namespace CostaLivre
         private void ReceiveCampaign(Peer peer,Frame msg)
         {
             if (Campaign == null || msg.transaction <= 0 || string.IsNullOrEmpty(msg.name)) return;
+            int vehicle = peer.Pose.vehicle;
+            bool driving = vehicle >= 0;
+            if (driving && (vehicle >= hostCars.Length || hostCars[vehicle].driver != peer.Pose.id))
+            {
+                SetNotice(peer, 37);
+                return;
+            }
             bool success = Campaign.TryAdvance(ledger,peer.Account,msg.index,msg.name,msg.transaction,
-                peer.Pose.pos,peer.Pose.vehicle >= 0,peer.Bag);
+                peer.Pose.pos,driving,peer.Bag,driving ? Mathf.Abs(hostCars[vehicle].speed) : 0);
             SetNotice(peer,success ? 39 : 37);
         }
 

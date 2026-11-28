@@ -5,7 +5,7 @@ using static CostaLivre.CostaText;
 
 namespace CostaLivre
 {
-    internal sealed class CostaCampaign
+    public sealed class CostaCampaign
     {
         [Serializable] internal sealed class Progress
         {
@@ -15,60 +15,71 @@ namespace CostaLivre
             public string[] decisions = Array.Empty<string>();
         }
 
-        [Serializable] internal sealed class Choice
+        [Serializable] public sealed class Choice
         {
-            public string id, en, pt, next;
+            public string id, en, pt, next, cinematic;
             public int needs, earns, journalist, mechanic, inspector, pay;
-            public int needTrust, contact;
+            public int needTrust, contact, excludes, bonusFlags, bonusPay;
+            [Tooltip("Completa um objetivo no mesmo local. Exige uma flag exclusiva de recompensa.")]
+            public bool optional;
             public string Caption => L(en,pt);
         }
 
-        [Serializable] internal sealed class Node
+        [Serializable] public sealed class Node
         {
             public string id, anchor, en, pt, speaker, objective;
+            public string cinematic;
+            [Tooltip("Exige que o veículo chegue parado.")]
+            public bool stoppedVehicle;
+            public ConditionalDialogue[] dialogue;
             public int act, loot = -1, ending;
             public string Title => L(en,pt);
             public Choice[] choices;
         }
 
-        [Serializable] private sealed class Script
+        [Serializable] public sealed class ConditionalDialogue
         {
-            public int version;
-            public string start;
-            public Node[] nodes;
+            public int flags;
+            [TextArea] public string en, pt;
         }
 
         private readonly Dictionary<string,Node> nodes = new(StringComparer.Ordinal);
         private readonly Dictionary<string,string> captions = new(StringComparer.Ordinal);
         private readonly string first;
 
-        internal static CostaCampaign Load()
-        {
-            var file = Resources.Load<TextAsset>("Harbor/Campaign");
-            return file == null ? null : new CostaCampaign(file.text);
-        }
+        internal static CostaCampaign Load() =>
+            Resources.Load<CostaCampaignDefinition>("Harbor/CampaignDefinition")?.Compile();
 
-        internal CostaCampaign(string data)
+        internal CostaCampaign(string start, Node[] objectives)
         {
-            var file = JsonUtility.FromJson<Script>(data);
-            if (file?.version != 1 || file.nodes == null || file.nodes.Length == 0)
-                throw new ArgumentException("Invalid campaign version or empty campaign.");
-            first = file.start;
+            if (objectives == null || objectives.Length == 0)
+                throw new ArgumentException("A campanha precisa de objetivos.");
+            first = start;
             var reachable = new HashSet<string>();
             var endings = new HashSet<int>();
-            foreach (Node node in file.nodes)
+            foreach (Node node in objectives)
             {
                 if (node == null || string.IsNullOrWhiteSpace(node.id) || !nodes.TryAdd(node.id,node)
-                    || node.ending == 0 && (!TryPoint(node.anchor,out _) || node.choices == null || node.choices.Length == 0))
+                    || node.ending == 0 && (!TryPoint(node.anchor,out _) || node.choices == null || node.choices.Length is < 1 or > 3))
                     throw new ArgumentException("Invalid campaign node.");
                 if (node.ending != 0 && !endings.Add(node.ending))
                     throw new ArgumentException("Duplicate ending.");
                 foreach (Choice choice in node.choices ?? Array.Empty<Choice>())
                     if (choice == null || string.IsNullOrWhiteSpace(choice.id)
-                        || !captions.TryAdd(choice.id,choice.Caption) || choice.pay is < 0 or > 20000
-                        || choice.contact is < 0 or > 2)
+                        || !captions.TryAdd(choice.id,choice.Caption) || choice.pay is < 0 or > 20000 || choice.bonusPay is < 0 or > 20000
+                        || choice.contact is < 0 or > 2 || (choice.needs & choice.excludes) != 0
+                        || choice.optional && (choice.next != node.id || choice.earns <= 0
+                            || (choice.earns & (choice.earns - 1)) != 0 || (choice.earns & choice.needs) != 0))
                         throw new ArgumentException("Invalid campaign choice.");
             }
+            var optionalRewards = new HashSet<int>();
+            foreach (Node node in objectives)
+                foreach (Choice choice in node.choices ?? Array.Empty<Choice>())
+                    if (choice.optional && (!optionalRewards.Add(choice.earns)
+                        || Array.Exists(objectives, other => Array.Exists(other.choices ?? Array.Empty<Choice>(),
+                            branch => branch != choice && (branch.earns & choice.earns) != 0))))
+                        throw new ArgumentException("Objetivo opcional sem flag exclusiva em " + node.id);
+
             var visiting = new HashSet<string>();
             void Visit(string id)
             {
@@ -78,7 +89,9 @@ namespace CostaLivre
                     throw new ArgumentException("Campaign path cycles at " + id);
                 if (!reachable.Add(id)) return;
                 visiting.Add(id);
-                foreach (Choice choice in node.choices ?? Array.Empty<Choice>()) Visit(choice.next);
+                foreach (Choice choice in node.choices ?? Array.Empty<Choice>())
+                    if (!choice.optional)
+                        Visit(choice.next);
                 visiting.Remove(id);
             }
             Visit(first);
@@ -106,7 +119,7 @@ namespace CostaLivre
                 {
                     if (!Available(choice,progress))
                         continue;
-                    canContinue = true;
+                    canContinue |= !choice.optional;
                     CheckPaths(choice.next,depth+1,Branch(progress,choice));
                 }
                 if (!canContinue)
@@ -139,26 +152,36 @@ namespace CostaLivre
                 1 => progress?.mechanic ?? 0,
                 _ => progress?.inspector ?? 0
             };
-            return (flags & choice.needs) == choice.needs && trust >= choice.needTrust;
+            return (flags & choice.needs) == choice.needs && (flags & choice.excludes) == 0 &&
+                (!choice.optional || (flags & choice.earns) == 0) && trust >= choice.needTrust;
         }
 
-        internal bool Checkpoint(Progress progress,Vector3 position,bool driving,CostaBag bag)
+        internal static string Dialogue(Node node, Progress progress)
+        {
+            if (node.dialogue != null)
+                foreach (ConditionalDialogue dialogue in node.dialogue)
+                    if (dialogue != null && ((progress?.flags ?? 0) & dialogue.flags) == dialogue.flags)
+                        return L(dialogue.en, dialogue.pt);
+            return node.Title;
+        }
+
+        internal bool Checkpoint(Progress progress,Vector3 position,bool driving,CostaBag bag,float vehicleSpeed = 0)
         {
             Node node = Current(progress);
             if (node.ending != 0 || !TryPoint(node.anchor,out Vector3 point) ||
                 Mathf.Abs(position.y-point.y) > 1.2f || (position-point).sqrMagnitude > 4.2f*4.2f)
                 return false;
-            if (node.objective == "vehicle" && !driving || node.objective != "vehicle" && driving)
+            if (node.objective == "vehicle" && (!driving || node.stoppedVehicle && vehicleSpeed > .8f) || node.objective != "vehicle" && driving)
                 return false;
             return node.objective != "loot" || bag != null && node.loot >= 0 && node.loot < bag.Amounts.Length && bag.Amounts[node.loot] > 0;
         }
 
         internal bool TryAdvance(CostaLedger ledger,CostaLedger.Account account, int index, string checkpoint, int serial,
-            Vector3 position,bool driving,CostaBag bag)
+            Vector3 position,bool driving,CostaBag bag,float vehicleSpeed = 0, CostaCheckpoint snapshot = null)
         {
             Node node = Current(account.campaign);
             if (index < 0 || index >= (node.choices?.Length ?? 0) || checkpoint != node.id ||
-                !Checkpoint(account.campaign,position,driving,bag) || !Available(node.choices[index],account.campaign))
+                !Checkpoint(account.campaign,position,driving,bag,vehicleSpeed) || !Available(node.choices[index],account.campaign))
                 return false;
             Choice choice = node.choices[index];
             Progress old = account.campaign ?? new();
@@ -168,7 +191,14 @@ namespace CostaLivre
             trail[^1] = choice.id;
             Progress progress = Branch(old,choice);
             progress.decisions = trail;
-            return ledger.SaveCampaign(account,old.node,serial,progress,choice.pay);
+            if (snapshot != null)
+            {
+                snapshot.node = progress.node;
+                snapshot.atObjective = choice.optional;
+            }
+            int bonus = choice.bonusFlags != 0 && (old.flags & choice.bonusFlags) == choice.bonusFlags
+                ? choice.bonusPay : 0;
+            return ledger.SaveCampaign(account,old.node,serial,progress,choice.pay + bonus,snapshot);
         }
 
         internal static bool TryPoint(string anchor,out Vector3 point)

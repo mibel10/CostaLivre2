@@ -142,11 +142,13 @@ namespace CostaLivre
         private bool worldLoading;
         private bool worldLoadFailed;
         private HarborLoadingScreen loadingScreen;
+        private CostaCinematics cinematics;
         private readonly CostaTitleBackdrop titleBackdrop = new();
         private System.Action afterWorldLoad;
         private bool blockingWorldLoad;
         private float titleShownAt;
         private bool cityTitleVisible;
+        private bool soloConnectionPending;
         private string loadingPhase;
         private float loadingProgress;
         private HarborMenu menu;
@@ -225,7 +227,6 @@ namespace CostaLivre
         private float heatUntil;
         private float nextCrime;
         private float arrestProgress;
-        private Guard arrestingGuard;
         private const float SoloArrestTime = 1.25f;
 
         private void Awake()
@@ -245,6 +246,7 @@ namespace CostaLivre
             menu = new HarborMenu(bindings, padBindings, followCamera, sun, volume);
             jobs = new CostaJobs();
             harbor = new HarborBlockout(transform, blockoutShader);
+            harbor.Mirrors = new CostaMirrors(followCamera);
             atmosphere = new HarborWeather(transform);
             onlinePanel = new CostaOnlinePanel(Connect);
             loadingScreen = new HarborLoadingScreen();
@@ -264,6 +266,7 @@ namespace CostaLivre
             WithWorld(() =>
             {
                 CaptureSoloVehicles();
+                soloConnectionPending = true;
                 session.Start(name, address, port, host, relay);
             });
 
@@ -383,7 +386,13 @@ namespace CostaLivre
                 () =>
                 {
                     if (car == null) { ShowWorldNotice(L("Need a vehicle for Drift!", "Precisa de um veículo para o Drift!")); return; }
-                    minigames.StartDrift(RewardWorldActivity);
+                    minigames.StartDrift((reward, message) =>
+                    {
+                        if (reward > 0)
+                            RewardWorldActivity(reward, message);
+                        else
+                            ShowWorldNotice(message);
+                    });
                 },
                 () =>
                 {
@@ -448,6 +457,7 @@ namespace CostaLivre
             BuildAtms();
             harbor.Sign("OFICINA COSTEIRA",CostaBuildTuning.CityWorkshop+new Vector3(0,2.2f,3),.18f,new(.82f,.91f,.83f));
             hud = new HarborHud(cityMap);
+            cinematics = new CostaCinematics(followCamera, transform);
             bagPanel = new CostaBagPanel(harbor, transform);
             yield return 0.74f;
 
@@ -489,6 +499,7 @@ namespace CostaLivre
             player.center = Vector3.up * 0.9f;
             player.stepOffset = 0.2f;
             playerBody = harbor.Person("Runner model", runner.transform, HarborBlockout.Spawn, new Color(0.89f, 0.90f, 0.86f));
+            playerBody.EnableDirectionalBlendTree();
             playerModel = playerBody.Root;
             cargoPack = harbor.Pack(playerModel, playerBody.Chest);
             playerBody.RegisterAttachment(cargoPack.transform, 1f);
@@ -671,18 +682,21 @@ namespace CostaLivre
         {
             if (!session.Online && navigationBuild != null)
                 return;
-            if (!session.Online)
+            bool restored = !session.Online && !harborJob && RestoreCheckpoint();
+            if (!session.Online && !restored)
                 ResetRun();
             enteredRun = true;
-            ResumeRun();
+            ResumeRun(restored);
         }
 
-        private void ResumeRun()
+        private void ResumeRun() => ResumeRun(false);
+
+        private void ResumeRun(bool restored)
         {
             bool deployFromMenu = !pauseMenu;
             if (session.Online)
                 enteredRun = enteredOnlineWorld = true;
-            if (deployFromMenu)
+            if (deployFromMenu && !restored)
                 transitions.Begin(session.Online ? L("Entering session", "Entrando na partida") : "Santa Luz", 1.5f, .98f);
             if (menu.SelectionVersion != appliedSelection)
             {
@@ -696,6 +710,25 @@ namespace CostaLivre
             PositionCamera(false, true);
             ApplyWorldHour();
             SetCursor(true);
+            if (deployFromMenu && !restored && car == null)
+                TryCinematic("SantaLuzArrival");
+        }
+
+        private bool TryCinematic(string id)
+        {
+            if (string.IsNullOrEmpty(id) || cinematics == null || session.Online || session.Hosting ||
+                wantedLevel > 0 || pursuit || encounter.Active || PlayerPrefs.GetInt("CostaCinematic." + id, 0) != 0)
+                return false;
+            CostaCinematic asset = Resources.Load<CostaCinematic>("Harbor/Cinematics/" + id);
+            if (!cinematics.Play(asset, playerBody, player, () =>
+            {
+                PlayerPrefs.SetInt("CostaCinematic." + id, 1);
+                PlayerPrefs.Save();
+                SetCursor(true);
+            }))
+                return false;
+            SetCursor(false);
+            return true;
         }
 
         private void BindControls()
@@ -749,6 +782,8 @@ namespace CostaLivre
         {
             if (inMenu || overlay != FieldOverlay.None || minigames?.BlocksWorld == true)
                 Time.timeScale = 1;
+            cinematics?.Release();
+            harbor?.Mirrors?.Release();
             session?.Dispose();
             jobs?.Ledger.FinishBank(wait:true);
             remotes?.Dispose();
@@ -783,6 +818,7 @@ namespace CostaLivre
 
         private void OnApplicationFocus(bool focused)
         {
+            cinematics?.SetFocused(focused);
             if (!focused)
             {
                 menu?.FlushGraphics();
@@ -860,6 +896,16 @@ namespace CostaLivre
 
             if (!session.Online)
             {
+                if (soloConnectionPending && !session.Connecting && !session.Hosting)
+                {
+                    soloConnectionPending = false;
+                    if (!wasOnline)
+                    {
+                        for (int i = 0; i < cars.Length; i++)
+                            cars[i].ApplyBuild(jobs.Account.mods[i]);
+                        soloContractCar = soloDrivenCar = null;
+                    }
+                }
                 if (wasOnline)
                 {
                     wasOnline = false;
@@ -927,6 +973,7 @@ namespace CostaLivre
             bool joined = !wasOnline;
             if (joined)
             {
+                soloConnectionPending = false;
                 soloResumable = CanResume();
                 soloHarborJob = harborJob;
                 soloState = state;
@@ -1085,6 +1132,13 @@ namespace CostaLivre
                 CostaUi.Update(false);
             if (blockingWorldLoad || worldLoadFailed)
                 return;
+            if (cinematics?.Active == true)
+            {
+                CostaUi.Update(false);
+                if (!pausedForFocus)
+                    cinematics.Tick();
+                return;
+            }
 
             if (worldReady)
             {
@@ -1186,8 +1240,11 @@ namespace CostaLivre
             if (!session.Online && Pressed(restart, TouchControl.Retry))
             {
                 gamepad = restart.activeControl?.device is Gamepad;
-                ResetRun();
-                transitions.Begin(L("Back in Santa Luz", "De volta a Santa Luz"), 1.45f, .91f);
+                if (harborJob || !RestoreCheckpoint())
+                {
+                    ResetRun();
+                    transitions.Begin(L("Back in Santa Luz", "De volta a Santa Luz"), 1.45f, .91f);
+                }
                 return;
             }
 
@@ -1249,6 +1306,7 @@ namespace CostaLivre
                 OpenWorkshop();
                 return;
             }
+            TrySaveStage();
             if (interaction && CanOpenCampaign())
             {
                 OpenOverlay(FieldOverlay.Campaign);
@@ -1818,7 +1876,6 @@ namespace CostaLivre
             wantedLevel = 0;
             recoveryMissionStar = false;
             arrestProgress = 0;
-            arrestingGuard = null;
             pursuit = false;
             policeSystem?.ResetAll();
             foreach (Guard guard in guards)
@@ -1931,6 +1988,7 @@ namespace CostaLivre
             urbanAudio.Update(listenerArea, ambience, cityNight, worldWeather.Rain, heat, car,
                 ambience > .05f && heat > 0 ? NearbyPoliceVehicle(listenerArea) : null);
             harbor.Damage.Animate();
+            harbor.Mirrors.Tick(menu.GraphicsPreset, menu.MirrorQuality, !quiet && cinematics?.Active != true, car);
         }
 
         private Vector3? NearbyPoliceVehicle(Vector3 observer)
@@ -2287,7 +2345,7 @@ namespace CostaLivre
             playerBody.BodyMotion(groundVelocity, (groundVelocity - previousVelocity) / Mathf.Max(step, 0.001f),
                 grounded, crouching, compression, wallReaction);
             if (grounded && landing <= 0)
-                playerBody.DirectionalGait(groundVelocity, speed, turnAngle, brakeWeight);
+                playerBody.DirectionalGait(groundVelocity, HarborArsenal.SprintSpeed(arsenal.Slot), turnAngle, brakeWeight);
             if (crouching)
                 playerBody.CrouchPose();
             if (grounded)
@@ -2473,7 +2531,6 @@ namespace CostaLivre
             recoveryMissionStar = false;
             nextCrime = 0;
             arrestProgress = 0;
-            arrestingGuard = null;
             state = RunState.FindCargo;
             pursuit = false;
             if (resetJob)
@@ -2631,6 +2688,12 @@ namespace CostaLivre
                     cityMap.EventPoint = session?.Online == true ? null : livingWorld?.ActiveEventPoint;
                     cityMap.EventTitle = livingWorld?.ActiveEventTitle;
                 }
+            }
+            if (cinematics?.Active == true)
+            {
+                cinematics.Draw();
+                CostaUi.DrawPointer();
+                return;
             }
             if (cityTitleVisible)
                 titleBackdrop.DrawTransition();

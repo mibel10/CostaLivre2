@@ -34,6 +34,7 @@ namespace CostaLivre
             public int relics;
             public Entry[] history = Array.Empty<Entry>();
             public CostaCampaign.Progress campaign;
+            public CostaCheckpoint checkpoint;
             public long[] mods = new long[16];
         }
 
@@ -313,20 +314,38 @@ namespace CostaLivre
             }
         }
 
-        internal bool SaveCampaign(Account account,string expected,int serial,CostaCampaign.Progress progress,int reward)
+        internal bool SaveCampaign(Account account,string expected,int serial,CostaCampaign.Progress progress,int reward,CostaCheckpoint checkpoint = null)
         {
             lock (gate)
             {
                 if (!available || bankWrite != null || account.campaign?.node != expected || serial < 0 || serial != 0 && serial <= account.serial
-                    || !Array.Exists(book.accounts,a => a == account) || reward < 0 || account.cash > Limit-reward)
+                    || !Array.Exists(book.accounts,a => a == account) || reward < 0 || account.cash > Limit-reward
+                    || checkpoint != null && !checkpoint.Valid(progress?.node))
                     return false;
-                var previous = (account.campaign, account.cash, account.serial, account.history);
+                var previous = (account.campaign, account.cash, account.serial, account.history, account.checkpoint);
                 account.campaign = progress;
+                if (checkpoint != null) account.checkpoint = checkpoint;
                 account.cash += reward;
                 if (serial != 0) account.serial = serial;
                 if (reward > 0) Append(account,Operation.Reward,reward,Guid.NewGuid().ToString("N"));
                 if (Write()) return true;
-                (account.campaign, account.cash, account.serial, account.history) = previous;
+                (account.campaign, account.cash, account.serial, account.history, account.checkpoint) = previous;
+                return false;
+            }
+        }
+
+        internal bool SaveCheckpoint(Account account, CostaCheckpoint checkpoint)
+        {
+            lock (gate)
+            {
+                if (!available || bankWrite != null || checkpoint == null ||
+                    !checkpoint.Valid(account.campaign?.node ?? checkpoint.node) || !Array.Exists(book.accounts, a => a == account))
+                    return false;
+                CostaCheckpoint prior = account.checkpoint;
+                account.checkpoint = checkpoint;
+                if (Write())
+                    return true;
+                account.checkpoint = prior;
                 return false;
             }
         }

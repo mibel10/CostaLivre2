@@ -1,0 +1,375 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1716e4202efc62510a00dee19ef7200f, type: 3}
+  m_Name: CampaignDefinition
+  m_EditorClassIdentifier:
+  start: "intro"
+  objectives:
+  - id: "intro"
+    act: 1
+    anchor: "press"
+    speaker: "Lia"
+    en: "Lia found irregular invoices in the port accounts. What kind of help will you offer?"
+    pt: "Lia encontrou notas irregulares nas contas do porto. Que tipo de ajuda voc\u00ea oferece?"
+    objective: "talk"
+    loot: -1
+    dialogue: []
+    choices:
+    - id: "lia_public"
+      en: "Give Lia your word"
+      pt: "Dar sua palavra a Lia"
+      next: "archive"
+      earns: 1
+      journalist: 2
+    - id: "call_rui"
+      en: "Ask Rui about the missing cargo"
+      pt: "Procurar Rui sobre a carga sumida"
+      next: "rui"
+      mechanic: 2
+    - id: "call_celia"
+      en: "Ask the inspector to open a case"
+      pt: "Pedir que a inspetora abra um caso"
+      next: "celia"
+      earns: 2
+      inspector: 2
+  - id: "archive"
+    act: 1
+    anchor: "museum"
+    speaker: "Lia"
+    en: "The museum ledger ties the missing cargo to the harbour. A copy would be safer than the original."
+    pt: "O livro do museu liga a carga desaparecida ao porto. Uma c\u00f3pia seria mais segura que o original."
+    objective: "talk"
+    loot: -1
+    cinematic: "PaperTrail"
+    dialogue: []
+    choices:
+    - id: "save_serial"
+      en: "Record the crate serial numbers"
+      pt: "Anotar os n\u00fameros de s\u00e9rie das caixas"
+      next: "archive"
+      optional: 1
+      earns: 16384
+      journalist: 1
+    - id: "copy"
+      en: "Deliver the public copy"
+      pt: "Entregar a c\u00f3pia p\u00fablica"
+      next: "assembly"
+      earns: 4
+      pay: 375
+      journalist: 2
+    - id: "original"
+      en: "Keep the original under seal"
+      pt: "Guardar o original sob sigilo"
+      next: "exam"
+      inspector: 1
+  - id: "rui"
+    act: 1
+    anchor: "workshop"
+    speaker: "Rui"
+    en: "The workshop knows which vehicles carried the crates. Rui wants help keeping the small shops afloat."
+    pt: "A oficina sabe quais carros levaram as caixas. Rui quer ajudar as lojas de bairro a sobreviver."
+    objective: "talk"
+    loot: -1
+    dialogue: []
+    choices:
+    - id: "check_manifest"
+      en: "Compare the manifest with Rui's register"
+      pt: "Comparar o manifesto com o livro do Rui"
+      next: "rui"
+      optional: 1
+      earns: 4096
+      mechanic: 1
+    - id: "escort"
+      en: "Deliver the replacement stock by vehicle"
+      pt: "Entregar mercadoria de reposi\u00e7\u00e3o de carro"
+      next: "delivery"
+      mechanic: 1
+    - id: "broker"
+      en: "Hear the broker\u2019s offer"
+      pt: "Ouvir a oferta do intermedi\u00e1rio"
+      next: "broker"
+      earns: 8
+  - id: "celia"
+    act: 1
+    anchor: "station"
+    speaker: "C\u00e9lia"
+    en: "C\u00e9lia can investigate through official channels or refer the case to independent oversight."
+    pt: "C\u00e9lia pode abrir um inqu\u00e9rito ou encaminhar o caso para uma auditoria independente."
+    objective: "talk"
+    loot: -1
+    dialogue: []
+    choices:
+    - id: "official"
+      en: "Request an official investigation"
+      pt: "Pedir investiga\u00e7\u00e3o formal"
+      next: "exam"
+      inspector: 1
+      pay: 300
+    - id: "independent"
+      en: "Seek independent oversight"
+      pt: "Buscar auditoria independente"
+      next: "assembly"
+      earns: 4
+      journalist: 2
+  - id: "delivery"
+    act: 2
+    anchor: "delivery"
+    speaker: "Rui"
+    en: "The goods have reached the handover point. Rui offers a share in a new cooperative."
+    pt: "A mercadoria chegou ao ponto de entrega. Rui oferece uma participa\u00e7\u00e3o numa cooperativa."
+    objective: "vehicle"
+    loot: -1
+    stoppedVehicle: 1
+    dialogue: []
+    choices:
+    - id: "co_op"
+      en: "Work for the cooperative"
+      pt: "Trabalhar pela cooperativa"
+      next: "workshops"
+      earns: 16
+      mechanic: 2
+      pay: 900
+    - id: "outside_deal"
+      en: "Consider the broker\u2019s offer"
+      pt: "Considerar a oferta do intermedi\u00e1rio"
+      next: "broker"
+      earns: 8
+      pay: 450
+  - id: "broker"
+    act: 2
+    anchor: "exchange"
+    speaker: "Nilo"
+    en: "Nilo offers immediate money for a privately negotiated handover. Lia can still publish what she has."
+    pt: "Nilo oferece dinheiro por uma entrega negociada em sigilo. Lia ainda pode publicar o que tem."
+    objective: "talk"
+    loot: -1
+    dialogue: []
+    choices:
+    - id: "private_draft"
+      en: "Draft a private agreement"
+      pt: "Redigir um acordo privado"
+      next: "contract"
+      earns: 8
+      pay: 800
+    - id: "decline_draft"
+      en: "Reject it and talk to Lia"
+      pt: "Recusar e conversar com Lia"
+      next: "assembly"
+      journalist: 1
+  - id: "exam"
+    act: 2
+    anchor: "station"
+    speaker: "C\u00e9lia"
+    en: "The evidence is sufficient for a hearing. C\u00e9lia wants you to decide whether to testify."
+    pt: "H\u00e1 provas suficientes para uma audi\u00eancia. C\u00e9lia quer saber se voc\u00ea vai depor."
+    objective: "talk"
+    loot: -1
+    dialogue: []
+    choices:
+    - id: "testify"
+      en: "Sign the deposition"
+      pt: "Assinar o depoimento"
+      next: "hearing"
+      earns: 32
+      inspector: 2
+      pay: 750
+    - id: "hand_off"
+      en: "Let an independent panel examine the evidence"
+      pt: "Encaminhar as provas a um conselho independente"
+      next: "assembly"
+      earns: 4
+      journalist: 1
+  - id: "assembly"
+    act: 2
+    anchor: "plaza"
+    speaker: "Lia"
+    en: "The residents will support a public hearing. Lia also knows a group building a neighbourhood cooperative."
+    pt: "Os moradores apoiam uma audi\u00eancia p\u00fablica. Lia tamb\u00e9m conhece um grupo montando uma cooperativa."
+    objective: "talk"
+    loot: -1
+    dialogue:
+    - flags: 4096
+      en: "Rui's register corroborates the manifest. Lia can name the missing cargo without exposing you."
+      pt: "O livro do Rui confirma o manifesto. Lia pode identificar a carga sumida sem expor voc\u00ea."
+    - flags: 16384
+      en: "The crate numbers match the archive. Lia can now link the port receipts to the missing cargo."
+      pt: "Os n\u00fameros das caixas batem com o arquivo. Lia agora consegue ligar as notas do porto \u00e0 carga sumida."
+    choices:
+    - id: "print"
+      en: "Prepare a public report"
+      pt: "Preparar o relat\u00f3rio p\u00fablico"
+      next: "press_final"
+      earns: 4
+      journalist: 1
+      pay: 700
+    - id: "fund_coop"
+      en: "Take the cooperative\u2019s proposal"
+      pt: "Apoiar a proposta da cooperativa"
+      next: "workshops"
+      earns: 16
+      mechanic: 2
+  - id: "workshops"
+    act: 3
+    anchor: "workshop"
+    speaker: "Rui"
+    en: "Rui can offer performance parts through the cooperative. Antutu also has a place for you if you leave."
+    pt: "Rui pode oferecer pe\u00e7as de desempenho pela cooperativa. Antutu tamb\u00e9m tem espa\u00e7o para voc\u00ea se preferir partir."
+    objective: "talk"
+    loot: -1
+    dialogue: []
+    choices:
+    - id: "coop_final"
+      en: "Sign the cooperative charter"
+      pt: "Assinar o acordo da cooperativa"
+      next: "ending_coop"
+      needs: 16
+      earns: 128
+      pay: 1700
+    - id: "leave_rui"
+      en: "Leave the coast behind"
+      pt: "Deixar o litoral para tr\u00e1s"
+      next: "departure"
+      pay: 400
+  - id: "press_final"
+    act: 3
+    anchor: "press"
+    speaker: "Lia"
+    en: "Publication will make the report public and earn local support. You can also testify at the hearing instead."
+    pt: "Publicar torna o relat\u00f3rio p\u00fablico e garante apoio local. Voc\u00ea tamb\u00e9m pode depor na audi\u00eancia."
+    objective: "talk"
+    loot: -1
+    dialogue: []
+    choices:
+    - id: "verify_print"
+      en: "Have Lia cross-check Rui's manifest before printing"
+      pt: "Pedir que Lia confira o manifesto do Rui antes da impress\u00e3o"
+      next: "press_final"
+      optional: 1
+      needs: 4096
+      earns: 8192
+      pay: 250
+      journalist: 1
+    - id: "publish_final"
+      en: "Release the report"
+      pt: "Publicar o relat\u00f3rio"
+      next: "ending_press"
+      needs: 4
+      needTrust: 1
+      earns: 256
+      pay: 1300
+      cinematic: "SignedRecord"
+      bonusFlags: 8192
+      bonusPay: 420
+    - id: "hearing_press"
+      en: "Take the report to the hearing"
+      pt: "Levar o relat\u00f3rio \u00e0 audi\u00eancia"
+      next: "hearing"
+      inspector: 1
+  - id: "contract"
+    act: 3
+    anchor: "lobby"
+    speaker: "Nilo"
+    en: "The private contract offers the highest payment. Signing it will end the public investigation."
+    pt: "O contrato privado oferece o maior pagamento. Assinar encerra a investiga\u00e7\u00e3o p\u00fablica."
+    objective: "talk"
+    loot: -1
+    dialogue: []
+    choices:
+    - id: "private_final"
+      en: "Sign the private contract"
+      pt: "Assinar o contrato privado"
+      next: "ending_private"
+      needs: 8
+      earns: 512
+      pay: 3500
+      journalist: -2
+      inspector: -2
+    - id: "leave_contract"
+      en: "Walk away and leave the coast"
+      pt: "Recusar e partir do litoral"
+      next: "departure"
+  - id: "hearing"
+    act: 3
+    anchor: "station"
+    speaker: "C\u00e9lia"
+    en: "C\u00e9lia will act on your testimony. You can keep working with her or leave the port to its own future."
+    pt: "C\u00e9lia vai agir com base no seu depoimento. Voc\u00ea pode seguir com ela ou deixar o porto decidir o pr\u00f3prio futuro."
+    objective: "talk"
+    loot: -1
+    dialogue: []
+    choices:
+    - id: "protect_witness"
+      en: "Join the oversight programme"
+      pt: "Entrar no programa de fiscaliza\u00e7\u00e3o"
+      next: "ending_law"
+      earns: 1024
+      pay: 2000
+    - id: "leave_law"
+      en: "Travel to Antutu"
+      pt: "Viajar para Antutu"
+      next: "departure"
+  - id: "departure"
+    act: 3
+    anchor: "regional"
+    speaker: "Rui"
+    en: "The train is due to leave. Rui can keep the workshop open without you."
+    pt: "O trem est\u00e1 para sair. Rui consegue manter a oficina aberta sem voc\u00ea."
+    objective: "talk"
+    loot: -1
+    dialogue: []
+    choices:
+    - id: "depart_final"
+      en: "Start over in Antutu"
+      pt: "Recome\u00e7ar em Antutu"
+      next: "ending_leave"
+      earns: 2048
+      pay: 1100
+  - id: "ending_coop"
+    act: 3
+    speaker: "Rui"
+    en: "LOCAL OWNERSHIP \u00b7 The cooperative opens access to advanced parts."
+    pt: "GEST\u00c3O LOCAL \u00b7 A cooperativa abre acesso a pe\u00e7as avan\u00e7adas."
+    ending: 1
+    dialogue: []
+    choices: []
+  - id: "ending_press"
+    act: 3
+    speaker: "Lia"
+    en: "PUBLIC RECORD \u00b7 Lia publishes the evidence. A community grant is paid to you."
+    pt: "REGISTRO P\u00daBLICO \u00b7 Lia publica as provas. Voc\u00ea recebe uma bolsa comunit\u00e1ria."
+    ending: 2
+    dialogue: []
+    choices: []
+  - id: "ending_private"
+    act: 3
+    speaker: "Nilo"
+    en: "PRIVATE HANDOVER \u00b7 The contract pays the largest award and ends the investigation."
+    pt: "ACORDO PRIVADO \u00b7 O contrato paga a maior recompensa e encerra a apura\u00e7\u00e3o."
+    ending: 3
+    dialogue: []
+    choices: []
+  - id: "ending_law"
+    act: 3
+    speaker: "C\u00e9lia"
+    en: "PUBLIC OVERSIGHT \u00b7 You enter the official programme and receive its award."
+    pt: "FISCALIZA\u00c7\u00c3O P\u00daBLICA \u00b7 Voc\u00ea entra no programa oficial e recebe a gratifica\u00e7\u00e3o."
+    ending: 4
+    dialogue: []
+    choices: []
+  - id: "ending_leave"
+    act: 3
+    speaker: "Rui"
+    en: "A FRESH START \u00b7 You leave the dispute in Santa Luz and take a relocation stipend."
+    pt: "RECOME\u00c7O \u00b7 Voc\u00ea deixa a disputa em Santa Luz e recebe aux\u00edlio para se mudar."
+    ending: 5
+    dialogue: []
+    choices: []

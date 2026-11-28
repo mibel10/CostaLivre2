@@ -52,13 +52,6 @@ MonoBehaviour:
     cinematic: "PaperTrail"
     dialogue: []
     choices:
-    - id: "save_serial"
-      en: "Record the crate serial numbers"
-      pt: "Anotar os n\u00fameros de s\u00e9rie das caixas"
-      next: "archive"
-      optional: 1
-      earns: 16384
-      journalist: 1
     - id: "copy"
       en: "Deliver the public copy"
       pt: "Entregar a c\u00f3pia p\u00fablica"
@@ -71,6 +64,13 @@ MonoBehaviour:
       pt: "Guardar o original sob sigilo"
       next: "exam"
       inspector: 1
+    - id: "save_serial"
+      en: "Record the crate serial numbers"
+      pt: "Anotar os n\u00fameros de s\u00e9rie das caixas"
+      next: "archive"
+      optional: 1
+      earns: 16384
+      journalist: 1
   - id: "rui"
     act: 1
     anchor: "workshop"
@@ -81,13 +81,6 @@ MonoBehaviour:
     loot: -1
     dialogue: []
     choices:
-    - id: "check_manifest"
-      en: "Compare the manifest with Rui's register"
-      pt: "Comparar o manifesto com o livro do Rui"
-      next: "rui"
-      optional: 1
-      earns: 4096
-      mechanic: 1
     - id: "escort"
       en: "Deliver the replacement stock by vehicle"
       pt: "Entregar mercadoria de reposi\u00e7\u00e3o de carro"
@@ -98,6 +91,13 @@ MonoBehaviour:
       pt: "Ouvir a oferta do intermedi\u00e1rio"
       next: "broker"
       earns: 8
+    - id: "check_manifest"
+      en: "Compare the manifest with Rui's register"
+      pt: "Comparar o manifesto com o livro do Rui"
+      next: "rui"
+      optional: 1
+      earns: 4096
+      mechanic: 1
   - id: "celia"
     act: 1
     anchor: "station"
@@ -249,15 +249,6 @@ MonoBehaviour:
     loot: -1
     dialogue: []
     choices:
-    - id: "verify_print"
-      en: "Have Lia cross-check Rui's manifest before printing"
-      pt: "Pedir que Lia confira o manifesto do Rui antes da impress\u00e3o"
-      next: "press_final"
-      optional: 1
-      needs: 4096
-      earns: 8192
-      pay: 250
-      journalist: 1
     - id: "publish_final"
       en: "Release the report"
       pt: "Publicar o relat\u00f3rio"
@@ -274,6 +265,15 @@ MonoBehaviour:
       pt: "Levar o relat\u00f3rio \u00e0 audi\u00eancia"
       next: "hearing"
       inspector: 1
+    - id: "verify_print"
+      en: "Have Lia cross-check Rui's manifest before printing"
+      pt: "Pedir que Lia confira o manifesto do Rui antes da impress\u00e3o"
+      next: "press_final"
+      optional: 1
+      needs: 4096
+      earns: 8192
+      pay: 250
+      journalist: 1
   - id: "contract"
     act: 3
     anchor: "lobby"

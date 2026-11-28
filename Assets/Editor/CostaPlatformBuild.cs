@@ -1,8 +1,11 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
+using UnityEditor.Build;
+using UnityEditor.Rendering;
 using UnityEngine;
 
 namespace CostaLivre.Editor
@@ -28,6 +31,7 @@ namespace CostaLivre.Editor
             output = Path.GetFullPath(string.IsNullOrWhiteSpace(output) ? defaultOutput : output);
             Directory.CreateDirectory(Path.GetDirectoryName(output));
             bool appBundle = EditorUserBuildSettings.buildAppBundle;
+            StripCrossCompiledStp = target == BuildTarget.StandaloneWindows64 && Application.platform != RuntimePlatform.WindowsEditor;
             try
             {
                 if (target == BuildTarget.Android)
@@ -37,7 +41,9 @@ namespace CostaLivre.Editor
                     scenes = EditorBuildSettings.scenes.Where(scene => scene.enabled).Select(scene => scene.path).ToArray(),
                     target = target,
                     locationPathName = output,
-                    options = BuildOptions.None
+                    options = BuildOptions.None,
+                    extraScriptingDefines = StripCrossCompiledStp
+                        ? new[] { "COSTA_STP_NO_DIRECT3D" } : Array.Empty<string>()
                 });
                 if (report.summary.result != BuildResult.Succeeded)
                     throw new InvalidOperationException($"{target} build {report.summary.result}.");
@@ -45,8 +51,28 @@ namespace CostaLivre.Editor
             }
             finally
             {
+                StripCrossCompiledStp = false;
                 EditorUserBuildSettings.buildAppBundle = appBundle;
             }
+        }
+
+        internal static bool StripCrossCompiledStp { get; private set; }
+    }
+
+    internal sealed class CostaCrossBuildStp : IPreprocessComputeShaders
+    {
+        public int callbackOrder => -100;
+
+        public void OnProcessComputeShader(ComputeShader shader, string kernelName, IList<ShaderCompilerData> variants)
+        {
+            if (!CostaPlatformBuild.StripCrossCompiledStp ||
+                shader.name is not ("StpSetup" or "StpPreTaa" or "StpTaa") ||
+                !AssetDatabase.GetAssetPath(shader).StartsWith("Packages/com.unity.render-pipelines.core/Runtime/STP/", StringComparison.Ordinal))
+                return;
+
+            for (int i = variants.Count - 1; i >= 0; i--)
+                if (variants[i].shaderCompilerPlatform == ShaderCompilerPlatform.D3D)
+                    variants.RemoveAt(i);
         }
     }
 }

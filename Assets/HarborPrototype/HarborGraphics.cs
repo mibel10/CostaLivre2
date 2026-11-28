@@ -75,6 +75,9 @@ namespace CostaLivre
         internal int Distance { get; private set; }
         internal bool StpEnabled { get; private set; }
         internal bool StpSupported => pipeline != null && STP.IsSupported() &&
+#if COSTA_STP_NO_DIRECT3D
+            SystemInfo.graphicsDeviceType is not (GraphicsDeviceType.Direct3D11 or GraphicsDeviceType.Direct3D12) &&
+#endif
             GraphicsSettings.TryGetRenderPipelineSettings<RenderGraphSettings>(out var renderGraph) &&
             !renderGraph.enableRenderCompatibilityMode;
         internal bool AdaptiveResolution { get; private set; }

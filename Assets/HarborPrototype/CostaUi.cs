@@ -9,20 +9,21 @@ namespace CostaLivre
         private static bool active;
         private static bool click;
         private static bool held;
+        internal static bool TouchPointer { get; private set; }
         private static float clickedAt = -10;
         private static int lastButton;
         private static readonly GUIContent content = new();
 
         internal static void Update(bool capturing)
         {
-            click = held = false;
+            click = held = TouchPointer = false;
             if (Touchscreen.current != null && CostaTouch.Available)
             {
                 foreach (var finger in Touchscreen.current.touches)
                 {
                     if (!finger.press.wasPressedThisFrame && !finger.press.isPressed && !finger.press.wasReleasedThisFrame)
                         continue;
-                    active = true;
+                    active = TouchPointer = true;
                     pointer = CostaTouch.ScreenPoint(finger.position.ReadValue());
                     click = finger.press.wasPressedThisFrame;
                     held = finger.press.isPressed;

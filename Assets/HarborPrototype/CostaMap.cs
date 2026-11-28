@@ -355,7 +355,7 @@ namespace CostaLivre
                 PanTouch(mapArea, pixelsPerMeter);
                 projection = new Projection(mapCenter, size, pixelsPerMeter);
             }
-            else if (CostaUi.Pick(mapArea))
+            if (!CostaUi.TouchPointer && CostaUi.Pick(mapArea))
                 PickDestination(projection, CostaUi.Position, size);
             DrawBase(size, projection);
             if (objective is Vector3 tracked)

@@ -126,6 +126,7 @@ namespace CostaLivre
         private float cityNight;
         private CostaScore score;
         private readonly CostaTransitions transitions = new();
+        private readonly CostaDeathScreen deathScreen = new();
         private int shownCompletion;
         private Light menuKey, menuFill;
         private CostaEffects.Footfalls footfalls;
@@ -660,6 +661,7 @@ namespace CostaLivre
 
         private void ShowMenu(bool pause = false)
         {
+            deathScreen.Cancel();
             inMenu = true;
             pauseMenu = pause;
             cityTitleVisible = false;
@@ -781,6 +783,7 @@ namespace CostaLivre
 
         private void OnDestroy()
         {
+            deathScreen.Release();
             if (inMenu || overlay != FieldOverlay.None || minigames?.BlocksWorld == true)
                 Time.timeScale = 1;
             cinematics?.Release();
@@ -831,7 +834,7 @@ namespace CostaLivre
             else if (pausedForFocus)
             {
                 pausedForFocus = false;
-                if (!inMenu && overlay == FieldOverlay.None && minigames?.BlocksWorld != true)
+                if (!inMenu && overlay == FieldOverlay.None && minigames?.BlocksWorld != true && !deathScreen.BlocksGameplay)
                     Time.timeScale = 1;
             }
         }
@@ -890,7 +893,10 @@ namespace CostaLivre
                 case 5: effects.Play(Cue.Loot); break;
                 case 7: effects.Play(Cue.Sale); break;
                 case 8: effects.Play(Cue.Purchase); break;
-                case 11: transitions.Begin(L("Back in Santa Luz", "De volta a Santa Luz"), 1.45f, .91f); break;
+                case 11:
+                    effects.Play(Cue.Wasted, 0.72f);
+                    deathScreen.BeginMultiplayer();
+                    break;
             }
             if (session.Online && priorHeat == 0 && session.Local.wantedLevel > 0)
                 effects.Play(Cue.Alert, 0.32f);
@@ -909,6 +915,7 @@ namespace CostaLivre
                 }
                 if (wasOnline)
                 {
+                    deathScreen.Cancel();
                     wasOnline = false;
                     for (int i=0;i<cars.Length;i++)
                     {
@@ -974,6 +981,7 @@ namespace CostaLivre
             bool joined = !wasOnline;
             if (joined)
             {
+                deathScreen.Cancel();
                 soloConnectionPending = false;
                 soloResumable = CanResume();
                 soloHarborJob = harborJob;
@@ -1143,6 +1151,7 @@ namespace CostaLivre
 
             if (worldReady)
             {
+                deathScreen.Tick(pausedForFocus || inMenu);
                 TickNetwork();
                 UpdatePropertyBilling();
                 if (!session.Online && !inMenu && overlay == FieldOverlay.None)
@@ -1150,7 +1159,7 @@ namespace CostaLivre
                 ApplyWorldHour();
                 UpdateInteriors();
             }
-            touch.Update(!inMenu && overlay == FieldOverlay.None && !pausedForFocus,
+            touch.Update(!inMenu && overlay == FieldOverlay.None && !pausedForFocus && !deathScreen.BlocksGameplay,
                 car != null, worldReady && !session.Online && (state == RunState.Caught || state == RunState.Delivered));
             if (inMenu || overlay != FieldOverlay.None)
                 CostaUi.Update(menu.CapturingKey);
@@ -1205,6 +1214,13 @@ namespace CostaLivre
                     Time.timeScale = 1f;
                     SetCursor(true);
                 }
+                return;
+            }
+            if (deathScreen.BlocksGameplay)
+            {
+                deathScreen.UpdateCameraAndBody(followCamera, player.transform, playerModel, yaw, pitch, car != null);
+                if (!session.Online)
+                    CoastIdleVehicles();
                 return;
             }
             if (!session.Online)
@@ -1769,7 +1785,7 @@ namespace CostaLivre
                     EnterVehicle(seized);
                 if (encounter.Health <= 0)
                 {
-                    EndRun(RunState.Caught);
+                    TriggerSoloDeath(fromContract: true);
                     return;
                 }
             }
@@ -1969,7 +1985,7 @@ namespace CostaLivre
                 shownCompletion = jobs.CompletionSerial;
                 transitions.Begin(L("Mission complete", "Missão concluída"), 2.2f, .27f);
             }
-            bool quiet = !worldReady || inMenu || worldLoading || pausedForFocus ||
+            bool quiet = !worldReady || inMenu || worldLoading || pausedForFocus || deathScreen.BlocksGameplay ||
                 overlay != FieldOverlay.None || state == RunState.Delivered || state == RunState.Caught;
             int heat = session?.Online == true ? session.Local.wantedLevel : wantedLevel;
             float danger = session?.Online == true ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat)
@@ -1980,7 +1996,7 @@ namespace CostaLivre
                 return;
             foreach (CostaVehicle vehicle in cars)
                 vehicle.CloseIdleDoors();
-            bool driving = !inMenu && overlay == FieldOverlay.None && !pausedForFocus && !vehicleMotion.Active
+            bool driving = !inMenu && overlay == FieldOverlay.None && !pausedForFocus && !vehicleMotion.Active && !deathScreen.BlocksGameplay
                 && state != RunState.Caught && state != RunState.Delivered;
             effects.UpdateWorldAudio(!inMenu || pauseMenu);
             effects.Drive(driving ? car : null, driving && car != null ? engineThrottle : 0);
@@ -2483,22 +2499,7 @@ namespace CostaLivre
                 impactStrength = Mathf.Clamp01(policeSystem.DamageThisFrame / 24f);
                 if (encounter.Health <= 0)
                 {
-                    // Respawn at Coastal Hospital in free roam
-                    wantedLevel = 0;
-                    pursuit = false;
-                    policeSystem.ResetAll();
-                    encounter.Reset();
-                    if (car != null)
-                        car = null;
-                    player.enabled = false;
-                    player.transform.position = CostaInteriorPlan.Hospital.Entrance + Vector3.back * 2f;
-                    player.enabled = true;
-                    playerModel.gameObject.SetActive(true);
-                    arsenal.SetVisible(true);
-                    bool paid = jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Purchase, 150);
-                    ShowWorldNotice(paid
-                        ? L("Treated at Coastal Hospital (-$150)", "Atendido no Hospital Costeiro (-$150)")
-                        : L("Emergency care at Coastal Hospital", "Atendimento de emergência no Hospital Costeiro"));
+                    TriggerSoloDeath(fromContract: false);
                     return;
                 }
             }
@@ -2519,8 +2520,69 @@ namespace CostaLivre
             }
         }
 
+        private void TriggerSoloDeath(bool fromContract)
+        {
+            if (deathScreen.BlocksGameplay)
+                return;
+            aimingPose = false;
+            vehicleMotion.Clear();
+            arsenal.HideEffects();
+            arsenal.SetVisible(false);
+            effects.Play(Cue.Wasted, 0.78f);
+            bool canAfford = jobs.Credits >= 150;
+            string detail = fromContract
+                ? L("Contract failed  ·  Taken to Coastal Hospital", "Contrato falhou  ·  Levado ao Hospital Costeiro")
+                : canAfford
+                    ? L("Taken to Coastal Hospital  ·  -$150", "Levado ao Hospital Costeiro  ·  -$150")
+                    : L("Emergency care at Coastal Hospital", "Atendimento de emergência no Hospital Costeiro");
+            deathScreen.BeginSolo(detail, () => RespawnAtHospital(fromContract));
+        }
+
+        private void RespawnAtHospital(bool fromContract)
+        {
+            wantedLevel = 0;
+            pursuit = false;
+            arrestProgress = 0;
+            recoveryMissionStar = false;
+            policeSystem?.ResetAll();
+            encounter.Reset();
+            if (fromContract && jobs.InProgress)
+                jobs.Select(-1);
+            effects.ResetCombat();
+            soloSeat = soloLift = -1;
+            car = null;
+            crouching = walking = runningPose = aimingPose = false;
+            rollClock = rollCooldown = 0;
+            grounded = true;
+            verticalSpeed = -2.3f;
+            stamina = FullStamina;
+            sprintRecoveryDelay = 0;
+            needsSprintRelease = false;
+            ResetFootMotion();
+
+            player.enabled = false;
+            ResizeController(1.8f);
+            player.transform.position = CostaInteriorPlan.Hospital.Entrance + Vector3.back * 2f;
+            player.enabled = true;
+            yaw = 180f;
+            pitch = 4f;
+            playerModel.gameObject.SetActive(true);
+            playerModel.localPosition = Vector3.zero;
+            playerModel.rotation = Quaternion.Euler(0, yaw, 0);
+            arsenal.SetVisible(true);
+            playerBody.Animate(HarborCharacter.Motion.Idle, progress: 0, snap: true);
+            PositionCamera(false, true);
+            Physics.SyncTransforms();
+
+            bool paid = jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Purchase, 150);
+            ShowWorldNotice(paid
+                ? L("Treated at Coastal Hospital (-$150)", "Atendido no Hospital Costeiro (-$150)")
+                : L("Emergency care at Coastal Hospital", "Atendimento de emergência no Hospital Costeiro"));
+        }
+
         private void ResetRun(bool resetJob = true)
         {
+            deathScreen.Cancel();
             if (!session.Online)
                 harbor.Damage.Reset();
             effects.ResetCombat();
@@ -2699,12 +2761,16 @@ namespace CostaLivre
             }
             if (cityTitleVisible)
                 titleBackdrop.DrawTransition();
-            DrawInterface();
+            if (!deathScreen.BlocksGameplay)
+                DrawInterface();
             if (!inMenu && overlay == FieldOverlay.None)
+            {
                 transitions.Draw();
+                deathScreen.Draw();
+            }
             if (inMenu || overlay != FieldOverlay.None)
                 CostaUi.DrawPointer();
-            else if (CostaTouch.Available && minigames?.BlocksWorld != true)
+            else if (CostaTouch.Available && minigames?.BlocksWorld != true && !deathScreen.BlocksGameplay)
                 touch.Draw(car != null, state == RunState.Caught || state == RunState.Delivered);
         }
 

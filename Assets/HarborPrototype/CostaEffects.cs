@@ -8,7 +8,8 @@ namespace CostaLivre
         {
             Jump = 3, Land, Roll, Lock, DoorOpen, DoorShut, Mount, Brake,
             Equip, PanelOpen, PanelClose, Loot, Sale, Purchase, Alert, Cuffs, Reward, CarEngine, BikeEngine,
-            Concrete, MetalHit, Wood, Glass, Earth, Blast, Incoming, Hurt, ReloadOut, ReloadIn, ReloadDone, LiftChime
+            Concrete, MetalHit, Wood, Glass, Earth, Blast, Incoming, Hurt, ReloadOut, ReloadIn, ReloadDone, LiftChime,
+            Wasted
         }
 
         internal struct Footfalls
@@ -43,7 +44,7 @@ namespace CostaLivre
         }
 
         private const int Rate = 22050;
-        private readonly AudioClip[] bank = new AudioClip[(int)Cue.LiftChime + 1];
+        private readonly AudioClip[] bank = new AudioClip[(int)Cue.Wasted + 1];
         private readonly AudioSource feedback;
         private readonly CostaSpatialAudio spatialAudio;
         private readonly CostaAcousticScene acousticScene;
@@ -269,6 +270,7 @@ namespace CostaLivre
                 Cue.Concrete or Cue.Wood or Cue.Earth or Cue.Hurt => 0.20f,
                 Cue.MetalHit or Cue.Glass or Cue.Incoming => 0.30f,
                 Cue.Blast => 0.70f,
+                Cue.Wasted => 1.55f,
                 Cue.ReloadOut or Cue.ReloadIn or Cue.ReloadDone => .13f,
                 _ => 1f
             };
@@ -327,6 +329,10 @@ namespace CostaLivre
                     Cue.Purchase => Tone(time, 660) + Tone(time - 0.072f, 910),
                     Cue.Alert => Tone(time, 246) + Tone(time - 0.09f, 320) + Tone(time - 0.22f, 272),
                     Cue.Cuffs => Metal(time, high, 1130) + 0.6f * Metal(time - 0.09f, high, 880),
+                    Cue.Wasted => (0.72f * Wave(time, Mathf.Lerp(58f, 29f, Mathf.Clamp01(time * 0.75f)))
+                        + 0.34f * Wave(time, Mathf.Lerp(116f, 54f, Mathf.Clamp01(time * 0.65f)))
+                        + 0.42f * low) * Fade(time, 2.2f)
+                        + 0.28f * Metal(time - 0.02f, high, 390) * Fade(time, 6.5f),
                     _ => Tone(time, 660) + Tone(time - 0.09f, 825) + Tone(time - 0.19f, 940)
                 };
                 samples[i] = Mathf.Clamp(sample, -1f, 1f) * Mathf.Clamp01((length - time) * 38f);

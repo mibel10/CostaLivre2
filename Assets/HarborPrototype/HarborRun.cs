@@ -164,6 +164,8 @@ namespace CostaLivre
         private InputAction look;
         private InputAction shoot;
         private InputAction aim;
+        private InputAction accelerate;
+        private InputAction reverse;
         private InputAction reload;
         private InputAction nextWeapon;
         private InputAction previousWeapon;
@@ -254,7 +256,28 @@ namespace CostaLivre
         }
 
         private void Connect(string name, string address, int port, bool host, string relay = null) =>
-            WithWorld(() => session.Start(name, address, port, host, relay));
+            WithWorld(() =>
+            {
+                CaptureSoloVehicles();
+                session.Start(name, address, port, host, relay);
+            });
+
+        private void CaptureSoloVehicles()
+        {
+            soloContractCar = encounter.Active && jobs.Current.Mode is CostaJobs.Action.Seize or CostaJobs.Action.DeliverVehicle
+                ? cars[jobs.Current.Vehicle] : null;
+            soloDrivenCar = car;
+            if (soloDrivenCar != null)
+            {
+                soloDrivenPosition = soloDrivenCar.Root.position;
+                soloDrivenYaw = soloDrivenCar.Root.eulerAngles.y;
+            }
+            if (soloContractCar != null)
+            {
+                soloContractCarPosition = soloContractCar.Root.position;
+                soloContractCarYaw = soloContractCar.Root.eulerAngles.y;
+            }
+        }
 
         private void WithWorld(System.Action play)
         {
@@ -351,10 +374,18 @@ namespace CostaLivre
                     if (car == null) { ShowWorldNotice(L("Need a vehicle for the Race!", "Precisa de um veículo para a Corrida!")); return; }
                     minigames.StartStreetRace(RewardWorldActivity);
                 },
-                (id, idx) =>
+                jobs.Account.relics,
+                idx =>
                 {
-                    RewardWorldActivity(500, L($"Relic {idx + 1}/{worldInteractive.CollectiblesTotal} found! (+$500)",
-                        $"Relíquia {idx + 1}/{worldInteractive.CollectiblesTotal} encontrada! (+$500)"));
+                    if (!jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Reward, 500, relic: idx))
+                    {
+                        ShowWorldNotice(L("Could not save the relic. Try again.", "Não foi possível salvar a relíquia. Tente de novo."));
+                        return false;
+                    }
+                    int found = worldInteractive.CollectiblesFound + 1;
+                    RewardWorldActivity(0, L($"Relic {found}/{worldInteractive.CollectiblesTotal} found! (+$500)",
+                        $"Relíquia {found}/{worldInteractive.CollectiblesTotal} encontrada! (+$500)"));
+                    return true;
                 },
                 benchPos =>
                 {
@@ -371,7 +402,23 @@ namespace CostaLivre
                 },
                 () =>
                 {
-                    if (!TrySpendSolo(120)) return;
+                    if (car == null || !car.Customizable || car.Speed > .52f)
+                    {
+                        ShowWorldNotice(L("Stop a customizable vehicle here.", "Estacione aqui um veículo que possa ser tunado."));
+                        return;
+                    }
+                    long tuned = CostaBuildTuning.Change(car.Build, CostaBuildTuning.Part.Grip,
+                        Mathf.Min(3, CostaBuildTuning.Option(car.Build, CostaBuildTuning.Part.Grip) + 1));
+                    if (tuned == car.Build && car.Damage == Vector2.zero)
+                        return;
+                    int vehicle = System.Array.IndexOf(cars, car);
+                    if (!jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Workshop, 120, vehicle: vehicle, build: tuned))
+                    {
+                        ShowWorldNotice(L("Repair could not be purchased.", "Não foi possível comprar o reparo."));
+                        return;
+                    }
+                    car.ApplyBuild(tuned);
+                    car.SetDamage(Vector2.zero);
                     worldInteractive.AddReputation(player.transform.position, 35);
                     ShowWorldNotice(L("Vehicle tuned & repaired! (+Rep)", "Veículo ajustado e reparado! (+Rep)"));
                 });
@@ -628,6 +675,8 @@ namespace CostaLivre
             roll = map.FindAction("Crouch", true);
             shoot = AddButton(map, "Fire weapon", "<Mouse>/leftButton", "<Gamepad>/rightTrigger");
             aim = AddButton(map, "Aim weapon", "<Mouse>/rightButton", "<Gamepad>/leftTrigger");
+            accelerate = map.AddAction("Accelerate vehicle", InputActionType.Value, "<Gamepad>/rightTrigger");
+            reverse = map.AddAction("Reverse vehicle", InputActionType.Value, "<Gamepad>/leftTrigger");
             reload = AddButton(map, "Reload weapon", "<Keyboard>/r", "<Gamepad>/buttonWest");
             nextWeapon = AddButton(map, "Next weapon", "<Gamepad>/rightShoulder");
             previousWeapon = AddButton(map, "Previous weapon", "<Gamepad>/leftShoulder");
@@ -663,7 +712,7 @@ namespace CostaLivre
 
         private void OnDestroy()
         {
-            if (inMenu || overlay != FieldOverlay.None)
+            if (inMenu || overlay != FieldOverlay.None || minigames?.BlocksWorld == true)
                 Time.timeScale = 1;
             session?.Dispose();
             jobs?.Ledger.FinishBank(wait:true);
@@ -689,6 +738,8 @@ namespace CostaLivre
             encounter?.Dispose();
             atmosphere?.Release();
             venues?.Release();
+            livingWorld?.Release();
+            policeSystem?.Release();
             ReleaseWorkshop();
             city?.Interiors.Release();
             traffic?.Release();
@@ -708,7 +759,7 @@ namespace CostaLivre
             else if (pausedForFocus)
             {
                 pausedForFocus = false;
-                if (!inMenu && overlay == FieldOverlay.None)
+                if (!inMenu && overlay == FieldOverlay.None && minigames?.BlocksWorld != true)
                     Time.timeScale = 1;
             }
         }
@@ -795,6 +846,7 @@ namespace CostaLivre
                     city.UpdateHouseDoors(jobs, false, snap: true);
                     jobs.ResumeAfterSession();
                     CloseOverlay();
+                    policeSystem?.SetActiveForOnline(false);
                     ResetRun(resetJob: false);
                     if (soloContractCar != null)
                         soloContractCar.ApplyNetwork(soloContractCarPosition, soloContractCarYaw, 0, true);
@@ -851,19 +903,6 @@ namespace CostaLivre
                 soloRecoveryMissionStar = recoveryMissionStar;
                 soloHeatRemaining = Mathf.Max(0, heatUntil - Time.time);
                 soloCrimeRemaining = Mathf.Max(0, nextCrime - Time.time);
-                soloContractCar = encounter.Active && (jobs.Current.Mode is CostaJobs.Action.Seize or CostaJobs.Action.DeliverVehicle)
-                    ? cars[jobs.Current.Vehicle] : null;
-                soloDrivenCar = car;
-                if (soloDrivenCar != null)
-                {
-                    soloDrivenPosition = soloDrivenCar.Root.position;
-                    soloDrivenYaw = soloDrivenCar.Root.eulerAngles.y;
-                }
-                if (soloContractCar != null)
-                {
-                    soloContractCarPosition = soloContractCar.Root.position;
-                    soloContractCarYaw = soloContractCar.Root.eulerAngles.y;
-                }
                 jobs.PauseForSession();
                 encounter.SetOnline(true);
                 arsenal.SetLoanerPistol(false);
@@ -1220,6 +1259,8 @@ namespace CostaLivre
                 session.Request("crew", support);
                 interaction = false;
             }
+            if (interaction && car != null && !session.Online && TryWorldInteraction())
+                interaction = false;
             if (interaction && TryUseVehicle())
                 interaction = false;
             if (interaction && car == null && grounded && !UsingContractObjective()
@@ -1231,23 +1272,13 @@ namespace CostaLivre
             }
             if (interaction && !session.Online)
             {
-                if (livingWorld != null && livingWorld.TryClaimEvent(player.transform.position, out string evText, out int evCash))
+                if (livingWorld != null && livingWorld.TryClaimEvent(player.transform.position, TryRewardWorldActivity))
                 {
-                    RewardWorldActivity(evCash, evText);
                     GestureAt(HarborCharacter.Gesture.PickUp);
                     interaction = false;
                 }
-                else if (worldInteractive != null)
-                {
-                    var node = worldInteractive.FindNearby(player.transform.position, InteriorHour);
-                    if (node != null && CostaWorldInteractive.IsOpen(node, InteriorHour))
-                    {
-                        node.OnInteract?.Invoke();
-                        GestureAt(HarborCharacter.Gesture.Reach);
-                        effects.Play(Cue.PanelOpen, 0.25f);
-                        interaction = false;
-                    }
-                }
+                else if (TryWorldInteraction())
+                    interaction = false;
             }
             if (vehicleMotion.Active)
                 return;
@@ -1256,7 +1287,7 @@ namespace CostaLivre
             {
                 Vector2 steering = MovementInput();
                 if (!touch.Down(TouchControl.Move) && Gamepad.current != null && move.activeControl?.device is not Keyboard)
-                    steering.y = shoot.ReadValue<float>() - aim.ReadValue<float>();
+                    steering.y = accelerate.ReadValue<float>() - reverse.ReadValue<float>();
                 engineThrottle = steering.y;
                 float previousSpeed = car.Speed;
                 bool braking = Held(jump, TouchControl.Jump);
@@ -1347,6 +1378,17 @@ namespace CostaLivre
             AnimatePolice();
         }
 
+        private bool TryWorldInteraction()
+        {
+            var node = worldInteractive?.FindNearby(player.transform.position, car != null);
+            if (node == null || !CostaWorldInteractive.IsOpen(node, InteriorHour))
+                return false;
+            node.OnInteract?.Invoke();
+            GestureAt(HarborCharacter.Gesture.Reach);
+            effects.Play(Cue.PanelOpen, .25f);
+            return true;
+        }
+
         private bool CoastIdleVehicles(bool defer = false)
         {
             bool moved = false;
@@ -1376,6 +1418,8 @@ namespace CostaLivre
         {
             effects.Play(Cue.PanelOpen, 0.32f);
             overlay = screen;
+            if (screen == FieldOverlay.Map)
+                cityMap.ResetPan();
             if (screen is FieldOverlay.Bag or FieldOverlay.Vendor)
                 bagPanel?.Open();
             Time.timeScale = session.Online || session.Hosting ? 1 : 0;
@@ -1737,6 +1781,7 @@ namespace CostaLivre
             arrestProgress = 0;
             arrestingGuard = null;
             pursuit = false;
+            policeSystem?.ResetAll();
             foreach (Guard guard in guards)
                 if (guard != null && guard.Active)
                     guard.Agent.isStopped = true;
@@ -2340,8 +2385,10 @@ namespace CostaLivre
                     player.enabled = true;
                     playerModel.gameObject.SetActive(true);
                     arsenal.SetVisible(true);
-                    TrySpendSolo(150);
-                    ShowWorldNotice(L("Treated at Coastal Hospital (-$150)", "Atendido no Hospital Costeiro (-$150)"));
+                    bool paid = jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Purchase, 150);
+                    ShowWorldNotice(paid
+                        ? L("Treated at Coastal Hospital (-$150)", "Atendido no Hospital Costeiro (-$150)")
+                        : L("Emergency care at Coastal Hospital", "Atendimento de emergência no Hospital Costeiro"));
                     return;
                 }
             }
@@ -2463,16 +2510,27 @@ namespace CostaLivre
                 ShowWorldNotice(L("Not enough cash!", "Dinheiro insuficiente!"));
                 return false;
             }
-            jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Purchase, amount);
-            return true;
+            if (jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Purchase, amount))
+                return true;
+            ShowWorldNotice(L("Payment could not be saved. Try again.", "Não foi possível salvar o pagamento. Tente de novo."));
+            return false;
         }
 
         private void RewardWorldActivity(int cash, string message)
         {
-            if (cash > 0)
-                jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Reward, cash);
+            TryRewardWorldActivity(cash, message);
+        }
+
+        private bool TryRewardWorldActivity(int cash, string message)
+        {
+            if (cash > 0 && !jobs.Ledger.Apply(jobs.Account, CostaLedger.Operation.Reward, cash))
+            {
+                ShowWorldNotice(L("Reward could not be saved.", "Não foi possível salvar a recompensa."));
+                return false;
+            }
             worldInteractive?.AddReputation(player.transform.position, 20);
             ShowWorldNotice(message);
+            return true;
         }
 
         private void StartMinigame(System.Action startAction)
@@ -2519,14 +2577,17 @@ namespace CostaLivre
                     cityMap.EventTitle = title;
                 }
                 else
-                    cityMap.EventPoint = null;
+                {
+                    cityMap.EventPoint = session?.Online == true ? null : livingWorld?.ActiveEventPoint;
+                    cityMap.EventTitle = livingWorld?.ActiveEventTitle;
+                }
             }
             DrawInterface();
             if (!inMenu && overlay == FieldOverlay.None)
                 transitions.Draw();
             if (inMenu || overlay != FieldOverlay.None)
                 CostaUi.DrawPointer();
-            else if (CostaTouch.Available)
+            else if (CostaTouch.Available && minigames?.BlocksWorld != true)
                 touch.Draw(car != null, state == RunState.Caught || state == RunState.Delivered);
         }
 
@@ -2646,13 +2707,8 @@ namespace CostaLivre
                 };
             if (notice.Length == 0 && pursuit && policeSystem != null && policeSystem.StatusBanner.Length > 0)
                 notice = policeSystem.StatusBanner;
-            if (cityMap != null)
-            {
-                cityMap.EventPoint = livingWorld?.ActiveEventPoint;
-                cityMap.EventTitle = livingWorld?.ActiveEventTitle;
-                cityMap.PoliceSearchCenter = !session.Online && pursuit && policeSystem != null && !policeSystem.PlayerSpotted
-                    ? policeSystem.LastKnownPosition : null;
-            }
+            cityMap.PoliceSearchCenter = !session.Online && pursuit && policeSystem != null && !policeSystem.PlayerSpotted
+                ? policeSystem.LastKnownPosition : null;
             hud.DrawRun(position, yaw, destination, viewport, side, objective, session.Online ? session.ActivityTime : jobs.Remaining,
                 session.Online ? session.Local.wantedLevel : wantedLevel, notice, prompt, stamina / FullStamina,
                 session.Online ? Mathf.Max(session.Local.arrestProgress, session.Local.arrestThreat) : arrestProgress,
@@ -2703,7 +2759,7 @@ namespace CostaLivre
                 return L($"{use} Campaign",$"{use} Campanha");
             if (CanOpenWorkshop())
                 return L($"{use} Workshop",$"{use} Oficina");
-            if (!session.Online && livingWorld != null)
+            if (!session.Online && car == null && livingWorld != null)
             {
                 string evPrompt = livingWorld.EventPrompt(player.transform.position, use);
                 if (evPrompt.Length > 0)
@@ -2711,7 +2767,7 @@ namespace CostaLivre
             }
             if (!session.Online && worldInteractive != null)
             {
-                var node = worldInteractive.FindNearby(player.transform.position, InteriorHour);
+                var node = worldInteractive.FindNearby(player.transform.position, car != null);
                 if (node != null)
                     return worldInteractive.Prompt(node, use, InteriorHour);
             }

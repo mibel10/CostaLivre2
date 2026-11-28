@@ -28,6 +28,13 @@ namespace CostaLivre
         private float nextEventAt = 18f;
         private float eventEndsAt;
         private GameObject eventProp;
+        private static readonly Vector3[] EventSites =
+        {
+            new(-56f, 0f, 41f), new(42f, 0f, 106f), new(-25f, 0f, 145f),
+            new(14f, 0f, CostaCity.Districts[0].Center - 14f),
+            new(14f, 0f, CostaCity.Districts[1].Center - 14f),
+            new(14f, 0f, CostaCity.Districts[2].Center - 14f)
+        };
 
         internal Vector3? ActiveEventPoint { get; private set; }
         internal string ActiveEventTitle { get; private set; } = "";
@@ -140,7 +147,16 @@ namespace CostaLivre
                 {
                     float spd = panicking ? 4.8f : c.Speed;
                     Vector3 dir = toTarget.normalized;
-                    c.Body.Root.position = pos + dir * (spd * dt);
+                    float travel = Mathf.Min(spd * dt, toTarget.magnitude);
+                    if (Physics.SphereCast(pos + Vector3.up * .8f, .24f, dir, out _, travel + .14f,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    {
+                        c.Target = c.Home + new Vector3(Random.Range(-10f, 10f), 0f, Random.Range(-10f, 10f));
+                        c.PauseUntil = Time.time + .4f;
+                        c.Body.Animate(HarborCharacter.Motion.Idle);
+                        continue;
+                    }
+                    c.Body.Root.position = pos + dir * travel;
                     c.Body.Root.rotation = Quaternion.RotateTowards(
                         c.Body.Root.rotation, Quaternion.LookRotation(dir), dt * 320f);
                     c.Body.Animate(panicking ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Walk,
@@ -165,22 +181,19 @@ namespace CostaLivre
 
         private void SpawnOrganicEvent(Vector3 viewer, float hour)
         {
-            Vector3[] candidates =
+            Vector3 chosen = EventSites[0];
+            int nearby = 0;
+            float nearest = float.PositiveInfinity;
+            foreach (Vector3 site in EventSites)
             {
-                new(-56f, 0f, 41f), new(42f, 0f, 106f), new(-12f, 0f, 145f),
-                new(14f, 0f, CostaCity.Districts[0].Center - 14f),
-                new(14f, 0f, CostaCity.Districts[1].Center - 14f),
-                new(14f, 0f, CostaCity.Districts[2].Center - 14f)
-            };
-
-            Vector3 chosen = candidates[Random.Range(0, candidates.Length)];
-            for (int i = 0; i < candidates.Length; i++)
-            {
-                if ((candidates[i] - viewer).sqrMagnitude > 35f * 35f)
+                float distance = (site - viewer).sqrMagnitude;
+                if (nearby == 0 && distance < nearest)
                 {
-                    chosen = candidates[i];
-                    break;
+                    nearest = distance;
+                    chosen = site;
                 }
+                if (distance >= 35f * 35f && distance <= 175f * 175f && Random.Range(0, ++nearby) == 0)
+                    chosen = site;
             }
 
             bool night = hour >= 20f || hour < 5f;
@@ -201,26 +214,31 @@ namespace CostaLivre
             eventProp.SetActive(true);
         }
 
-        internal bool TryClaimEvent(Vector3 playerPos, out string rewardText, out int cashReward)
+        internal bool TryClaimEvent(Vector3 playerPos, System.Func<int, string, bool> claim)
         {
-            rewardText = "";
-            cashReward = 0;
             if (!ActiveEventPoint.HasValue || EventClaimed)
                 return false;
             if ((playerPos - ActiveEventPoint.Value).sqrMagnitude > 2.8f * 2.8f)
                 return false;
 
-            EventClaimed = true;
-            cashReward = CurrentEvent switch
+            int cashReward = CurrentEvent switch
             {
                 EventType.LostPackage => 450,
                 EventType.MysteryMerchant => 320,
                 EventType.CarMeet => 400,
                 _ => 280
             };
-            rewardText = $"{ActiveEventTitle}: +${cashReward}";
+            if (!claim(cashReward, $"{ActiveEventTitle}: +${cashReward}"))
+                return true;
+            EventClaimed = true;
             ClearEvent();
             return true;
+        }
+
+        internal void Release()
+        {
+            foreach (Citizen citizen in citizens)
+                citizen.Body.Release();
         }
 
         internal string EventPrompt(Vector3 playerPos, string useKey)

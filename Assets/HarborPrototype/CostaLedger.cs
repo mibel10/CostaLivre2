@@ -31,6 +31,7 @@ namespace CostaLivre
             public int completedJobs;
             public int[] soloBag;
             public bool soloMigrated;
+            public int relics;
             public Entry[] history = Array.Empty<Entry>();
             public CostaCampaign.Progress campaign;
             public long[] mods = new long[16];
@@ -217,12 +218,14 @@ namespace CostaLivre
         }
 
         internal bool Apply(Account account, Operation op, int amount, int serial = 0, Account target = null,
-            int vehicle = -1, long build = 0, bool fromBank = false, int weapon = -1)
+            int vehicle = -1, long build = 0, bool fromBank = false, int weapon = -1, int relic = -1)
         {
             lock (gate)
             {
                 if (!available || bankWrite != null || amount <= 0 || amount > Limit || serial < 0
                     || serial != 0 && serial <= account.serial || !Array.Exists(book.accounts,a => a == account))
+                    return false;
+                if (relic >= 0 && (op != Operation.Reward || relic >= 12 || (account.relics & (1 << relic)) != 0))
                     return false;
                 int cash = account.cash, personal = account.personal, business = account.business;
                 switch (op)
@@ -251,7 +254,7 @@ namespace CostaLivre
                 }
                 if (cash is < 0 or > Limit || personal is < 0 or > Limit || business is < 0 or > Limit)
                     return false;
-                var prev = (account.cash, account.personal, account.business, account.serial, account.history, account.weapons);
+                var prev = (account.cash, account.personal, account.business, account.serial, account.history, account.weapons, account.relics);
                 long oldMod = op == Operation.Workshop ? account.mods[vehicle] : 0;
                 Entry[] targetHistory = target?.history;
                 string id = Guid.NewGuid().ToString("N");
@@ -263,6 +266,8 @@ namespace CostaLivre
                     account.mods[vehicle] = build;
                 if (op == Operation.Purchase && weapon >= 0)
                     account.weapons |= 1 << weapon;
+                if (relic >= 0)
+                    account.relics |= 1 << relic;
                 if (op == Operation.Transfer)
                 {
                     target.personal += amount;
@@ -270,7 +275,7 @@ namespace CostaLivre
                 }
                 if (Write())
                     return true;
-                (account.cash, account.personal, account.business, account.serial, account.history, account.weapons) = prev;
+                (account.cash, account.personal, account.business, account.serial, account.history, account.weapons, account.relics) = prev;
                 if (op == Operation.Workshop)
                     account.mods[vehicle] = oldMod;
                 if (op == Operation.Transfer)

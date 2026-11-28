@@ -94,7 +94,7 @@ namespace CostaLivre
         internal int Nearby(Vector3 position)
         {
             for (int i = 0; i < Sites.Length; i++)
-                if (CostaJobs.Near(position, Sites[i].Point, 2.05f))
+                if ((position - Sites[i].Point).sqrMagnitude <= 2.05f * 2.05f)
                     return i;
             return -1;
         }

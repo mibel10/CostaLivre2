@@ -75,7 +75,7 @@ namespace CostaLivre
             BuildPatrolCars();
             BuildRoadblocks();
             BuildHelicopter();
-            shotClip = Resources.Load<AudioClip>("Harbor/Audio/ShotPistol");
+            shotClip = HarborArsenal.MakeShot("Tactical police", 0);
         }
 
         private Officer CreateOfficer(int index, Vector3 post, bool elite)
@@ -196,13 +196,16 @@ namespace CostaLivre
                 o.Agent.gameObject.SetActive(baseGuard);
                 if (baseGuard)
                 {
-                    o.Agent.Warp(o.Post);
-                    o.Agent.ResetPath();
+                    if (NavMesh.SamplePosition(o.Post, out NavMeshHit hit, 2.8f, NavMesh.AllAreas))
+                        o.Agent.Warp(hit.position);
+                    if (o.Agent.isOnNavMesh)
+                        o.Agent.ResetPath();
                 }
             }
             for (int i = 0; i < patrolCars.Length; i++)
             {
                 patrolCars[i].Active = false;
+                patrolCars[i].Speed = 0;
                 patrolCars[i].Root.gameObject.SetActive(false);
             }
             for (int i = 0; i < roadblocks.Length; i++)
@@ -213,6 +216,13 @@ namespace CostaLivre
         internal void SetActiveForOnline(bool online)
         {
             root.gameObject.SetActive(!online);
+        }
+
+        internal void Release()
+        {
+            foreach (Officer officer in officers)
+                officer.Character.Release();
+            Object.Destroy(shotClip);
         }
 
         internal bool TryHit(Collider hit, int damage)
@@ -240,10 +250,10 @@ namespace CostaLivre
                 wantedLevel = minLevel;
             else if (wantedLevel < 5)
                 wantedLevel++;
-            EnsureReinforcements(wantedLevel, playerPos);
+            EnsureReinforcements(wantedLevel, playerPos, relocate: true);
         }
 
-        private void EnsureReinforcements(int wantedLevel, Vector3 playerPos)
+        private void EnsureReinforcements(int wantedLevel, Vector3 playerPos, bool relocate = false)
         {
             int desiredOfficers = wantedLevel switch
             {
@@ -256,9 +266,10 @@ namespace CostaLivre
             for (int i = 0; i < officers.Length; i++)
             {
                 Officer o = officers[i];
-                if (i < desiredOfficers && !o.Agent.gameObject.activeSelf && o.Health > 0)
+                bool distant = (o.Agent.transform.position - playerPos).sqrMagnitude > 95f * 95f;
+                if (i < desiredOfficers && o.Health > 0 && (!o.Agent.gameObject.activeSelf || relocate && distant)
+                    && TryFindSafeSpawn(playerPos, 28f, 42f, out Vector3 spawn))
                 {
-                    Vector3 spawn = FindSafeSpawn(playerPos, 32f, 55f);
                     o.Agent.gameObject.SetActive(true);
                     o.Agent.Warp(spawn);
                 }
@@ -268,9 +279,8 @@ namespace CostaLivre
             for (int i = 0; i < patrolCars.Length; i++)
             {
                 bool shouldBeActive = i < desiredCars;
-                if (shouldBeActive && !patrolCars[i].Active)
+                if (shouldBeActive && !patrolCars[i].Active && TryFindSafeSpawn(playerPos, 42f, 62f, out Vector3 spawn))
                 {
-                    Vector3 spawn = FindSafeSpawn(playerPos, 45f, 70f);
                     patrolCars[i].Root.position = spawn;
                     patrolCars[i].Root.LookAt(new Vector3(playerPos.x, spawn.y, playerPos.z));
                     patrolCars[i].Active = true;
@@ -296,14 +306,22 @@ namespace CostaLivre
                 helicopter.gameObject.SetActive(false);
         }
 
-        private static Vector3 FindSafeSpawn(Vector3 playerPos, float minR, float maxR)
+        private static bool TryFindSafeSpawn(Vector3 playerPos, float minR, float maxR, out Vector3 spawn)
         {
-            float angle = Random.Range(0f, Mathf.PI * 2f);
-            float dist = Random.Range(minR, maxR);
-            Vector3 candidate = playerPos + new Vector3(Mathf.Cos(angle) * dist, 0f, Mathf.Sin(angle) * dist);
-            if (NavMesh.SamplePosition(candidate, out NavMeshHit hit, 12f, NavMesh.AllAreas))
-                return hit.position;
-            return new Vector3(CostaCity.HighwayX, 0f, Mathf.Clamp(playerPos.z + dist, 25f, CostaCity.HighwayEnd - 15f));
+            for (int attempt = 0; attempt < 8; attempt++)
+            {
+                float angle = Random.Range(0f, Mathf.PI * 2f);
+                float dist = Random.Range(minR, maxR);
+                Vector3 candidate = new(playerPos.x + Mathf.Cos(angle) * dist, 0f, playerPos.z + Mathf.Sin(angle) * dist);
+                if (NavMesh.SamplePosition(candidate, out NavMeshHit hit, 9f, NavMesh.AllAreas)
+                    && Mathf.Abs(hit.position.y) < .8f)
+                {
+                    spawn = hit.position;
+                    return true;
+                }
+            }
+            spawn = default;
+            return false;
         }
 
         internal bool Update(
@@ -334,7 +352,7 @@ namespace CostaLivre
 
             bool anySaw = false;
             bool closeArrest = false;
-            Vector3 eyeTarget = playerPos + Vector3.up * (inVehicle ? 0.9f : 1.25f);
+            Vector3 eyeTarget = playerPos + Vector3.up * (inVehicle ? 1.6f : 1.25f);
 
             for (int i = 0; i < officers.Length; i++)
             {
@@ -413,7 +431,7 @@ namespace CostaLivre
                         o.Flash.SetActive(true);
                         o.FlashUntil = Time.time + 0.06f;
                         if (shotClip != null)
-                            AudioSource.PlayClipAtPoint(shotClip, oEye, 0.42f);
+                            effects.PlayShot(shotClip, oEye, .42f);
 
                         // Balanced inaccuracy: lower accuracy when player is moving fast or in vehicle
                         float hitChance = o.Elite ? 0.44f : 0.28f;
@@ -429,7 +447,7 @@ namespace CostaLivre
                 }
 
                 // Close arrest check (especially Wanted 1 or on foot)
-                if (distSq <= ArrestDistance * ArrestDistance && (!inVehicle || vehicleSpeed < 1.5f))
+                if (hasLos && !playerInvulnerable && distSq <= ArrestDistance * ArrestDistance && (!inVehicle || vehicleSpeed < 1.5f))
                     closeArrest = true;
 
                 // Animate character
@@ -440,8 +458,8 @@ namespace CostaLivre
                     o.Character.HoldWeapon(true, 0f, false);
             }
 
-            UpdatePatrolCars(playerPos, dt);
-            UpdateHelicopter(playerPos, wantedLevel, ref anySaw, dt);
+            UpdatePatrolCars(dt);
+            UpdateHelicopter(eyeTarget, ref anySaw, dt);
 
             if (closeArrest)
             {
@@ -488,7 +506,7 @@ namespace CostaLivre
             return true;
         }
 
-        private void UpdatePatrolCars(Vector3 playerPos, float dt)
+        private void UpdatePatrolCars(float dt)
         {
             bool flashRed = Mathf.Repeat(Time.time * 4.5f, 1f) < 0.5f;
             for (int i = 0; i < patrolCars.Length; i++)
@@ -504,10 +522,28 @@ namespace CostaLivre
                 float dist = toTarget.magnitude;
                 if (dist > 11f)
                 {
-                    Quaternion desired = Quaternion.LookRotation(toTarget.normalized);
+                    Vector3 target = toTarget.normalized;
+                    if (Physics.SphereCast(car.Root.position + Vector3.up * .72f, .84f, target,
+                        out _, 5f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    {
+                        Vector3 left = Quaternion.Euler(0, -55, 0) * target;
+                        target = Physics.SphereCast(car.Root.position + Vector3.up * .72f, .84f, left,
+                            out _, 4f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
+                            ? Quaternion.Euler(0, 55, 0) * target : left;
+                    }
+                    Quaternion desired = Quaternion.LookRotation(target);
                     car.Root.rotation = Quaternion.RotateTowards(car.Root.rotation, desired, dt * 85f);
                     car.Speed = Mathf.MoveTowards(car.Speed, 15.5f, dt * 11f);
-                    car.Root.position += car.Root.forward * (car.Speed * dt);
+                    Vector3 direction = car.Root.forward;
+                    float travel = car.Speed * dt;
+                    if (Physics.BoxCast(car.Root.position + Vector3.up * .66f + direction * 2.2f,
+                        new Vector3(.92f, .45f, .08f), direction, out RaycastHit obstacle, car.Root.rotation,
+                        travel + .15f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    {
+                        travel = Mathf.Max(0, obstacle.distance - .15f);
+                        car.Speed = 0;
+                    }
+                    car.Root.position += direction * travel;
                 }
                 else
                 {
@@ -516,7 +552,7 @@ namespace CostaLivre
             }
         }
 
-        private void UpdateHelicopter(Vector3 playerPos, int wantedLevel, ref bool anySaw, float dt)
+        private void UpdateHelicopter(Vector3 playerEye, ref bool anySaw, float dt)
         {
             if (!helicopter.gameObject.activeSelf)
                 return;
@@ -528,11 +564,15 @@ namespace CostaLivre
             if (look.sqrMagnitude > 0.5f)
                 helicopter.rotation = Quaternion.Slerp(helicopter.rotation, Quaternion.LookRotation(look), dt * 2f);
 
-            // Helicopter only spots player outdoors (if no roof overhead)
-            if (!Physics.Raycast(playerPos + Vector3.up * 1.5f, Vector3.up, 22f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+            Transform light = heliSpotlight.transform;
+            light.rotation = Quaternion.LookRotation(LastKnownPosition + Vector3.up - light.position);
+            Vector3 beam = playerEye - light.position;
+            if (beam.sqrMagnitude <= heliSpotlight.range * heliSpotlight.range
+                && Vector3.Dot(light.forward, beam.normalized) >= Mathf.Cos(heliSpotlight.spotAngle * .5f * Mathf.Deg2Rad)
+                && !Physics.Linecast(light.position, playerEye, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
             {
                 anySaw = true;
-                LastKnownPosition = playerPos;
+                LastKnownPosition = new Vector3(playerEye.x, LastKnownPosition.y, playerEye.z);
             }
         }
 

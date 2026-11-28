@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.AI;
+using UnityEngine.InputSystem;
 using static CostaLivre.CostaText;
 
 namespace CostaLivre
@@ -106,7 +108,16 @@ namespace CostaLivre
         private float zoom = 1f;
         private float miniHeading;
         private bool headingReady;
-        private readonly Vector3[] route = new Vector3[9];
+        private readonly NavMeshPath path = new();
+        private readonly Vector3[] route = new Vector3[96];
+        private Vector3 routeFrom, routeTo;
+        private float routeCheckAt;
+        private int routeCount;
+        private int panFinger = -1;
+        private Vector2 panStart, panLast;
+        private bool panning;
+
+        internal void ResetPan() => panFinger = -1;
         private int selected = -1;
         private GUIStyle title;
         private GUIStyle small;
@@ -257,6 +268,38 @@ namespace CostaLivre
             Label(new Rect(p.x + 4, p.y - 11, 15, 15), relative > 0 ? "↑" : "↓", markerText, color);
         }
 
+        private void PanTouch(Rect bounds, float pixelsPerMeter)
+        {
+            foreach (var finger in Touchscreen.current.touches)
+            {
+                int id = finger.touchId.ReadValue();
+                Vector2 point = GUIUtility.ScreenToGUIPoint(CostaTouch.ScreenPoint(finger.position.ReadValue()));
+                if (panFinger < 0 && finger.press.wasPressedThisFrame && bounds.Contains(point))
+                {
+                    panFinger = id;
+                    panStart = panLast = point;
+                    panning = false;
+                }
+                if (panFinger != id || !finger.press.isPressed)
+                    continue;
+                panning |= (panStart - point).sqrMagnitude > 49f;
+                if (panning)
+                {
+                    Vector2 delta = point - panLast;
+                    mapCenter += new Vector2(-delta.x, delta.y) / pixelsPerMeter;
+                    ClampCenter();
+                    panLast = point;
+                }
+                return;
+            }
+            if (panFinger >= 0 && !panning && bounds.Contains(panStart))
+            {
+                var projection = new Projection(mapCenter, bounds.size, pixelsPerMeter);
+                PickDestination(projection, panStart, bounds.size);
+            }
+            ResetPan();
+        }
+
         internal void DrawFull(Vector3 player, float heading, Vector3? objective, System.Action close, System.Action journal = null)
         {
             EnsureStyles();
@@ -301,12 +344,18 @@ namespace CostaLivre
                 input.Use();
             }
             projection = new Projection(mapCenter, size, pixelsPerMeter);
-            if (onMap && input.type == EventType.MouseDown && input.button == 0)
+            if (!CostaTouch.Available && onMap && input.type == EventType.MouseDown && input.button == 0)
             {
                 PickDestination(projection, input.mousePosition, size);
                 input.Use();
             }
-            if (CostaUi.Pick(new Rect(Vector2.zero, size)))
+            Rect mapArea = new(Vector2.zero, size);
+            if (CostaTouch.Available && input.type == EventType.Repaint)
+            {
+                PanTouch(mapArea, pixelsPerMeter);
+                projection = new Projection(mapCenter, size, pixelsPerMeter);
+            }
+            else if (CostaUi.Pick(mapArea))
                 PickDestination(projection, CostaUi.Position, size);
             DrawBase(size, projection);
             if (objective is Vector3 tracked)
@@ -324,7 +373,7 @@ namespace CostaLivre
                     continue;
                 Rect hit = new(center.x - 10, center.y - 10, 20, 20);
                 PinDot(center, ColorFor(pin.Type), selected == i || hit.Contains(input.mousePosition) ? 11 : 8);
-                if (i >= Points.Length - CostaCity.Districts.Length || zoom > 4.7f || hit.Contains(input.mousePosition) || selected == i)
+                if (i is >= 18 and < 21 || zoom > 4.7f || hit.Contains(input.mousePosition) || selected == i)
                     Label(new Rect(center.x + 8, center.y - 8, 168, 16), pin.Title, markerText, Text);
             }
             if (EventPoint is Vector3 eventPoint)
@@ -444,65 +493,27 @@ namespace CostaLivre
         {
             if (Event.current.type != EventType.Repaint)
                 return;
-            int count = 0;
-            route[count++] = from;
-            bool regionalFrom = from.z >= CostaCity.HighwayStart;
-            bool regionalTo = to.z >= CostaCity.HighwayStart;
-            Vector3 a = regionalFrom ? new Vector3(CostaCity.HighwayX, 0, from.z) : SnapStreet(from);
-            Vector3 b = regionalTo ? new Vector3(CostaCity.HighwayX, 0, to.z) : SnapStreet(to);
-            route[count++] = a;
-            if (regionalFrom && regionalTo)
-                route[count++] = b;
-            else
+            bool moved = (from - routeFrom).sqrMagnitude > 25f;
+            bool destinationChanged = (to - routeTo).sqrMagnitude > 4f;
+            if (routeCheckAt == 0 || destinationChanged || moved && Time.unscaledTime >= routeCheckAt)
             {
-                Vector3 junction = new(CostaCity.HighwayX, 0, 123);
-                if (regionalFrom)
-                {
-                    route[count++] = junction;
-                    a = junction;
-                }
-                if (regionalTo)
-                    b = junction;
-                float x = Nearest(a.x, CostaCity.Avenues);
-                float z = Nearest(b.z, CostaCity.CrossStreets);
-                bool aVertical = Mathf.Abs(a.x - x) < .05f;
-                bool bHorizontal = Mathf.Abs(b.z - z) < .05f;
-                if (!aVertical)
-                    route[count++] = new Vector3(x, 0, a.z);
-                route[count++] = new Vector3(x, 0, z);
-                if (!bHorizontal)
-                    route[count++] = new Vector3(b.x, 0, z);
-                route[count++] = b;
-                if (regionalTo)
-                    route[count++] = new Vector3(CostaCity.HighwayX, 0, to.z);
+                routeFrom = from;
+                routeTo = to;
+                routeCheckAt = Time.unscaledTime + .55f;
+                routeCount = 0;
+                if (NavMesh.SamplePosition(from, out NavMeshHit start, 4f, NavMesh.AllAreas) &&
+                    NavMesh.SamplePosition(to, out NavMeshHit end, 7f, NavMesh.AllAreas) &&
+                    NavMesh.CalculatePath(start.position, end.position, NavMesh.AllAreas, path) &&
+                    path.status == NavMeshPathStatus.PathComplete)
+                    routeCount = path.GetCornersNonAlloc(route);
             }
-            route[count++] = to;
-            for (int i = 1; i < count; i++)
+            for (int i = 1; i < routeCount; i++)
             {
                 Vector2 start = projection.Point(route[i - 1]);
                 Vector2 end = projection.Point(route[i]);
                 RoadLine(start, end, 5, new Color(.05f,.12f,.15f,.9f));
                 RoadLine(start, end, 2.6f, color);
             }
-        }
-
-        private static Vector3 SnapStreet(Vector3 position)
-        {
-            float x = Nearest(position.x, CostaCity.Avenues);
-            float z = Nearest(position.z, CostaCity.CrossStreets);
-            if (position.z < 23)
-                return new Vector3(x, 0, z);
-            return Mathf.Abs(position.x - x) < Mathf.Abs(position.z - z)
-                ? new Vector3(x, 0, position.z) : new Vector3(position.x, 0, z);
-        }
-
-        private static float Nearest(float value, float[] choices)
-        {
-            float best = choices[0];
-            foreach (float candidate in choices)
-                if (Mathf.Abs(candidate - value) < Mathf.Abs(best - value))
-                    best = candidate;
-            return best;
         }
 
         private static void RoadLine(Vector2 from, Vector2 to, float width, Color color)

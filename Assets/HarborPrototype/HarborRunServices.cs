@@ -70,13 +70,17 @@ namespace CostaLivre
             int business = online ? session.BankBusiness : account.business;
             GUI.Label(new Rect(18,54,575,24), L("CASH","ESPÉCIE") + $"  ${CurrentCash:N0}     " +
                 L("PERSONAL","PESSOAL")+$"  ${personal:N0}     "+L("BUSINESS","EMPRESARIAL")+$"  ${business:N0}");
-            if (CostaUi.Button(new Rect(18,88,72,31),"− 250",serviceButton))
-                bankingAmount = Mathf.Max(250,bankingAmount-250);
-            GUI.Label(new Rect(107,90,115,30),$"${bankingAmount:N0}");
-            if (CostaUi.Button(new Rect(225,88,72,31),"+ 250",serviceButton))
-                bankingAmount = Mathf.Min(100000,bankingAmount+250);
-            if (CostaUi.Button(new Rect(309,88,89,31),"+ 1.000",serviceButton))
-                bankingAmount = Mathf.Min(100000,bankingAmount+1000);
+            if (CostaUi.Button(new Rect(18,88,68,31),"− 250",serviceButton))
+                bankingAmount = Mathf.Max(1, bankingAmount - 250);
+            if (CostaUi.Button(new Rect(91,88,55,31),"− 1",serviceButton))
+                bankingAmount = Mathf.Max(1, bankingAmount - 1);
+            GUI.Label(new Rect(158,90,111,30),$"${bankingAmount:N0}");
+            if (CostaUi.Button(new Rect(272,88,55,31),"+ 1",serviceButton))
+                bankingAmount = Mathf.Min(CostaLedger.Limit, bankingAmount + 1);
+            if (CostaUi.Button(new Rect(333,88,75,31),"+ 250",serviceButton))
+                bankingAmount = Mathf.Min(CostaLedger.Limit, bankingAmount + 250);
+            if (CostaUi.Button(new Rect(414,88,89,31),"+ 1.000",serviceButton))
+                bankingAmount = Mathf.Min(CostaLedger.Limit, bankingAmount + 1000);
 
             if (CostaUi.Button(new Rect(18,132,137,34),L("Deposit","Depositar"),serviceButton))
                 BankAction(CostaLedger.Operation.Deposit);

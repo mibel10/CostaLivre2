@@ -45,6 +45,7 @@ namespace CostaLivre
         private double? saveAt;
         private bool canMeasureGpu;
         private int renderPercent;
+        private int lockedRenderPercent;
         private FrameTiming[] frameTimings;
         private float nextGpuCheck;
         private readonly CostaAdaptiveBudget budget = new();
@@ -107,6 +108,7 @@ namespace CostaLivre
             AdaptiveResolution = PlayerPrefs.GetInt(AdaptiveKey, 0) != 0;
             Extreme = PlayerPrefs.GetInt("CostaExtremePotato",0)!=0;
             ScaleLocked = PlayerPrefs.GetInt("CostaLockScale",0)!=0;
+            lockedRenderPercent = Mathf.Clamp(PlayerPrefs.GetInt("CostaLockedRenderPercent", ResolutionPercent), MinActualPercent, 100);
             WorldLocked = PlayerPrefs.GetInt("CostaLockWorld",0)!=0;
             SetupPipeline();
         }
@@ -125,6 +127,7 @@ namespace CostaLivre
             ShadowQuality = preset;
             TextureQuality = Textures[preset];
             ResolutionPercent = Scales[preset];
+            lockedRenderPercent = ResolutionPercent;
             Distance = Distances[preset];
             StpEnabled = false;
             if (switchAsset)
@@ -158,6 +161,8 @@ namespace CostaLivre
             if (percent == ResolutionPercent)
                 return;
             ResolutionPercent = percent;
+            if (ScaleLocked)
+                lockedRenderPercent = Mathf.Max(percent, MinActualPercent);
             ApplyUpscaling();
             QueueSave();
         }
@@ -204,7 +209,14 @@ namespace CostaLivre
             QueueSave();
         }
 
-        internal void ToggleScaleLock() { ScaleLocked=!ScaleLocked; ApplyDynamic(); QueueSave(); }
+        internal void ToggleScaleLock()
+        {
+            ScaleLocked = !ScaleLocked;
+            if (ScaleLocked)
+                lockedRenderPercent = ActualPercent;
+            ApplyDynamic();
+            QueueSave();
+        }
         internal void ToggleWorldLock() { WorldLocked=!WorldLocked; ApplyDynamic(); QueueSave(); }
 
         internal void UpdateAdaptiveResolution(bool inGameplay)
@@ -258,8 +270,8 @@ namespace CostaLivre
         {
             int ceiling=Mathf.Max(ResolutionPercent,MinActualPercent);
             int floor=Extreme ? Mathf.Max(MinActualPercent,25) : Mathf.Min(ceiling,Mathf.Max(MinActualPercent,45));
-            int gpu=ScaleLocked ? 0 : budget.GpuTier;
-            ApplyUpscaling(Mathf.Clamp(ceiling-gpu*5,Mathf.Min(floor,ceiling),ceiling));
+            ApplyUpscaling(ScaleLocked ? lockedRenderPercent :
+                Mathf.Clamp(ceiling - budget.GpuTier * 5, Mathf.Min(floor, ceiling), ceiling));
             camera.farClipPlane=WorldLocked ? Distance : Mathf.Max(MinDistance,Distance-(budget.CpuTier+budget.GpuTier/3)*18);
             ApplyShadows();
         }
@@ -371,7 +383,7 @@ namespace CostaLivre
 
         private void ApplyTextures() => QualitySettings.globalTextureMipmapLimit = 3 - TextureQuality;
 
-        private void ApplyUpscaling() => ApplyUpscaling(Mathf.Max(ResolutionPercent, MinActualPercent));
+        private void ApplyUpscaling() => ApplyUpscaling(ScaleLocked ? lockedRenderPercent : Mathf.Max(ResolutionPercent, MinActualPercent));
 
         private void ApplyUpscaling(int percent)
         {
@@ -391,6 +403,7 @@ namespace CostaLivre
         {
             PlayerPrefs.SetInt("CostaExtremePotato",Extreme ? 1 : 0);
             PlayerPrefs.SetInt("CostaLockScale",ScaleLocked ? 1 : 0);
+            PlayerPrefs.SetInt("CostaLockedRenderPercent", lockedRenderPercent);
             PlayerPrefs.SetInt("CostaLockWorld",WorldLocked ? 1 : 0);
             PlayerPrefs.SetInt(PresetKey, Preset);
             PlayerPrefs.SetInt(ShadowKey, ShadowQuality);

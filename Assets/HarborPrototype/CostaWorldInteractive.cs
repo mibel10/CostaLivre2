@@ -30,6 +30,7 @@ namespace CostaLivre
             internal Action OnInteract;
             internal GameObject Visual;
             internal bool Collected;
+            internal bool RequiresVehicle;
         }
 
         private static readonly string[] CityNames = { "Santa Luz", "Calado City", "Antutu City", "Vice City" };
@@ -95,7 +96,8 @@ namespace CostaLivre
             Action onStartFishing,
             Action onStartDrift,
             Action onStartStreetRace,
-            Action<string, int> onSecretFound,
+            int savedRelics,
+            Func<int, bool> onSecretFound,
             Action<Vector3> onSitBench,
             Action onNightclubDrink,
             Action onDealerUpgrade)
@@ -149,7 +151,7 @@ namespace CostaLivre
                 {
                     Id = "minigame_drift", Kind = NodeKind.Minigame,
                     Position = new Vector3(-20f, 0f, CostaCity.Districts[0].Center - 8.2f),
-                    Radius = 3.2f, OpenHour = 0, CloseHour = 24,
+                    Radius = 3.2f, OpenHour = 0, CloseHour = 24, RequiresVehicle = true,
                     TitleEn = "Drift Challenge", TitlePt = "Desafio de Drift",
                     ActionEn = "Start Drift Trial (in vehicle)", ActionPt = "Iniciar Drift (no veículo)",
                     OnInteract = onStartDrift
@@ -162,7 +164,7 @@ namespace CostaLivre
                 {
                     Id = "minigame_race", Kind = NodeKind.Minigame,
                     Position = new Vector3(-42f, 0f, CostaCity.Districts[1].Center - 8.2f),
-                    Radius = 3.2f, OpenHour = 0, CloseHour = 24,
+                    Radius = 3.2f, OpenHour = 0, CloseHour = 24, RequiresVehicle = true,
                     TitleEn = "Street Race", TitlePt = "Corrida de Rua",
                     ActionEn = "Start Street Race (in vehicle)", ActionPt = "Iniciar Corrida de Rua (no veículo)",
                     OnInteract = onStartStreetRace
@@ -191,8 +193,8 @@ namespace CostaLivre
             // 12. Colecionáveis secretos espalhados por telhados, becos e terraços
             Vector3[] secrets =
             {
-                new(35f, 6.2f, 12f),     // Topo do guindaste do cais
-                new(-140f, 0.5f, 65f),   // Beco oeste de Santa Luz
+                new(22.8f, 0.15f, 12f), // Parapeito em frente ao guindaste
+                new(-130.5f, 0.5f, 65f), // Beco oeste de Santa Luz
                 new(-55f, 23.2f, 64f),   // Terraço do Grand Hotel Atlântico
                 new(48f, 0.5f, 136f),    // Atrás da roda-gigante
                 new(-102f, 0.5f, 150f),  // Fundo da Vila 02
@@ -208,7 +210,7 @@ namespace CostaLivre
             for (int i = 0; i < secrets.Length; i++)
             {
                 string id = $"CostaSecret_{i}";
-                bool found = PlayerPrefs.GetInt(id, 0) != 0;
+                bool found = (savedRelics & (1 << i)) != 0 || PlayerPrefs.GetInt(id, 0) != 0;
                 if (found)
                     collectiblesFound++;
 
@@ -228,15 +230,12 @@ namespace CostaLivre
                     OnInteract = () =>
                     {
                         Node n = nodes.Find(x => x.Id == id);
-                        if (n == null || n.Collected)
+                        if (n == null || n.Collected || !onSecretFound(idx))
                             return;
                         n.Collected = true;
                         if (n.Visual != null)
                             n.Visual.SetActive(false);
-                        PlayerPrefs.SetInt(id, 1);
-                        PlayerPrefs.Save();
                         collectiblesFound++;
-                        onSecretFound(id, idx);
                     }
                 });
             }
@@ -328,7 +327,8 @@ namespace CostaLivre
                 Id = "dealer_antutu", Kind = NodeKind.Dealer, Position = pos + new Vector3(0f, 0f, -2.5f),
                 Radius = 3.0f, OpenHour = 0, CloseHour = 24,
                 TitleEn = "Antutu Tuners", TitlePt = "Tunagem Antutu",
-                ActionEn = "Nitro & Repair ($120)", ActionPt = "Reparo & Ajuste ($120)",
+                ActionEn = "Repair and tune vehicle ($120)", ActionPt = "Reparar e ajustar veículo ($120)",
+                RequiresVehicle = true,
                 OnInteract = onDealerUpgrade
             });
         }
@@ -383,14 +383,14 @@ namespace CostaLivre
             return hour >= node.OpenHour || hour < node.CloseHour;
         }
 
-        internal Node FindNearby(Vector3 playerPos, float hour)
+        internal Node FindNearby(Vector3 playerPos, bool driving)
         {
             Node best = null;
             float bestDist = float.PositiveInfinity;
             for (int i = 0; i < nodes.Count; i++)
             {
                 Node n = nodes[i];
-                if (n.Collected)
+                if (n.Collected || n.RequiresVehicle != driving)
                     continue;
                 float d = (playerPos - n.Position).sqrMagnitude;
                 if (d <= n.Radius * n.Radius && d < bestDist)

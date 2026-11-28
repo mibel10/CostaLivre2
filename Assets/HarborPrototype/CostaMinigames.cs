@@ -42,6 +42,7 @@ namespace CostaLivre
 
         private GUIStyle titleStyle;
         private GUIStyle bodyStyle;
+        private int actionFinger = -1;
 
         internal Vector3? CurrentWaypoint => (Active is Mode.Drift or Mode.StreetRace) && raceWaypoints != null && checkpointIndex < raceWaypoints.Length
             ? raceWaypoints[checkpointIndex] : null;
@@ -134,6 +135,7 @@ namespace CostaLivre
             score = 0;
             bestScore = PlayerPrefs.GetInt(prefKey, 0);
             cursorDir = 1f;
+            actionFinger = -1;
         }
 
         internal void UpdateWorldActivity(Vector3 playerPos, CostaVehicle car)
@@ -157,7 +159,7 @@ namespace CostaLivre
 
                 if (raceTimer <= 0f)
                 {
-                    int reward = Mathf.RoundToInt(Mathf.Clamp(driftScore * 0.45f, 150f, 1800f));
+                    int reward = Mathf.RoundToInt(Mathf.Clamp(driftScore * 0.45f, 0f, 1800f));
                     int best = PlayerPrefs.GetInt("CostaBest_Drift", 0);
                     if (driftScore > best)
                     {
@@ -193,15 +195,16 @@ namespace CostaLivre
 
             float dt = Time.unscaledDeltaTime;
             sessionTimer -= dt;
-            if (Keyboard.current?.escapeKey.wasPressedThisFrame == true || Gamepad.current?.buttonEast.wasPressedThisFrame == true)
+            ReadTouch(out bool touchAction, out bool touchHeld, out bool touchExit);
+            if (touchExit || Keyboard.current?.escapeKey.wasPressedThisFrame == true || Gamepad.current?.buttonEast.wasPressedThisFrame == true)
             {
-                FinishUi();
+                Active = Mode.None;
                 return;
             }
 
-            bool actionPressed = Keyboard.current?.spaceKey.wasPressedThisFrame == true
+            bool actionPressed = touchAction || Keyboard.current?.spaceKey.wasPressedThisFrame == true
                 || Gamepad.current?.buttonSouth.wasPressedThisFrame == true;
-            bool actionHeld = Keyboard.current?.spaceKey.isPressed == true
+            bool actionHeld = touchHeld || Keyboard.current?.spaceKey.isPressed == true
                 || Gamepad.current?.buttonSouth.isPressed == true;
 
             if (Active is Mode.Basketball or Mode.Arcade or Mode.Gym)
@@ -288,6 +291,44 @@ namespace CostaLivre
                 $"Atividade concluída · Pontuação {score} (+${cash})"));
         }
 
+        private static Rect PanelBounds()
+        {
+            Rect safe = Screen.safeArea;
+            float w = Mathf.Min(safe.width * .96f, Mathf.Max(360f, safe.width * .50f));
+            float h = Mathf.Min(safe.height * .92f, Mathf.Max(230f, safe.height * .42f));
+            return new Rect(safe.center.x - w * .5f, Screen.height - safe.center.y - h * .5f, w, h);
+        }
+
+        private static Rect ActionBounds(Rect panel) => new(panel.x + panel.width * .40f, panel.y + panel.height * .74f, panel.width * .55f, panel.height * .20f);
+        private static Rect ExitBounds(Rect panel) => new(panel.x + panel.width * .05f, panel.y + panel.height * .74f, panel.width * .28f, panel.height * .20f);
+
+        private void ReadTouch(out bool action, out bool held, out bool exit)
+        {
+            action = held = exit = false;
+            if (!CostaTouch.Available)
+                return;
+            Rect panel = PanelBounds();
+            foreach (var finger in Touchscreen.current.touches)
+            {
+                if (!finger.press.isPressed)
+                    continue;
+                int id = finger.touchId.ReadValue();
+                Vector2 point = CostaTouch.ScreenPoint(finger.position.ReadValue());
+                if (finger.press.wasPressedThisFrame)
+                {
+                    exit |= ExitBounds(panel).Contains(point);
+                    if (ActionBounds(panel).Contains(point))
+                    {
+                        action = true;
+                        actionFinger = id;
+                    }
+                }
+                held |= actionFinger == id;
+            }
+            if (!held)
+                actionFinger = -1;
+        }
+
         internal void DrawUi()
         {
             if (!BlocksWorld)
@@ -298,8 +339,7 @@ namespace CostaLivre
                 bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold };
             }
 
-            float w = 440f, h = 210f;
-            Rect box = new((Screen.width - w) * 0.5f, (Screen.height - h) * 0.5f, w, h);
+            Rect box = PanelBounds();
             Box(box, Panel);
             Box(new Rect(box.x, box.y, box.width, 3f), Accent);
 
@@ -310,10 +350,10 @@ namespace CostaLivre
                 Mode.Arcade => L("NEON ARCADE", "ARCADE NEON"),
                 _ => L("IRON & SEA GYM", "ACADEMIA FERRO & MAR")
             };
-            Label(new Rect(box.x + 20, box.y + 14, 280, 30), heading, titleStyle, Paper);
-            Label(new Rect(box.x + 300, box.y + 18, 120, 24),
+            Label(new Rect(box.x + 20, box.y + 14, box.width - 125, 30), heading, titleStyle, Paper);
+            Label(new Rect(box.xMax - 105, box.y + 18, 100, 24),
                 $"{Mathf.CeilToInt(sessionTimer)}s · {score} pts", bodyStyle, Accent);
-            Label(new Rect(box.x + 20, box.y + 52, 400, 24), statusText, bodyStyle, Mint);
+            Label(new Rect(box.x + 20, box.y + 52, box.width - 40, 24), statusText, bodyStyle, Mint);
 
             Rect bar = new(box.x + 24, box.y + 98, box.width - 48, 28);
             Box(bar, new Color(0.14f, 0.17f, 0.20f));
@@ -330,9 +370,19 @@ namespace CostaLivre
                 Box(new Rect(cx, bar.y - 4f, 8f, bar.height + 8f), Paper);
             }
 
-            Label(new Rect(box.x + 20, box.y + 158, 400, 24),
-                L($"Best: {bestScore}  ·  SPACE / A: Action  ·  ESC / B: Exit",
-                  $"Recorde: {bestScore}  ·  ESPAÇO / A: Ação  ·  ESC / B: Sair"), bodyStyle, Paper);
+            if (CostaTouch.Available)
+            {
+                Rect action = ActionBounds(box), exit = ExitBounds(box);
+                Box(action, actionFinger >= 0 ? Accent : new Color(.20f, .40f, .34f));
+                Box(exit, new Color(.20f, .27f, .30f));
+                Label(new Rect(action.x + 12, action.y + 4, action.width - 24, action.height - 8),
+                    Active == Mode.Fishing ? L("Hold to reel", "Segure para puxar") : L("Action", "Ação"), bodyStyle, Paper);
+                Label(new Rect(exit.x + 12, exit.y + 4, exit.width - 24, exit.height - 8), L("Exit", "Sair"), bodyStyle, Paper);
+            }
+            else
+                Label(new Rect(box.x + 20, box.y + box.height * .74f, box.width - 40, 24),
+                    L($"Best: {bestScore}  ·  SPACE / A: Action  ·  ESC / B: Exit",
+                      $"Recorde: {bestScore}  ·  ESPAÇO / A: Ação  ·  ESC / B: Sair"), bodyStyle, Paper);
         }
 
         private static void Label(Rect r, string text, GUIStyle style, Color color)

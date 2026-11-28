@@ -26,7 +26,12 @@ namespace CostaLivre
             new(CostaCity.Hotel + new Vector3(-6, 0, 5), "Grand Hotel Atlântico", "Grand Hotel Atlântico"),
             new(CostaCity.Museum + new Vector3(2.1f, 0, 10), "Santa Luz Museum", "Museu de Santa Luz"),
             new(CostaCity.Jeweler + new Vector3(4, 0, 5), "Áurea Jeweler", "Joalheria Áurea"),
-            new(CostaCity.Electronics + new Vector3(2, 0, 7), "Electronics store", "Loja de informática")
+            new(CostaCity.Electronics + new Vector3(2, 0, 7), "Electronics store", "Loja de informática"),
+            new(CostaInteriorPlan.Cafe + new Vector3(1.4f, 0, 1.8f), "Praça Café", "Café da Praça"),
+            new(new Vector3(-13f, 0, 198f), "North Coast Gas Station", "Posto Costa Norte"),
+            new(new Vector3(-69f, 0, 72f), "Central Pharmacy", "Farmácia Central"),
+            new(new Vector3(-61f, 0, CostaCity.Districts[0].Center + 12f), "Calado Lottery", "Lotérica Calado"),
+            new(new Vector3(-58f, 0, CostaCity.Districts[2].Center + 14f), "Vice Restaurant", "Restaurante Vice")
         };
 
         private const float Cooldown = 90f;
@@ -44,6 +49,8 @@ namespace CostaLivre
             for (int i = 0; i < Sites.Length; i++)
             {
                 Vector3 point = Sites[i].Point;
+                if (i >= 5)
+                    BuildStorefront(art, point, i);
                 art.Box("Display pedestal", point + Vector3.up * 0.38f, new Vector3(0.78f, 0.76f, 0.69f),
                     new Color(0.22f, 0.25f, 0.24f), true);
                 Transform display = art.Box("Loot display tray", point + Vector3.up * 0.78f,
@@ -83,12 +90,67 @@ namespace CostaLivre
                         gem.transform.localRotation = Quaternion.Euler(30, 45, 28);
                     }
                     break;
+                case 4:
+                    art.Part(display, PrimitiveType.Cube, "Cash register", new(0, 0.08f, 0), new(0.36f, 0.14f, 0.28f), dark);
+                    art.Part(display, PrimitiveType.Capsule, "Silver tray", new(0.18f, 0.05f, 0.06f), new(0.08f, 0.04f, 0.22f), Color.gray);
+                    break;
+                case 5:
+                    art.Part(display, PrimitiveType.Cube, "Station safe box", new(0, 0.10f, 0), new(0.38f, 0.18f, 0.32f), new Color(0.28f, 0.32f, 0.36f));
+                    art.Part(display, PrimitiveType.Cylinder, "Safe dial", new(0, 0.10f, -0.17f), new(0.10f, 0.02f, 0.10f), gold);
+                    break;
+                case 6:
+                    art.Part(display, PrimitiveType.Cube, "Pharmacy lockbox", new(-0.08f, 0.09f, 0), new(0.32f, 0.14f, 0.24f), new Color(0.92f, 0.94f, 0.96f));
+                    art.Part(display, PrimitiveType.Cube, "Red cross", new(-0.08f, 0.17f, 0), new(0.10f, 0.015f, 0.03f), new Color(0.84f, 0.18f, 0.20f));
+                    art.Part(display, PrimitiveType.Cube, "Red cross vertical", new(-0.08f, 0.17f, 0), new(0.03f, 0.015f, 0.10f), new Color(0.84f, 0.18f, 0.20f));
+                    break;
+                case 7:
+                    art.Part(display, PrimitiveType.Cube, "Lottery cash case", new(0, 0.08f, 0), new(0.42f, 0.12f, 0.28f), new Color(0.14f, 0.42f, 0.26f));
+                    art.Part(display, PrimitiveType.Cube, "Gold band", new(0, 0.145f, 0), new(0.43f, 0.02f, 0.06f), gold);
+                    break;
+                case 8:
+                    art.Part(display, PrimitiveType.Cube, "VIP vault box", new(0, 0.10f, 0), new(0.38f, 0.16f, 0.28f), new Color(0.36f, 0.14f, 0.24f));
+                    art.Part(display, PrimitiveType.Cylinder, "Gold watch", new(0.14f, 0.19f, 0), new(0.12f, 0.04f, 0.12f), gold);
+                    break;
                 default:
                     art.Part(display, PrimitiveType.Cube, "Laptop keyboard", new(0, 0.05f, -0.04f), new(0.39f, 0.04f, 0.26f), dark);
                     art.Part(display, PrimitiveType.Cube, "Laptop screen", new(0, 0.18f, 0.10f), new(0.39f, 0.24f, 0.035f), new Color(0.25f, 0.54f, 0.66f));
                     art.Part(display, PrimitiveType.Cube, "Graphics card", new(0, 0.08f, -0.18f), new(0.21f, 0.035f, 0.085f), Color.gray);
                     break;
             }
+        }
+
+        private static void BuildStorefront(HarborBlockout art, Vector3 point, int site)
+        {
+            Color wall = site switch
+            {
+                5 => new Color(0.90f, 0.86f, 0.78f),
+                6 => new Color(0.88f, 0.94f, 0.92f),
+                7 => new Color(0.86f, 0.82f, 0.68f),
+                _ => new Color(0.92f, 0.64f, 0.72f)
+            };
+            Color awning = site switch
+            {
+                5 => new Color(0.86f, 0.28f, 0.20f),
+                6 => new Color(0.14f, 0.62f, 0.44f),
+                7 => new Color(0.16f, 0.44f, 0.72f),
+                _ => new Color(0.88f, 0.30f, 0.56f)
+            };
+            string sign = site switch
+            {
+                5 => "POSTO COSTA NORTE",
+                6 => "FARMACIA CENTRAL",
+                7 => "LOTERICA CALADO",
+                _ => "RESTAURANTE VICE"
+            };
+            art.MarkFootFloor(art.Box("Robbery shop floor", point + new Vector3(0, 0.03f, 0.4f), new Vector3(7.6f, 0.06f, 6.2f),
+                new Color(0.76f, 0.73f, 0.68f), true), CostaAcousticScene.Floor.Stone);
+            art.Box("Robbery back wall", point + new Vector3(0, 1.85f, 3.2f), new Vector3(7.6f, 3.7f, 0.28f), wall, true);
+            art.Box("Robbery left wall", point + new Vector3(-3.66f, 1.85f, 0.4f), new Vector3(0.28f, 3.7f, 5.8f), wall, true);
+            art.Box("Robbery right wall", point + new Vector3(3.66f, 1.85f, 0.4f), new Vector3(0.28f, 3.7f, 5.8f), wall, true);
+            art.Box("Robbery roof", point + new Vector3(0, 3.75f, 0.4f), new Vector3(8.0f, 0.26f, 6.6f), new Color(0.26f, 0.28f, 0.30f), true);
+            art.Box("Robbery awning", point + new Vector3(0, 3.15f, -2.85f), new Vector3(7.8f, 0.34f, 1.1f), awning, true);
+            art.Box("Robbery counter", point + new Vector3(-1.8f, 0.52f, 1.35f), new Vector3(2.8f, 1.04f, 0.72f), new Color(0.42f, 0.29f, 0.20f), true);
+            art.Sign(sign, point + new Vector3(0, 3.55f, -2.65f), 0.16f, Color.white);
         }
 
         internal int Nearby(Vector3 position)

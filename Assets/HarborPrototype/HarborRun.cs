@@ -55,6 +55,9 @@ namespace CostaLivre
         private CostaJobs jobs;
         private CostaEncounter encounter;
         private CostaRobberies robberies;
+        private CostaHostageSystem hostages;
+        private int soloLootSite = -1;
+        private float soloLootProgress;
         private CostaMap cityMap;
         private CostaGunShop gunShop;
         private FieldOverlay overlay;
@@ -460,6 +463,7 @@ namespace CostaLivre
             jobs.AttachDoors(city.HouseDoors);
             city.UpdateHouseDoors(jobs, false, snap: true);
             robberies = new CostaRobberies(harbor);
+            hostages = new CostaHostageSystem(harbor, transform);
             cityMap = new CostaMap(city.Footprints);
             cityMap.Prepare();
             gunShop = new CostaGunShop();
@@ -1520,9 +1524,11 @@ namespace CostaLivre
                     Mathf.Max(acknowledgedReload, displayedReload + Time.unscaledDeltaTime / HarborArsenal.ShotRules(arsenal.Slot).reload));
             else
                 displayedReload = -1;
+            bool shotFiredThisFrame = false;
             if (arsenal.Update(followCamera, playerBody, pitch, firePressed,
                 fireHeld, aiming, crouching, ResolveSoloHit, effects, displayedReload, rollClock <= 0))
             {
+                shotFiredThisFrame = true;
                 if (arsenal.HasFirearm)
                 {
                     score.Combat();
@@ -1532,6 +1538,48 @@ namespace CostaLivre
                     session.Fire(arsenal.Slot, arsenal.ShotDirection, CaptureNetworkPose());
                 else if (!contractCombat)
                     StartPursuit(0.25f, combat: true);
+            }
+
+            hostages?.Update(player.transform.position, followCamera, aiming, arsenal.HasFirearm, pitch,
+                shotFiredThisFrame, Time.deltaTime,
+                (_, alarmMsg) =>
+                {
+                    ShowWorldNotice(alarmMsg);
+                    if (!session.Online)
+                        StartPursuit(0.35f, combat: true);
+                },
+                dmg =>
+                {
+                    effects.Play(Cue.ShotPistol, 0.55f);
+                    if (!session.Online)
+                        encounter.TakeDamage(dmg);
+                });
+
+            if (!session.Online && soloLootSite >= 0)
+            {
+                if (car != null || robberies.Nearby(player.transform.position) != soloLootSite || !robberies.Ready(soloLootSite))
+                {
+                    soloLootSite = -1;
+                    soloLootProgress = 0f;
+                }
+                else
+                {
+                    float mult = hostages != null ? hostages.GetLootSpeedMultiplier(soloLootSite) : 1f;
+                    soloLootProgress += (Time.deltaTime / 4.2f) * mult;
+                    if (soloLootProgress >= 1f)
+                    {
+                        int completed = soloLootSite;
+                        soloLootSite = -1;
+                        soloLootProgress = 0f;
+                        if (robberies.Take(completed, jobs))
+                        {
+                            GestureAt(HarborCharacter.Gesture.PickUp, CostaRobberies.PickupTarget(completed));
+                            cargoPack.SetActive(true);
+                            effects.Play(Cue.Loot);
+                            StartPursuit(0.45f);
+                        }
+                    }
+                }
             }
 
             bool originalInteraction = harborJob && state == RunState.FindCargo
@@ -1907,13 +1955,26 @@ namespace CostaLivre
             if (site < 0)
                 return false;
             if (session.Online)
-                session.Request("loot", site);
-            else if (robberies.Take(site, jobs))
             {
-                GestureAt(HarborCharacter.Gesture.PickUp, CostaRobberies.PickupTarget(site));
-                cargoPack.SetActive(true);
-                effects.Play(Cue.Loot);
-                StartPursuit(0.45f);
+                session.Request("loot", site);
+                hostages?.NotifyRobberyStarted(site);
+            }
+            else if (robberies.Ready(site))
+            {
+                if (!jobs.Bag.CanLoot(site))
+                {
+                    ShowWorldNotice(L("Not enough space in your backpack.", "Espaço insuficiente na mochila."));
+                    return true;
+                }
+                if (soloLootSite != site)
+                {
+                    soloLootSite = site;
+                    soloLootProgress = 0.01f;
+                    hostages?.NotifyRobberyStarted(site);
+                    GestureAt(HarborCharacter.Gesture.Reach, CostaRobberies.PickupTarget(site));
+                    ShowWorldNotice(L("Hold position! Aim or fire upward to speed up looting.",
+                        "Mantenha posição! Mire ou atire para o alto para acelerar o saque."));
+                }
             }
             return true;
         }
@@ -2524,6 +2585,11 @@ namespace CostaLivre
                 arsenal.ShowHit();
                 return true;
             }
+            if (hostages != null && hostages.TryHit(hit, damage, ShowWorldNotice, () => StartPursuit(0.25f, combat: true)))
+            {
+                arsenal.ShowHit();
+                return true;
+            }
             return false;
         }
 
@@ -2945,6 +3011,8 @@ namespace CostaLivre
                 return;
 
             effects.DrawCombat(followCamera);
+            hostages?.DrawHud(followCamera, soloLootSite, soloLootProgress,
+                soloLootSite >= 0 ? hostages.GetLootSpeedMultiplier(soloLootSite) : 1f);
             if (session.Online)
                 remotes.DrawNames(followCamera);
 

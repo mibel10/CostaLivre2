@@ -31,7 +31,8 @@ namespace CostaLivre
         };
         private static readonly int[][] SiteContents =
         {
-            new[] { 0, 1, 1 }, new[] { 2, 3 }, new[] { 4, 5, 5 }, new[] { 6, 7, 7 }
+            new[] { 0, 1, 1 }, new[] { 2, 3 }, new[] { 4, 5, 5 }, new[] { 6, 7, 7 },
+            new[] { 1, 1 }, new[] { 0, 1 }, new[] { 5, 1 }, new[] { 0, 4 }, new[] { 0, 2 }
         };
 
         internal readonly int[] Amounts = new int[Catalog.Length];

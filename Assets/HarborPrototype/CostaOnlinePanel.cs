@@ -17,8 +17,11 @@ namespace CostaLivre
         private readonly CostaRoomBrowser browser = new();
         private readonly List<CostaRoomBrowser.RoomEntry> discovered = new();
         private LobbyTab tab = LobbyTab.Matches;
-        private string name = PlayerPrefs.GetString("CostaMultiplayerName", "Jogador");
-        private string roomName = PlayerPrefs.GetString("CostaRoomName", "Santa Luz Livre");
+        private const string NameKey = "CostaMultiplayerName";
+        private const string NameChosenKey = "CostaMultiplayerNameChosen";
+        private string name;
+        private bool hasChosenName;
+        private string roomName = PlayerPrefs.GetString("CostaRoomName", "");
         private string roomPassword = "";
         private string joinPassword = "";
         private CostaRoomBrowser.RoomEntry pendingLockedRoom;
@@ -49,7 +52,13 @@ namespace CostaLivre
         private int editing;
 
         internal int Outfit { get; private set; } = Mathf.Clamp(PlayerPrefs.GetInt("CostaOutfit", 0), 0, 242);
-        internal CostaOnlinePanel(ConnectHandler connect) => this.connect = connect;
+        internal CostaOnlinePanel(ConnectHandler connect)
+        {
+            this.connect = connect;
+            string saved = PlayerPrefs.GetString(NameKey, "").Trim();
+            hasChosenName = PlayerPrefs.GetInt(NameChosenKey, 0) != 0 && saved.Length > 0;
+            name = hasChosenName ? saved : "";
+        }
 
         internal void AttachSession(CostaSession readySession) => session = readySession;
         internal void Release() => browser.Dispose();
@@ -72,6 +81,11 @@ namespace CostaLivre
             if (session?.Online != true)
             {
                 bool connecting = session?.Connecting == true;
+                if (!hasChosenName && !connecting)
+                {
+                    DrawNameSetup(x, row, y + panelHeight - 40);
+                    return;
+                }
 
                 // Top tabs: Active Matches | Create Room | Code / IP
                 if (TabButton(new Rect(x + 8, row, 126, 30), L("Matches", "Partidas"), tab == LobbyTab.Matches, !connecting))
@@ -157,6 +171,39 @@ namespace CostaLivre
             if (Button(new Rect(x + 8, row + 272, 184, 40), L("Play", "Jogar"), true))
                 play();
             Label(new Rect(x + 200, row + 270, 198, 40), session.CurrentNotice, labels, Gold);
+        }
+
+        private void DrawNameSetup(float x, float y, float footerY)
+        {
+            Fill(new Rect(x + 8, y + 8, 390, 224), RowBg);
+            Label(new Rect(x + 22, y + 24, 362, 26),
+                L("CHOOSE YOUR PLAYER NAME", "ESCOLHA SEU NOME NO MULTIPLAYER"), labels, Turquoise);
+            Label(new Rect(x + 22, y + 54, 362, 24),
+                L("Required before browsing or creating rooms.", "Obrigatório antes de entrar ou criar salas."), labels, Muted);
+
+            name = Input(new Rect(x + 22, y + 92, 362, 36), name, 20, 1, TouchScreenKeyboardType.Default);
+
+            bool enterPressed = Event.current.type == EventType.KeyDown
+                && (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter);
+            if (Button(new Rect(x + 22, y + 144, 362, 38), L("Save name and continue", "Salvar nome e continuar"), true) || enterPressed)
+            {
+                string trimmed = (name ?? "").Trim();
+                if (trimmed.Length < 2)
+                {
+                    inputError = L("Enter at least 2 characters for your name.", "Digite pelo menos 2 caracteres para seu nome.");
+                }
+                else
+                {
+                    name = trimmed;
+                    hasChosenName = true;
+                    inputError = "";
+                    PlayerPrefs.SetString(NameKey, name);
+                    PlayerPrefs.SetInt(NameChosenKey, 1);
+                    PlayerPrefs.Save();
+                    browser.Poll(ConfiguredRelay, force: true);
+                }
+            }
+            Label(new Rect(x + 8, footerY, 390, 30), inputError, labels, Gold);
         }
 
         private void DrawMatchesBrowser(float x, float y, bool connecting)
@@ -258,7 +305,9 @@ namespace CostaLivre
             name = Input(new Rect(x + 8, y + 22, 188, 32), name, 20, 1, TouchScreenKeyboardType.Default);
             roomPassword = Input(new Rect(x + 206, y + 22, 192, 32), roomPassword, 16, 8, TouchScreenKeyboardType.Default);
 
-            Label(new Rect(x + 8, y + 60, 360, 20), L("ROOM NAME", "NOME DA SALA"), labels, Muted);
+            Label(new Rect(x + 8, y + 60, 390, 20),
+                publicRoom ? L("ROOM NAME (SHOWN IN SERVER LIST)", "NOME DA SALA (APARECE NA LISTA)")
+                           : L("ROOM NAME", "NOME DA SALA"), labels, publicRoom ? Turquoise : Muted);
             roomName = Input(new Rect(x + 8, y + 82, 390, 32), roomName, 32, 6, TouchScreenKeyboardType.Default);
 
             Label(new Rect(x + 8, y + 120, 360, 20), L("VISIBILITY & NETWORK", "VISIBILIDADE E REDE"), labels, Muted);
@@ -339,6 +388,21 @@ namespace CostaLivre
         private void StartHost()
         {
             inputError = "";
+            string cleanPlayer = (name ?? "").Trim();
+            if (cleanPlayer.Length < 2)
+            {
+                hasChosenName = false;
+                inputError = L("Choose a player name first.", "Escolha seu nome de jogador primeiro.");
+                return;
+            }
+            name = cleanPlayer;
+            string cleanRoom = (roomName ?? "").Trim();
+            if (publicRoom && cleanRoom.Length < 2)
+            {
+                inputError = L("Choose a room name to appear in the list.", "Escolha um nome para a sala aparecer na lista.");
+                return;
+            }
+            roomName = cleanRoom;
             int.TryParse(port, out int number);
             if (number <= 0) number = 7777;
             string endpoint = null;
@@ -377,8 +441,15 @@ namespace CostaLivre
 
         private void SavePlayerPrefs()
         {
-            PlayerPrefs.SetString("CostaMultiplayerName", name);
-            PlayerPrefs.SetString("CostaRoomName", roomName);
+            string cleanName = (name ?? "").Trim();
+            if (cleanName.Length >= 2)
+            {
+                name = cleanName;
+                hasChosenName = true;
+                PlayerPrefs.SetString(NameKey, name);
+                PlayerPrefs.SetInt(NameChosenKey, 1);
+            }
+            PlayerPrefs.SetString("CostaRoomName", (roomName ?? "").Trim());
             PlayerPrefs.Save();
         }
 

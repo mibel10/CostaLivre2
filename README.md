@@ -112,6 +112,14 @@ Em **Multiplayer → LAN**, um jogador seleciona **Hospedar LAN**. Os demais usa
 
 Todo jogador começa com uma faca, que fica no terceiro slot. Equipá-la aumenta a velocidade de corrida. Armas pesadas reduzem a velocidade de caminhada.
 
+## Polimento e autoria na Unity
+
+Em **Opções → Tela e som** ficam o HUD completo, contextual e mínimo, o fundo da cidade e a resolução dos espelhos. O modo automático usa 128, 256 ou 512 px conforme o preset. No Super baixo, ele desativa as capturas e usa o fundo leve.
+
+Edite `CampaignDefinition` no Inspector para definir destinos, condições, objetivos opcionais e diálogos. Mantenha os identificadores usados em saves e use **Validar campanha** no menu de contexto do asset. As cutscenes em `Resources/Harbor/Cinematics` são editáveis no Inspector. As posições das câmeras são relativas ao ator, e as falas aceitam áudio, intervalo, gesto e legendas em português e inglês. Para refazer os ciclos de locomoção após trocar o rig, use **Costa Livre → Animação → Reconstruir Blend Tree direcional**.
+
+As falas da campanha são sintetizadas em português com Piper e o modelo Faber. [Ficha da versão usada](https://huggingface.co/rhasspy/piper-voices/blob/613b6e5ad36ddca4e70e171957291483dc244d9f/pt/pt_BR/faber/medium/MODEL_CARD)
+
 ## Texturas
 
 As texturas de asfalto e concreto 2K usam os assets Asphalt 010 e Concrete 034 do ambientCG, sob CC0.

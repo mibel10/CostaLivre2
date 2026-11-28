@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Script de build automatizado do Costa Livre 2 para Android, Windows, Linux e Xbox (UWP .appx / GDK).
+    Script de build automatizado do Costa Livre 2 para Android, Windows, Linux e Xbox em Dev Mode (UWP .appx).
 .EXAMPLE
     .\build.ps1 -Target windows
     .\build.ps1 -Target xbox
@@ -65,21 +65,20 @@ function Invoke-UnityBuild([string]$BuildTarget, [string]$Method, [string]$LogNa
         exit $proc.ExitCode
     }
     Write-Host "OK: Unity concluiu $BuildTarget." -ForegroundColor Green
+    $saved = Select-String -LiteralPath $log -SimpleMatch " build saved at " | Select-Object -Last 1
+    if ($saved) { Write-Host $saved.Line -ForegroundColor Green }
 }
 
 function Build-Android {
     Invoke-UnityBuild "Android" "CostaLivre.Editor.CostaPlatformBuild.Android" "build_android.log"
-    Write-Host "APK gerado em: $(Join-Path $BuildsDir 'Android\CostaLivre2.apk')" -ForegroundColor Green
 }
 
 function Build-Windows {
     Invoke-UnityBuild "Win64" "CostaLivre.Editor.CostaPlatformBuild.Windows" "build_windows.log"
-    Write-Host "Build Windows gerado em: $(Join-Path $BuildsDir 'Windows\CostaLivre2.exe')" -ForegroundColor Green
 }
 
 function Build-Linux {
     Invoke-UnityBuild "Linux64" "CostaLivre.Editor.CostaPlatformBuild.Linux" "build_linux.log"
-    Write-Host "Build Linux gerado em: $(Join-Path $BuildsDir 'Linux\CostaLivre2.x86_64')" -ForegroundColor Green
 }
 
 function Build-XboxUwp {

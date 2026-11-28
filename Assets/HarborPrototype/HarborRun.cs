@@ -716,8 +716,9 @@ namespace CostaLivre
 
         private bool TryCinematic(string id)
         {
-            if (string.IsNullOrEmpty(id) || cinematics == null || session.Online || session.Hosting ||
-                wantedLevel > 0 || pursuit || encounter.Active || PlayerPrefs.GetInt("CostaCinematic." + id, 0) != 0)
+            if (string.IsNullOrEmpty(id) || cinematics == null || session.Online || session.Hosting || session.Connecting ||
+                wantedLevel > 0 || pursuit || encounter.Active || jobs.InProgress || harborJob && state == RunState.Escape ||
+                PlayerPrefs.GetInt("CostaCinematic." + id, 0) != 0)
                 return false;
             CostaCinematic asset = Resources.Load<CostaCinematic>("Harbor/Cinematics/" + id);
             if (!cinematics.Play(asset, playerBody, player, () =>
@@ -2015,6 +2016,7 @@ namespace CostaLivre
 
         private void EnterVehicle(CostaVehicle vehicle)
         {
+            aimingPose = false;
             car = vehicle;
             ResetFootMotion();
             player.enabled = false;

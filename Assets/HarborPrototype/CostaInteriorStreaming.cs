@@ -74,12 +74,12 @@ namespace CostaLivre
                         else
                             ReturnVisitor(room);
                     }
-                    if (room.Visitor != null)
+                    if (active && room.Visitor != null)
                     {
                         if (room.Visitor.Agent.velocity.sqrMagnitude > .01f)
-                            room.Visitor.Body.Animate(HarborCharacter.Motion.Walk, .75f);
+                            room.Visitor.Body.AnimateDistance(HarborCharacter.Motion.Walk, distance, .75f);
                         else
-                            room.Visitor.Body.Animate(HarborCharacter.Motion.Idle);
+                            room.Visitor.Body.AnimateDistance(HarborCharacter.Motion.Idle, distance);
                     }
                 }
             }

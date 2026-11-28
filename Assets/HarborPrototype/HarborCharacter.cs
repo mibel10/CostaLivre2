@@ -116,7 +116,7 @@ namespace CostaLivre
             if (animator == null)
                 animator = mesh.AddComponent<Animator>();
             animator.applyRootMotion = false;
-            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            animator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
             clips = art.Clips;
             graph = PlayableGraph.Create(name + " animation");
             graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
@@ -167,6 +167,18 @@ namespace CostaLivre
             leftThigh = Find(bones, "thigh_L");
             leftCalf = Find(bones, "calf_L");
             leftFoot = foot;
+        }
+
+        internal void AnimateDistance(Motion motion, float distanceSqr, float cycleSpeed = 1f, float progress = -1f)
+        {
+            if (motion == activeMotion && blend >= 1f)
+            {
+                if (distanceSqr > 45f * 45f && ((Time.frameCount + Root.GetInstanceID()) & 3) != 0)
+                    return;
+                if (distanceSqr > 22f * 22f && ((Time.frameCount + Root.GetInstanceID()) & 1) != 0)
+                    return;
+            }
+            Animate(motion, cycleSpeed, progress);
         }
 
         internal void Animate(Motion motion, float cycleSpeed = 1f, float progress = -1f, bool snap = false)

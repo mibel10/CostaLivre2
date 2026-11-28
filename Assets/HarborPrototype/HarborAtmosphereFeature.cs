@@ -10,6 +10,7 @@ namespace CostaLivre
     {
         [SerializeField] private Shader atmosphereShader;
         [SerializeField] private bool highQuality;
+        internal static bool Enabled = true;
         private Material material;
         private AtmospherePass pass;
 
@@ -29,6 +30,8 @@ namespace CostaLivre
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
+            if (!Enabled)
+                return;
             Camera camera = renderingData.cameraData.camera;
             if (pass != null && camera.cameraType == CameraType.Game && !camera.stereoEnabled &&
                 camera.CompareTag("MainCamera") && renderingData.cameraData.renderType == CameraRenderType.Base &&
@@ -116,7 +119,7 @@ namespace CostaLivre
                 Vector4 composite = default;
                 if (world)
                 {
-                    int divisor = highQuality ? 2 : 3;
+                    int divisor = highQuality ? 3 : 4;
                     desc.name = "Costa low resolution scattering";
                     desc.width = Mathf.Max(1, (desc.width + divisor - 1) / divisor);
                     desc.height = Mathf.Max(1, (desc.height + divisor - 1) / divisor);

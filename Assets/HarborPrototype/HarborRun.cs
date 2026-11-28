@@ -124,6 +124,11 @@ namespace CostaLivre
         private CostaUrbanAudio urbanAudio;
         private HarborWeather.Conditions worldWeather;
         private float cityNight;
+        private float lastCarNight = -1f;
+        private float lastCarGrip = -1f;
+        private float nextStreetLightUpdate;
+        private Vector3 lastStreetLightViewer;
+        private int lastStreetLightBudget = -1;
         private CostaScore score;
         private readonly CostaTransitions transitions = new();
         private readonly CostaDeathScreen deathScreen = new();
@@ -1112,14 +1117,27 @@ namespace CostaLivre
             harbor.SetWaterDaylight(hour ?? HarborDaylight.StartHour);
             float night = hour.HasValue ? HarborDaylight.CityNight(hour.Value) : 0;
             cityNight = night;
-            harbor.UpdateStreetLights(night, followCamera.transform.position, menu.StreetLightBudget);
+            Vector3 viewerPos = followCamera.transform.position;
+            int lightBudget = menu.StreetLightBudget;
+            if (Time.unscaledTime >= nextStreetLightUpdate || lightBudget != lastStreetLightBudget
+                || (viewerPos - lastStreetLightViewer).sqrMagnitude > 6.25f)
+            {
+                nextStreetLightUpdate = Time.unscaledTime + 0.16f;
+                lastStreetLightViewer = viewerPos;
+                lastStreetLightBudget = lightBudget;
+                harbor.UpdateStreetLights(night, viewerPos, lightBudget);
+            }
             float grip = Mathf.Lerp(1, .64f, weather.Wet);
-            if (cars != null)
+            if (cars != null && (Mathf.Abs(night - lastCarNight) > 0.005f || Mathf.Abs(grip - lastCarGrip) > 0.005f))
+            {
+                lastCarNight = night;
+                lastCarGrip = grip;
                 foreach (CostaVehicle vehicle in cars)
                 {
                     vehicle.Grip = grip;
                     vehicle.SetRunningLights(night);
                 }
+            }
             if (hour.HasValue && venues != null)
             {
                 venues.Update(hour.Value, followCamera.transform.position);
@@ -1694,10 +1712,13 @@ namespace CostaLivre
         {
             foreach (Guard guard in guards)
             {
-                if (guard != null && guard.Active && (guard.Agent.transform.position - player.transform.position).sqrMagnitude < 4900)
+                if (guard == null || !guard.Active)
+                    continue;
+                float distSqr = (guard.Agent.transform.position - player.transform.position).sqrMagnitude;
+                if (distSqr < 4900)
                 {
-                    guard.Character.Animate(guard.Agent.velocity.sqrMagnitude > 0.35f
-                        ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Idle, 0.82f);
+                    guard.Character.AnimateDistance(guard.Agent.velocity.sqrMagnitude > 0.35f
+                        ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Idle, distSqr, 0.82f);
                 }
             }
         }

@@ -112,7 +112,7 @@ namespace CostaLivre
                 float dist = delta.sqrMagnitude;
                 float age = Mathf.Clamp(now - surface.Updated, .01f, 3);
                 float priority = dist / age;
-                if (dist > 16 * 16 || priority >= best || Vector3.Dot(delta, -renderer.transform.forward) < .06f ||
+                if (dist > 10 * 10 || priority >= best || Vector3.Dot(delta, -renderer.transform.forward) < .06f ||
                     !GeometryUtility.TestPlanesAABB(frustum, renderer.bounds))
                     continue;
                 if (Physics.Linecast(cameraPosition, renderer.transform.position, out RaycastHit hit,
@@ -125,7 +125,7 @@ namespace CostaLivre
             if (nearest == null)
                 return;
 
-            nextCapture = now + (preset >= 3 ? .046f : preset == 2 ? .085f : .13f);
+            nextCapture = now + (preset >= 3 ? .085f : preset == 2 ? .14f : .20f);
             int index = nearest.Slot;
             if (index < 0)
             {
@@ -186,7 +186,7 @@ namespace CostaLivre
             reflected.fieldOfView = viewer.fieldOfView;
             reflected.aspect = viewer.aspect;
             reflected.nearClipPlane = viewer.nearClipPlane;
-            reflected.farClipPlane = surface.Vehicle == null ? 42 : 63;
+            reflected.farClipPlane = surface.Vehicle == null ? 28 : 42;
             reflected.cullingMask = viewer.cullingMask;
             reflected.clearFlags = viewer.clearFlags;
             reflected.backgroundColor = viewer.backgroundColor;

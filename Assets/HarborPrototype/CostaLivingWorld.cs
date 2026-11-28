@@ -16,6 +16,7 @@ namespace CostaLivre
             internal float PauseUntil;
             internal float Speed;
             internal float PanicUntil;
+            internal float NextObstacleCheck;
             internal bool Active;
         }
 
@@ -112,7 +113,7 @@ namespace CostaLivre
                 if (checkPool)
                 {
                     float distSq = (viewer - c.Home).sqrMagnitude;
-                    bool shouldShow = distSq < 68f * 68f && (!night || i % 2 == 0);
+                    bool shouldShow = distSq < 54f * 54f && (!night || i % 2 == 0);
                     if (c.Active != shouldShow)
                     {
                         c.Active = shouldShow;
@@ -124,43 +125,48 @@ namespace CostaLivre
                 if (!c.Active)
                     continue;
 
-                if (dangerActive && (c.Body.Root.position - viewer).sqrMagnitude < 24f * 24f)
+                Vector3 pos = c.Body.Root.position;
+                float viewerDistSq = (pos - viewer).sqrMagnitude;
+                if (dangerActive && viewerDistSq < 24f * 24f)
                     c.PanicUntil = Mathf.Max(c.PanicUntil, Time.time + 3.5f);
 
                 bool panicking = Time.time < c.PanicUntil;
                 if (!panicking && Time.time < c.PauseUntil)
                 {
-                    c.Body.Animate(HarborCharacter.Motion.Idle);
+                    c.Body.AnimateDistance(HarborCharacter.Motion.Idle, viewerDistSq);
                     continue;
                 }
 
-                Vector3 pos = c.Body.Root.position;
                 Vector3 toTarget = c.Target - pos;
                 toTarget.y = 0f;
                 if (toTarget.sqrMagnitude < 0.4f)
                 {
                     c.PauseUntil = Time.time + Random.Range(2f, 5.5f);
                     c.Target = c.Home + new Vector3(Random.Range(-10f, 10f), 0f, Random.Range(-10f, 10f));
-                    c.Body.Animate(HarborCharacter.Motion.Idle);
+                    c.Body.AnimateDistance(HarborCharacter.Motion.Idle, viewerDistSq);
                 }
                 else
                 {
                     float spd = panicking ? 4.8f : c.Speed;
                     Vector3 dir = toTarget.normalized;
                     float travel = Mathf.Min(spd * dt, toTarget.magnitude);
-                    if (Physics.SphereCast(pos + Vector3.up * .8f, .24f, dir, out _, travel + .14f,
-                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    if (Time.unscaledTime >= c.NextObstacleCheck)
                     {
-                        c.Target = c.Home + new Vector3(Random.Range(-10f, 10f), 0f, Random.Range(-10f, 10f));
-                        c.PauseUntil = Time.time + .4f;
-                        c.Body.Animate(HarborCharacter.Motion.Idle);
-                        continue;
+                        c.NextObstacleCheck = Time.unscaledTime + 0.22f;
+                        if (Physics.SphereCast(pos + Vector3.up * .8f, .24f, dir, out _, Mathf.Max(travel + .14f, 0.85f),
+                            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                        {
+                            c.Target = c.Home + new Vector3(Random.Range(-10f, 10f), 0f, Random.Range(-10f, 10f));
+                            c.PauseUntil = Time.time + .4f;
+                            c.Body.AnimateDistance(HarborCharacter.Motion.Idle, viewerDistSq);
+                            continue;
+                        }
                     }
                     c.Body.Root.position = pos + dir * travel;
                     c.Body.Root.rotation = Quaternion.RotateTowards(
                         c.Body.Root.rotation, Quaternion.LookRotation(dir), dt * 320f);
-                    c.Body.Animate(panicking ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Walk,
-                        panicking ? 1.1f : 0.72f);
+                    c.Body.AnimateDistance(panicking ? HarborCharacter.Motion.Run : HarborCharacter.Motion.Walk,
+                        viewerDistSq, panicking ? 1.1f : 0.72f);
                 }
             }
 

@@ -156,7 +156,8 @@ namespace CostaLivre
             for (int i = 0; i < venues.Length; i++)
             {
                 Venue venue = venues[i];
-                bool nearby = (viewer - venue.Kiosk).sqrMagnitude < 64 * 64;
+                float distSqr = (viewer - venue.Kiosk).sqrMagnitude;
+                bool nearby = distSqr < 42 * 42;
                 if (rethink)
                 {
                     venue.Lamp.enabled = nearby;
@@ -180,13 +181,13 @@ namespace CostaLivre
                     float heading = travel.x > 0 ? 90f : -90f;
                     venue.Clerk.Root.rotation = Quaternion.RotateTowards(venue.Clerk.Root.rotation,
                         Quaternion.Euler(0, heading, 0), Time.unscaledDeltaTime * 230f);
-                    venue.Clerk.Animate(HarborCharacter.Motion.Walk, .62f);
+                    venue.Clerk.AnimateDistance(HarborCharacter.Motion.Walk, distSqr, .62f);
                 }
                 else
                 {
                     venue.Clerk.Root.rotation = Quaternion.RotateTowards(venue.Clerk.Root.rotation,
                         Quaternion.Euler(0, 180, 0), Time.unscaledDeltaTime * 185f);
-                    venue.Clerk.Animate(HarborCharacter.Motion.Idle);
+                    venue.Clerk.AnimateDistance(HarborCharacter.Motion.Idle, distSqr);
                 }
                 venue.Clerk.Root.position = position;
             }

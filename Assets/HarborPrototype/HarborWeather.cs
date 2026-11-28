@@ -77,12 +77,13 @@ namespace CostaLivre
                     rainPreset = preset;
                     rainLevel = -1;
                     var collision = rain.collision;
-                    collision.quality = preset >= 2 ? ParticleSystemCollisionQuality.Medium : ParticleSystemCollisionQuality.Low;
+                    collision.enabled = preset >= 3;
+                    collision.quality = ParticleSystemCollisionQuality.Low;
                 }
                 if (rainLevel != level)
                 {
                     rainLevel = level;
-                    emission.rateOverTime = (preset >= 3 ? 970 : preset == 2 ? 580 : 300) * level / 48f;
+                    emission.rateOverTime = (preset >= 3 ? 520 : preset == 2 ? 300 : 160) * level / 48f;
                     emission.enabled = level > 0;
                 }
                 if (level > 0)
@@ -100,7 +101,7 @@ namespace CostaLivre
                         : ParticleSystemStopBehavior.StopEmittingAndClear);
             }
 
-            UpdateReflections(hour.HasValue && preset >= 3, camera.transform.position, preset);
+            UpdateReflections(hour.HasValue && preset >= 4, camera.transform.position, preset);
         }
 
         private void CreateRain()
@@ -116,7 +117,7 @@ namespace CostaLivre
             var main = rain.main;
             main.playOnAwake = false;
             main.useUnscaledTime = true;
-            main.maxParticles = 1150;
+            main.maxParticles = 640;
             main.startSpeed = 0;
             main.startSize = new ParticleSystem.MinMaxCurve(0.012f, 0.026f);
             main.startLifetime = new ParticleSystem.MinMaxCurve(0.62f, 0.92f);
@@ -137,7 +138,7 @@ namespace CostaLivre
             collision.quality = ParticleSystemCollisionQuality.Medium;
             collision.enableDynamicColliders = false;
             collision.lifetimeLoss = 1;
-            collision.maxCollisionShapes = 64;
+            collision.maxCollisionShapes = 16;
 
             var renderer = emitter.GetComponent<ParticleSystemRenderer>();
             renderer.renderMode = ParticleSystemRenderMode.Stretch;

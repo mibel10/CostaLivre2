@@ -158,7 +158,7 @@ namespace CostaLivre
             if (Time.unscaledTime >= roomSampleAt)
             {
                 targetEnclosure = inWorld ? scene.Enclosure(Listener) : 0;
-                roomSampleAt = Time.unscaledTime + .08f;
+                roomSampleAt = Time.unscaledTime + .20f;
             }
             enclosure = Mathf.Lerp(enclosure, inWorld ? targetEnclosure : 0, 1 - Mathf.Exp(-5 * dt));
             bool reverberant = enclosure > .025f;
@@ -182,7 +182,7 @@ namespace CostaLivre
                 return 0;
             Vector3 direction = delta / length;
             float center = TransmissionLoss(point, direction, length);
-            if (center == 0 || Application.isMobilePlatform)
+            if (center == 0 || Application.isMobilePlatform || length > 18f)
                 return center;
             Vector3 side = Vector3.Cross(direction, Vector3.up) * .23f;
             float left = TransmissionLoss(point - side, direction, length);

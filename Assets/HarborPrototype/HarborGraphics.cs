@@ -21,13 +21,13 @@ namespace CostaLivre
         private const string AdaptiveKey = "CostaAdaptiveResolution";
         private const string DistanceKey = "CostaViewDistance";
 
-        private static readonly int[] Distances = { 95, 155, 245, 360, 540 };
-        private static readonly int[] Scales = { 50, 70, 85, 100, 100 };
+        private static readonly int[] Distances = { 85, 135, 200, 280, 420 };
+        private static readonly int[] Scales = { 50, 70, 85, 95, 100 };
         private static readonly int[] Textures = { 0, 1, 2, 3, 3 };
-        private static readonly int[] StreetLights = { 0, 3, 5, 7, 10 };
+        private static readonly int[] StreetLights = { 0, 2, 4, 6, 8 };
         private static readonly (int Distance, int Resolution, int Cascades)[] Shadows =
         {
-            (0, 512, 1), (30, 1024, 1), (65, 2048, 2), (95, 2048, 4), (175, 4096, 4)
+            (0, 512, 1), (26, 512, 1), (48, 1024, 2), (72, 1024, 2), (130, 2048, 4)
         };
 
         private readonly Camera camera;
@@ -98,9 +98,9 @@ namespace CostaLivre
             this.volume = volume;
             originalVolume = volume != null ? volume.sharedProfile : null;
             bool lowMemory = SystemInfo.systemMemorySize is > 0 and <= 6144;
-            int defaultPreset = Application.isMobilePlatform || lowMemory ? 1 : 3;
+            int defaultPreset = Application.isMobilePlatform || lowMemory ? 1 : 2;
             if (PlayerPrefs.HasKey("CostaQuality"))
-                defaultPreset = PlayerPrefs.GetInt("CostaQuality") == 0 ? 1 : 3;
+                defaultPreset = PlayerPrefs.GetInt("CostaQuality") == 0 ? 1 : 2;
             int maxPreset = Mathf.Min(MaxPreset, QualitySettings.names.Length - 1);
             Preset = Mathf.Clamp(PlayerPrefs.GetInt(PresetKey, defaultPreset), 0, maxPreset);
             ShadowQuality = Mathf.Clamp(PlayerPrefs.GetInt(ShadowKey, Preset), 0, MaxPreset);
@@ -108,7 +108,7 @@ namespace CostaLivre
             ResolutionPercent = RoundScale(PlayerPrefs.GetInt(ScaleKey, Scales[Preset]));
             Distance = Mathf.Clamp(PlayerPrefs.GetInt(DistanceKey, Distances[Preset]), MinDistance, MaxDistance);
             StpEnabled = PlayerPrefs.GetInt(StpKey, PlayerPrefs.GetInt(LegacyFsrKey, 0)) != 0;
-            AdaptiveResolution = PlayerPrefs.GetInt(AdaptiveKey, 0) != 0;
+            AdaptiveResolution = PlayerPrefs.GetInt(AdaptiveKey, 1) != 0;
             Extreme = PlayerPrefs.GetInt("CostaExtremePotato",0)!=0;
             ScaleLocked = PlayerPrefs.GetInt("CostaLockScale",0)!=0;
             lockedRenderPercent = Mathf.Clamp(PlayerPrefs.GetInt("CostaLockedRenderPercent", ResolutionPercent), MinActualPercent, 100);
@@ -368,10 +368,11 @@ namespace CostaLivre
             if (volume != null)
                 volume.sharedProfile = ultra && pipeline?.volumeProfile != null ? pipeline.volumeProfile : originalVolume;
             daylight.Apply(worldHour, Preset, weather);
+            HarborAtmosphereFeature.Enabled = Preset >= 3 && !Extreme && !Application.isMobilePlatform;
             camera.farClipPlane = Distance;
-            cameraData.antialiasing = Preset >= 2 ? AntialiasingMode.SubpixelMorphologicalAntiAliasing :
-                Preset == 1 ? AntialiasingMode.FastApproximateAntialiasing : AntialiasingMode.None;
-            cameraData.antialiasingQuality = Preset >= 3 ? AntialiasingQuality.High : AntialiasingQuality.Medium;
+            cameraData.antialiasing = Preset >= 3 ? AntialiasingMode.SubpixelMorphologicalAntiAliasing :
+                Preset >= 1 ? AntialiasingMode.FastApproximateAntialiasing : AntialiasingMode.None;
+            cameraData.antialiasingQuality = Preset >= 4 ? AntialiasingQuality.Medium : AntialiasingQuality.Low;
         }
 
         private void ApplyShadows()

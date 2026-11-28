@@ -114,6 +114,7 @@ namespace CostaLivre
                 return;
             }
             hostCars[i].tune = changed;
+            hostCars[i].TuneChosen = true;
             sceneVehicles[i].ApplyBuild(changed);
             SetNotice(peer,36);
         }
@@ -130,9 +131,13 @@ namespace CostaLivre
             {
                 if(!peer.Ready || !peer.Pose.playing || !peer.Pose.police || peer.NextPayroll<=0 || now<peer.NextPayroll)
                     continue;
-                peer.NextPayroll=now+300;
                 if(ledger.Apply(peer.Account,CostaLedger.Operation.Payroll,250))
+                {
+                    peer.NextPayroll=now+300;
                     SetNotice(peer,40);
+                }
+                else
+                    peer.NextPayroll=now+5;
             }
         }
 

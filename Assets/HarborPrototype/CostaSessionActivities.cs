@@ -119,7 +119,7 @@ namespace CostaLivre
         private static Vector3 DriverSpot(int site) => Entrance(site) + new Vector3(7, 0, -7);
 
         private bool CrewAvailable(Peer peer, float now) => peer != null && peers.Contains(peer) && peer.Ready
-            && peer.Pose.playing && !peer.Pose.police && now >= peer.HeldUntil && now >= peer.DoorUntil;
+            && peer.Pose.playing && !peer.Pose.police && now >= peer.HeldUntil;
 
         private int CrewIndex(Peer peer)
         {
@@ -165,11 +165,12 @@ namespace CostaLivre
 
         private void UseCrew(Peer peer, int site, float now)
         {
-            if (site < 0 || site >= crews.Length || crews[site] is not Crew crew || !CrewAvailable(peer, now))
+            if (site < 0 || site >= crews.Length || crews[site] is not Crew crew || !CrewAvailable(peer, now)
+                || now < peer.DoorUntil)
                 return;
             if (crew.Carrier != null)
             {
-                if (crew.Carrier == peer && crew.Collector == peer && CrewAvailable(crew.Driver, now)
+                if (crew.Carrier == peer && crew.Collector == peer && CrewAvailable(crew.Driver, now) && now >= crew.Driver.DoorUntil
                     && peer.Pose.vehicle < 0 && crew.Driver.Pose.vehicle >= 0
                     && Near(crew.Driver.Pose.pos, DriverSpot(site), 8)
                     && Near(peer.Pose.pos, crew.Driver.Pose.pos, 4)

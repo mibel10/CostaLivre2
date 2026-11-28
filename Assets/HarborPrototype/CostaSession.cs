@@ -86,6 +86,7 @@ namespace CostaLivre
             public float lean;
             public float frontDamage;
             public float rearDamage;
+            [NonSerialized] internal bool TuneChosen;
         }
 
         [Serializable]
@@ -1071,9 +1072,10 @@ namespace CostaLivre
                             && vehicle.TryBoard(avatar.pos, car.pos, Quaternion.Euler(0, car.yaw, 0), out int side, out Vector3 step))
                         {
                             car.driver = avatar.id;
-                            if (sceneVehicles[msg.index].Customizable && peer.Account.mods[msg.index] != 0)
+                            if (!car.TuneChosen && sceneVehicles[msg.index].Customizable && peer.Account.mods[msg.index] != 0)
                             {
                                 car.tune = peer.Account.mods[msg.index];
+                                car.TuneChosen = true;
                                 sceneVehicles[msg.index].ApplyBuild(car.tune);
                             }
                             car.speed = 0;

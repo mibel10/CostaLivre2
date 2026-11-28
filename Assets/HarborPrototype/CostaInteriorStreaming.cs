@@ -172,6 +172,13 @@ namespace CostaLivre
             Decor(room, "Computer panel", screen, new(.48f,.33f,.09f), Metal);
             room.Screen = Decor(room, "Powered display", screen + Vector3.back * .055f, new(.42f,.26f,.022f), Glass);
             Decor(room, "Keyboard", screen + new Vector3(0,-.31f,-.20f), new(.30f,.025f,.10f), Metal);
+            if (p.Purpose is CostaInteriorPlan.Use.Hotel or CostaInteriorPlan.Use.Apartment or CostaInteriorPlan.Use.Hospital)
+            {
+                Vector3 mirror = new(p.Right - .188f, p.Y(level) + 1.53f, p.Front + p.Depth * .30f);
+                Decor(room, "Mirror frame", mirror, new Vector3(.06f, 1.15f, 1.24f), Metal);
+                art.Mirrors?.Install(room.Visuals, room.Visuals.InverseTransformPoint(mirror + Vector3.left * .042f),
+                    Vector3.left, new Vector2(1.12f, 1.03f));
+            }
             if (level != 0 || !p.HasOriginalLobby)
             {
                 yield return null;

@@ -7,6 +7,7 @@ namespace CostaLivre
 {
     internal sealed class HarborBlockout
     {
+        internal CostaMirrors Mirrors { get; set; }
         internal enum Finish { Standard, Glass, Paint, Metal, Rubber }
         internal static readonly Vector3 Spawn = new(-11, 0, -14);
         internal static readonly Vector3 Cargo = new(17, 0, 12);

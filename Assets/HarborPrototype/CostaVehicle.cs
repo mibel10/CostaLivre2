@@ -77,7 +77,7 @@ namespace CostaLivre
             }
             else
             {
-                BuildCar(art, paint, service);
+                BuildCar(art, paint, service, !traffic && !preview);
                 Vector3 scale = style == Style.Compact ? new Vector3(0.88f, 1.04f, 0.84f)
                     : style == Style.Executive ? new Vector3(1.03f, 1.04f, 1.12f) : Vector3.one;
                 shell.localScale = scale;
@@ -124,7 +124,7 @@ namespace CostaLivre
             if (preview) body.enabled = false;
         }
 
-        private void BuildCar(HarborBlockout art, Color paint, bool service)
+        private void BuildCar(HarborBlockout art, Color paint, bool service, bool mirrors)
         {
             Color rubber = new(0.075f, 0.078f, 0.081f);
             Color trim = new(0.16f, 0.18f, 0.20f);
@@ -177,6 +177,9 @@ namespace CostaLivre
                     new(0.43f, 0.16f, 0.13f), new Color(0.45f, 0.075f, 0.060f));
                 Part(art, shell, PrimitiveType.Cube, "Mirror", new(side * 0.87f, 1.06f, 0.61f),
                     new(0.24f, 0.11f, 0.18f), trim);
+                if (mirrors)
+                    art.Mirrors?.Install(shell, new Vector3(side * .895f, 1.06f, .506f),
+                        new Vector3(side * .22f, .03f, -1), new Vector2(.205f, .086f), this);
             }
 
             Part(art, shell, PrimitiveType.Cube, "Grille", new(0, 0.53f, 2.19f), new(0.74f, 0.22f, 0.045f), trim);

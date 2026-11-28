@@ -88,6 +88,7 @@ namespace CostaLivre
         private int titleBackground = Mathf.Clamp(PlayerPrefs.GetInt("CostaCityTitle", -1), -1, 1);
         internal bool LiveTitle => titleBackground < 0 ? GraphicsPreset >= 2 : titleBackground == 1;
         internal bool LoadoutPage => page == ScreenPage.Loadout;
+        internal int MirrorQuality { get; private set; } = Mathf.Clamp(PlayerPrefs.GetInt("CostaMirrorQuality", 0), 0, 4);
 
         internal int StreetLightBudget => graphics.StreetLightBudget;
         internal bool Ultra => graphics.Preset == HarborGraphics.MaxPreset;
@@ -680,6 +681,16 @@ namespace CostaLivre
             SetHud(new Rect(x + 113, hudY, 103, 32), L("Full", "Completo"), HarborHud.Mode.Full);
             SetHud(new Rect(x + 223, hudY, 112, 32), L("Contextual", "Contextual"), HarborHud.Mode.Contextual);
             SetHud(new Rect(x + 342, hudY, 105, 32), L("Minimal", "Mínimo"), HarborHud.Mode.Minimal);
+
+            string mirrors = MirrorQuality switch
+            {
+                1 => L("Off", "Desligados"), 2 => "128 px", 3 => "256 px", 4 => "512 px", _ => L("Auto", "Automático")
+            };
+            if (MenuButton(new Rect(x + 367, hudY + 40, 128, 32), L("Mirrors  ", "Espelhos  ") + mirrors, false))
+            {
+                MirrorQuality = (MirrorQuality + 1) % 5;
+                PlayerPrefs.SetInt("CostaMirrorQuality", MirrorQuality);
+            }
 
             float titleY = hudY + 40;
             Text(new Rect(x, titleY, 110, 32), L("Title scene", "Fundo do menu"), label, Paper);

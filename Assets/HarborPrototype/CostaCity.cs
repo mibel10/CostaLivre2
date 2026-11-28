@@ -48,9 +48,9 @@ namespace CostaLivre
 
         internal static readonly District[] Districts =
         {
-            new("Calado City", 265, new Color(0.30f, 0.54f, 0.57f)),
-            new("Antutu City", 495, new Color(0.35f, 0.45f, 0.64f)),
-            new("Vice City", 721, new Color(0.83f, 0.36f, 0.52f))
+            new("Calado City", 265, new Color(0.20f, 0.62f, 0.64f)),
+            new("Antutu City", 495, new Color(0.26f, 0.58f, 0.78f)),
+            new("Vice City", 721, new Color(0.92f, 0.40f, 0.60f))
         };
 
         internal static bool OnRegionalLand(Vector3 position)
@@ -73,11 +73,68 @@ namespace CostaLivre
             return position.z >= HighwayStart ? CostaText.L("COASTAL HIGHWAY", "RODOVIA COSTEIRA") : "SANTA LUZ";
         }
 
-        private static readonly Color Pavement = new(0.76f, 0.73f, 0.68f);
-        private static readonly Color Stone = new(0.85f, 0.80f, 0.73f);
-        private static readonly Color Glass = new(0.15f, 0.23f, 0.26f);
-        private static readonly Color LinenSign = new(.79f,.88f,.84f);
-        private static readonly Color Brass = new(0.64f, 0.49f, 0.27f);
+        private static readonly Color Pavement = new(0.84f, 0.79f, 0.70f);
+        private static readonly Color Stone = new(0.91f, 0.86f, 0.76f);
+        private static readonly Color Glass = new(0.14f, 0.36f, 0.44f);
+        private static readonly Color LinenSign = new(0.95f, 0.93f, 0.86f);
+        private static readonly Color Brass = new(0.82f, 0.60f, 0.28f);
+        private static readonly Color Turquoise = new(0.10f, 0.66f, 0.70f);
+        private static readonly Color Terracotta = new(0.82f, 0.44f, 0.33f);
+        private static readonly Color NeonPink = new(0.96f, 0.36f, 0.62f);
+        private static readonly Color NeonCyan = new(0.18f, 0.84f, 0.86f);
+        private static readonly Color NeonGold = new(0.98f, 0.74f, 0.28f);
+
+        private static readonly Color[] SantaLuzPalette =
+        {
+            new(0.88f, 0.60f, 0.48f), // Coral colonial
+            new(0.91f, 0.79f, 0.49f), // Amarelo sol
+            new(0.58f, 0.80f, 0.74f), // Verde-água tropical
+            new(0.58f, 0.75f, 0.86f), // Azul Bahia
+            new(0.92f, 0.87f, 0.77f), // Creme areia
+            new(0.90f, 0.68f, 0.58f)  // Pêssego praiano
+        };
+
+        private static readonly Color[] CaladoPalette =
+        {
+            new(0.86f, 0.56f, 0.38f), // Terracota portuária
+            new(0.88f, 0.74f, 0.40f), // Ocre quente
+            new(0.42f, 0.68f, 0.66f), // Turquesa cais
+            new(0.46f, 0.62f, 0.78f), // Azul marítimo
+            new(0.88f, 0.81f, 0.68f)  // Reboco solar
+        };
+
+        private static readonly Color[] AntutuPalette =
+        {
+            new(0.89f, 0.91f, 0.90f), // Branco costeiro moderno
+            new(0.66f, 0.78f, 0.84f), // Vidro-azul claro
+            new(0.85f, 0.80f, 0.71f), // Arenito sofisticado
+            new(0.58f, 0.76f, 0.76f)  // Verde-mar executivo
+        };
+
+        private static readonly Color[] VicePalette =
+        {
+            new(0.92f, 0.60f, 0.70f), // Rosa flamingo Art Déco
+            new(0.52f, 0.83f, 0.79f), // Menta Vice
+            new(0.94f, 0.71f, 0.54f), // Pêssego pôr-do-sol
+            new(0.94f, 0.90f, 0.82f), // Creme Art Déco
+            new(0.76f, 0.66f, 0.84f)  // Lavanda tropical
+        };
+
+        private static readonly Color[] AwningPalette =
+        {
+            new(0.84f, 0.34f, 0.28f),
+            new(0.14f, 0.58f, 0.62f),
+            new(0.88f, 0.64f, 0.22f),
+            new(0.20f, 0.56f, 0.38f),
+            new(0.84f, 0.34f, 0.54f)
+        };
+
+        private static readonly string[] StoreSigns =
+        {
+            "AÇAÍ & SUCOS", "PADARIA SOL", "BAR DO PORTO", "SURF & MAR",
+            "CAFÉ BAHIA", "SORVETERIA", "MODA PRAIA", "MERCADINHO",
+            "BRISA LOUNGE", "TROPICAL CLUB", "GALERIA LUZ", "CHURRASCARIA"
+        };
         private readonly HarborBlockout art;
         private readonly Transform root;
         private Transform wheel;
@@ -128,15 +185,18 @@ namespace CostaLivre
 
             yield return 0.15f;
 
-            Venue("GRAND HOTEL ATLÂNTICO", Hotel, 25, 16, 23, Stone, Brass);
-            Venue("JOALHERIA ÁUREA", Jeweler, 18, 14, 6, new Color(0.52f, 0.54f, 0.50f), Brass);
-            Venue("MUSEU DE SANTA LUZ", Museum, 27, 17, 7, Stone, new Color(0.32f, 0.36f, 0.34f));
-            Venue("POLÍCIA • SANTA LUZ", Station, 23, 16, 8, new Color(0.65f, 0.71f, 0.77f),
-                new Color(0.19f, 0.31f, 0.44f));
+            Venue("GRAND HOTEL ATLÂNTICO", Hotel, 25, 16, 23, new Color(0.94f, 0.89f, 0.79f), new Color(0.86f, 0.44f, 0.38f));
+            art.NeonTrim(Hotel + new Vector3(0, 22.7f, -2.05f), new Vector3(24.4f, 0.26f, 0.16f), NeonCyan);
+            art.NeonTrim(Hotel + new Vector3(0, 3.98f, -2.28f), new Vector3(11.0f, 0.10f, 0.10f), NeonPink);
+            Venue("JOALHERIA ÁUREA", Jeweler, 18, 14, 6, new Color(0.91f, 0.81f, 0.62f), new Color(0.18f, 0.56f, 0.54f));
+            Venue("MUSEU DE SANTA LUZ", Museum, 27, 17, 7, new Color(0.92f, 0.86f, 0.76f), new Color(0.24f, 0.50f, 0.68f));
+            Venue("POLÍCIA • SANTA LUZ", Station, 23, 16, 8, new Color(0.86f, 0.90f, 0.92f),
+                new Color(0.18f, 0.38f, 0.60f));
 
-            Venue("ARMARIA SANTA LUZ", GunShop, 12, 11, 6.8f, new Color(0.56f, 0.62f, 0.60f), Glass);
-            Venue("SANTA LUZ INFORMÁTICA", Electronics, 19, 16, 10.5f, new Color(0.73f, 0.77f, 0.80f),
-                new Color(0.22f, 0.34f, 0.39f));
+            Venue("ARMARIA SANTA LUZ", GunShop, 12, 11, 6.8f, new Color(0.88f, 0.72f, 0.48f), new Color(0.74f, 0.34f, 0.28f));
+            Venue("SANTA LUZ INFORMÁTICA", Electronics, 19, 16, 10.5f, new Color(0.76f, 0.86f, 0.88f),
+                new Color(0.14f, 0.58f, 0.64f));
+            art.NeonTrim(Electronics + new Vector3(0, 10.2f, -2.05f), new Vector3(18.2f, 0.20f, 0.14f), NeonCyan);
             Desk(GunShop + new Vector3(0, 0, 4.2f), Glass);
             Desk(Electronics + new Vector3(4.6f, 0, 2.3f), Glass);
             for (int i = -1; i <= 1; i++)
@@ -169,7 +229,8 @@ namespace CostaLivre
             for (int i = 0; i < Estate.Length; i++)
             {
                 string address = $"VILA {i + 1:00}";
-                Venue(address, Estate[i], 16, 11, 4.3f, i == 1 ? Stone : new Color(0.74f, 0.66f, 0.54f), Glass, Floor.Wood);
+                Color villaColor = i == 0 ? new Color(0.90f, 0.66f, 0.55f) : i == 1 ? new Color(0.92f, 0.83f, 0.56f) : new Color(0.64f, 0.83f, 0.78f);
+                Venue(address, Estate[i], 16, 11, 4.3f, villaColor, Terracotta, Floor.Wood);
                 HouseDoors[i] = art.Box("Property entrance", Estate[i] + new Vector3(0, 1.27f, -2.03f),
                     new Vector3(2.65f, 2.54f, 0.22f), Glass, true, bake: false);
                 Transform hinge = new GameObject("Property door hinge").transform;
@@ -213,7 +274,7 @@ namespace CostaLivre
             Block(new Vector3(32, 0, 151), 21, 12, 24);
             Block(new Vector3(-137, 0, 121), 13, 16, 13);
             Block(new Vector3(-55, 0, 118), 17, 7, 10);
-            Venue("CAFÉ DA PRAÇA", CostaInteriorPlan.Cafe, 12, 7, 5.3f, Stone, Brass);
+            Venue("CAFÉ DA PRAÇA", CostaInteriorPlan.Cafe, 12, 7, 5.3f, new Color(0.91f, 0.74f, 0.56f), Terracotta);
             for (int i = 0; i < 4; i++)
                 Tree(new Vector3(-18 + i * 8, 0, 38));
             Block(new Vector3(-140, 0, 65), 14, 19, 12);
@@ -221,6 +282,9 @@ namespace CostaLivre
             Block(new Vector3(5, 0, -43), 16, 14, 8);
             for (int i = 0; i < 9; i++)
                 Tree(new Vector3(-142 + 7.5f * i, 0, 32));
+            // Coastal waterfront palms along the harbor edge
+            for (int i = 0; i < 5; i++)
+                Tree(new Vector3(17f, 0, 26f + i * 11f));
             Fountain(new Vector3(-56, 0, 39));
             yield return 0.58f;
 
@@ -264,8 +328,12 @@ namespace CostaLivre
                 Mark(new Vector3(HighwayX, 0.02f, z), new Vector3(0.16f, 0.03f, 4f));
             foreach (int side in new[] { -1, 1 })
                 for (float z = HighwayStart + 8; z < HighwayEnd; z += 28)
+                {
                     Lamp(new Vector3(HighwayX + side * 10.5f, 0, z), Vector3.left * side);
-            art.Sign("RODOVIA COSTEIRA", new Vector3(HighwayX, 4.1f, HighwayStart + 5), 0.28f, Stone);
+                    if (z < HighwayEnd - 14f)
+                        Palm(new Vector3(HighwayX + side * 11.4f, 0, z + 14f));
+                }
+            art.Sign("RODOVIA COSTEIRA", new Vector3(HighwayX, 4.1f, HighwayStart + 5), 0.28f, LinenSign);
         }
 
         private void BuildDistrict(District district, int index)
@@ -322,25 +390,35 @@ namespace CostaLivre
                         Venue("GARAGEM DO CAIS", CostaInteriorPlan.Garage.Entry, 11, 19, 7,
                             Stone, CostaInteriorPlan.Garage.Accent);
                     else
-                        Block(new Vector3(x, 0, z + row * 37), 11, depth, height);
+                        Block(new Vector3(x, 0, z + row * 37), 11, depth, height, index);
                     Tree(new Vector3(x + 5, 0, z + row * 13));
                 }
 
             switch (index)
             {
                 case 0:
-                    Venue("MERCADO DO CAIS", new Vector3(-69, 0, z + 9), 23, 16, 8, Stone, district.Accent);
+                    Venue("MERCADO DO CAIS", new Vector3(-69, 0, z + 9), 23, 16, 8, new Color(0.90f, 0.77f, 0.50f), district.Accent);
+                    art.Mural(1, new Vector3(-69f, 2.3f, z + 16.95f), new Vector2(5.4f, 2.5f), 180f);
                     for (int i = 0; i < 3; i++)
+                    {
+                        Color stallTint = AwningPalette[i % AwningPalette.Length];
                         art.Box("Market stall", new Vector3(9 + i * 9, 0.55f, z - 13), new Vector3(3.8f, 1.1f, 2),
-                            district.Accent, true);
+                            stallTint, true);
+                        art.BatchDecoration(new Vector3(9 + i * 9, 2.35f, z - 13), new Vector3(4.1f, 0.14f, 2.3f),
+                            i % 2 == 0 ? LinenSign : stallTint);
+                    }
                     break;
                 case 1:
-                    Venue("CENTRO TECNOLÓGICO", CostaInteriorPlan.Office.Entry, 28, 17, 17, Stone, district.Accent);
+                    Venue("CENTRO TECNOLÓGICO", CostaInteriorPlan.Office.Entry, 28, 17, 17, new Color(0.84f, 0.90f, 0.92f), district.Accent);
+                    art.NeonTrim(CostaInteriorPlan.Office.Entry + new Vector3(0, 16.6f, -2.06f), new Vector3(27.2f, 0.24f, 0.14f), NeonCyan);
                     Plaza(new Vector3(12, 0, z - 15), district.Accent);
                     break;
                 default:
-                    Venue("CLUBE DO MIRANTE", new Vector3(-72, 0, z + 9), 24, 17, 10, Stone, district.Accent);
-                    Plaza(new Vector3(12, 0, z - 15), district.Accent);
+                    Venue("CLUBE DO MIRANTE", new Vector3(-72, 0, z + 9), 24, 17, 10, new Color(0.93f, 0.67f, 0.74f), NeonPink);
+                    art.NeonTrim(new Vector3(-72f, 9.75f, z + 6.94f), new Vector3(23.4f, 0.24f, 0.14f), NeonPink);
+                    art.NeonTrim(new Vector3(-72f, 4.18f, z + 6.72f), new Vector3(10.6f, 0.12f, 0.10f), NeonCyan);
+                    art.Mural(2, new Vector3(-72f, 2.5f, z + 24.06f), new Vector2(5.8f, 2.6f), 180f);
+                    Plaza(new Vector3(12, 0, z - 15), NeonCyan);
                     break;
             }
         }
@@ -439,7 +517,7 @@ namespace CostaLivre
         private void Ground(float x, float z, float width, float depth)
         {
             art.Box("City ground", new Vector3(x, -0.25f, z), new Vector3(width, 0.50f, depth),
-                new Color(0.59f, 0.61f, 0.61f), true, "Asphalt", new Vector2(width / 2.3f, depth / 2.3f));
+                new Color(0.32f, 0.33f, 0.35f), true, "Asphalt", new Vector2(width / 2.3f, depth / 2.3f));
         }
 
         private void Barrier(Vector3 position, Vector3 size)
@@ -458,7 +536,7 @@ namespace CostaLivre
 
         private void Mark(Vector3 position, Vector3 size)
         {
-            art.BatchDecoration(position, size, new Color(0.55f, 0.51f, 0.41f));
+            art.BatchDecoration(position, size, new Color(0.90f, 0.85f, 0.72f));
         }
 
         private void Venue(string name, Vector3 entry, float width, float depth, float height, Color color, Color trim, Floor floor = Floor.Stone)
@@ -568,11 +646,72 @@ namespace CostaLivre
                 Windows(center, width, depth, height);
         }
 
-        private void Block(Vector3 center, float width, float depth, float height)
+        private static int BlockHash(Vector3 center) =>
+            Mathf.Abs(Mathf.RoundToInt(center.x) * 73856093 ^ Mathf.RoundToInt(center.z) * 19349663);
+
+        private void Block(Vector3 center, float width, float depth, float height, int district = -1)
         {
             Footprints.Add(new Rect(center.x - width * 0.5f, center.z - depth * 0.5f, width, depth));
+            int hash = BlockHash(center);
+            Color[] palette = district switch
+            {
+                0 => CaladoPalette,
+                1 => AntutuPalette,
+                2 => VicePalette,
+                _ => SantaLuzPalette
+            };
+            Color facadeColor = palette[hash % palette.Length];
+            Color trimColor = district == 2
+                ? (hash % 2 == 0 ? NeonPink : NeonCyan)
+                : district == 1
+                    ? Turquoise
+                    : AwningPalette[(hash / 3) % AwningPalette.Length];
+
             art.Box("Commercial block", center + Vector3.up * (height / 2), new Vector3(width, height, depth),
-                Stone, true, "Concrete", new Vector2(width / 2.8f, height / 2.1f));
+                facadeColor, true, "Concrete", new Vector2(width / 2.8f, height / 2.1f));
+
+            float frontZ = center.z - depth * 0.5f;
+            // Roof parapet cornice for crisp coastal silhouette
+            art.BatchDecoration(new Vector3(center.x, height + 0.14f, center.z),
+                new Vector3(width + 0.32f, 0.28f, depth + 0.32f),
+                district == 1 ? new Color(0.24f, 0.34f, 0.40f) : Pavement);
+
+            // Ground-floor coastal awning (toldo) + storefront glazing
+            float awningWidth = Mathf.Min(width - 1.2f, 6.4f);
+            art.BatchDecoration(new Vector3(center.x, 3.05f, frontZ - 0.52f),
+                new Vector3(awningWidth, 0.18f, 1.05f), trimColor);
+            art.BatchDecoration(new Vector3(center.x, 1.55f, frontZ - 0.04f),
+                new Vector3(awningWidth * 0.86f, 2.35f, 0.06f), Glass, finish: HarborBlockout.Finish.Glass);
+
+            // Vice City & commercial neon roof/facade accents (zero realtime lights)
+            if (district == 2)
+            {
+                Color glow = (hash % 3) switch { 0 => NeonPink, 1 => NeonCyan, _ => NeonGold };
+                art.NeonTrim(new Vector3(center.x, height - 0.18f, frontZ - 0.08f), new Vector3(width - 0.4f, 0.16f, 0.12f), glow);
+                art.NeonTrim(new Vector3(center.x - width * 0.46f, height * 0.55f, frontZ - 0.08f), new Vector3(0.14f, height * 0.55f, 0.12f), glow);
+            }
+            else if (district == 1 && hash % 2 == 0)
+            {
+                art.NeonTrim(new Vector3(center.x, height - 0.18f, frontZ - 0.08f), new Vector3(width - 0.6f, 0.14f, 0.10f), NeonCyan);
+            }
+
+            // Deterministic Brazilian storefront signs & street-art murals
+            if (hash % 2 == 0)
+            {
+                string label = StoreSigns[(hash / 5) % StoreSigns.Length];
+                art.BatchDecoration(new Vector3(center.x, 3.55f, frontZ - 0.10f),
+                    new Vector3(Mathf.Min(width - 1f, 5.4f), 0.56f, 0.12f), new Color(0.14f, 0.18f, 0.22f));
+                art.Sign(label, new Vector3(center.x, 3.55f, frontZ - 0.17f), 0.115f, LinenSign);
+            }
+            if (hash % 3 == 0)
+            {
+                int muralDesign = (hash / 7) % 4;
+                bool rightWall = (hash & 1) == 0;
+                float wallX = center.x + (rightWall ? width * 0.5f + 0.04f : -width * 0.5f - 0.04f);
+                art.Mural(muralDesign, new Vector3(wallX, 2.25f, center.z), new Vector2(Mathf.Min(depth - 2f, 5.2f), 2.5f),
+                    rightWall ? -90f : 90f);
+            }
+
             Windows(center, width, depth, height);
         }
 
@@ -597,11 +736,12 @@ namespace CostaLivre
             for (int side = -1; side <= 1; side += 2)
             {
                 float x = 47 + side * 15;
-                art.MarkFootFloor(art.Box("Park soil bed", new(x,.031f,118), new(4.6f,.052f,46),
-                    new Color(.34f,.29f,.20f)), Floor.Earth);
+                art.MarkFootFloor(art.Box("Park grass bed", new(x,.031f,118), new(4.6f,.052f,46),
+                    new Color(.22f,.52f,.28f)), Floor.Earth);
             }
-            art.Box("Entry canopy", ParkGate + new Vector3(0, 3.4f, 0), new Vector3(11, 0.30f, 1.9f), Brass);
-            art.Sign("PARQUE MIRANTE", ParkGate + new Vector3(0, 3.29f, -1f), 0.18f, Stone);
+            art.Box("Entry canopy", ParkGate + new Vector3(0, 3.4f, 0), new Vector3(11, 0.30f, 1.9f), Turquoise);
+            art.NeonTrim(ParkGate + new Vector3(0, 3.58f, -0.96f), new Vector3(10.8f, 0.10f, 0.08f), NeonGold);
+            art.Sign("PARQUE MIRANTE", ParkGate + new Vector3(0, 3.29f, -1f), 0.18f, LinenSign);
             for (int side = -1; side <= 1; side += 2)
             {
                 art.Box("Park entry post", ParkGate + new Vector3(side * 5.2f, 1.7f, 0),
@@ -626,8 +766,9 @@ namespace CostaLivre
                 Rail(wheel, Vector3.zero, point, 0.077f, steel);
                 if (i % 2 == 0)
                 {
+                    Color gondolaTint = AwningPalette[(i / 2) % AwningPalette.Length];
                     gondolas[i / 2] = art.Part(wheel, PrimitiveType.Cube, "Gondola", point + Vector3.back * 0.47f,
-                        new Vector3(1.16f, 0.73f, 0.75f), i % 4 == 0 ? Glass : Brass).transform;
+                        new Vector3(1.16f, 0.73f, 0.75f), gondolaTint).transform;
                 }
             }
             for (int side = -1; side <= 1; side += 2)
@@ -661,25 +802,73 @@ namespace CostaLivre
 
         private void Tree(Vector3 point)
         {
-            var tree = new GameObject("Street tree").transform;
+            int hash = BlockHash(point);
+            if (hash % 3 != 0)
+            {
+                Palm(point);
+                return;
+            }
+            var tree = new GameObject("Tropical street tree").transform;
             tree.SetParent(root, false);
             tree.localPosition = point;
             GameObject trunk = art.Part(tree, PrimitiveType.Cylinder, "Tree trunk", Vector3.up * 1.6f,
-                new Vector3(.25f, 1.6f, .25f), new Color(.30f,.24f,.17f), true);
+                new Vector3(.26f, 1.6f, .26f), new Color(.36f, .27f, .19f), true);
             art.Damage.Mark(trunk, CostaWorldDamage.Surface.Wood, 0);
-            Color leaf = new(.26f,.36f,.26f);
+            // Lush Brazilian foliage or flowering Ipê (yellow / pink)
+            bool flowering = hash % 6 == 0;
+            Color leaf = flowering
+                ? (hash % 12 == 0 ? new Color(0.92f, 0.74f, 0.20f) : new Color(0.86f, 0.36f, 0.56f))
+                : new Color(0.18f, 0.50f, 0.27f);
+            Color highlight = flowering
+                ? Color.Lerp(leaf, new Color(0.98f, 0.90f, 0.66f), 0.25f)
+                : new Color(0.26f, 0.58f, 0.31f);
             GameObject crown = art.Part(tree, PrimitiveType.Sphere, "Tree crown", Vector3.up * 3.7f,
-                new Vector3(3,3,2.65f), leaf);
-            GameObject offset = art.Part(tree, PrimitiveType.Sphere, "Tree crown", new Vector3(.70f,3.2f,.21f),
-                new Vector3(2.5f,2.08f,2.16f), new Color(.31f,.41f,.29f));
+                new Vector3(3.15f, 2.95f, 2.85f), leaf);
+            GameObject offset = art.Part(tree, PrimitiveType.Sphere, "Tree crown", new Vector3(.72f, 3.25f, .22f),
+                new Vector3(2.55f, 2.15f, 2.25f), highlight);
             art.TreeDetail(tree, crown.GetComponent<Renderer>(),
-                offset.GetComponent<Renderer>(), new Vector3(.31f,3.58f,.07f), leaf);
+                offset.GetComponent<Renderer>(), new Vector3(.31f, 3.58f, .07f), leaf);
+        }
+
+        private void Palm(Vector3 point)
+        {
+            int hash = BlockHash(point);
+            float height = 4.6f + (hash % 3) * 0.75f;
+            float leanYaw = (hash % 8) * 45f;
+            var palm = new GameObject("Tropical palm").transform;
+            palm.SetParent(root, false);
+            palm.localPosition = point;
+            palm.localRotation = Quaternion.Euler(0, leanYaw, 0);
+
+            Color bark = new(0.45f, 0.35f, 0.24f);
+            Color frondDark = new(0.16f, 0.48f, 0.24f);
+            Color frondLight = new(0.24f, 0.58f, 0.29f);
+            GameObject trunk = art.Part(palm, PrimitiveType.Cylinder, "Tree trunk", new Vector3(0.12f, height * 0.5f, 0f),
+                new Vector3(0.22f, height * 0.5f, 0.22f), bark, true);
+            trunk.transform.localRotation = Quaternion.Euler(0, 0, -4.5f);
+            art.Damage.Mark(trunk, CostaWorldDamage.Surface.Wood, 0);
+
+            Vector3 top = new(0.28f, height - 0.12f, 0f);
+            var fronds = new Renderer[5];
+            for (int i = 0; i < 5; i++)
+            {
+                float a = i * (Mathf.PI * 2f / 5f);
+                Vector3 dir = new(Mathf.Cos(a), 0f, Mathf.Sin(a));
+                GameObject frond = art.Part(palm, PrimitiveType.Cube, "Palm frond",
+                    top + dir * 1.15f + Vector3.up * 0.08f,
+                    new Vector3(0.56f, 0.08f, 2.35f), i % 2 == 0 ? frondDark : frondLight);
+                frond.transform.localRotation = Quaternion.LookRotation(dir) * Quaternion.Euler(20f, 0f, 0f);
+                fronds[i] = frond.GetComponent<Renderer>();
+            }
+            art.TreeDetail(palm, fronds, top + Vector3.up * 0.15f, frondDark);
         }
 
         private void Fountain(Vector3 point)
         {
             Shape("Fountain basin", PrimitiveType.Cylinder, point + Vector3.up * 0.27f, new Vector3(6.7f, 0.27f, 6.7f), Stone);
-            Shape("Fountain water", PrimitiveType.Cylinder, point + Vector3.up * 0.53f, new Vector3(6.16f, 0.025f, 6.16f), Glass);
+            GameObject pool = art.Part(root, PrimitiveType.Cylinder, "Fountain water", point + Vector3.up * 0.53f,
+                new Vector3(6.16f, 0.025f, 6.16f), Turquoise, false, HarborBlockout.Finish.Glass);
+            pool.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             Shape("Fountain column", PrimitiveType.Cylinder, point + Vector3.up * 0.85f, new Vector3(0.78f, 0.54f, 0.78f), Stone);
         }
 

@@ -92,50 +92,55 @@ namespace CostaLivre
             {
                 sun.transform.rotation = Quaternion.LookRotation(height >= 0f ? -sunDirection : sunDirection);
                 sun.color = height >= 0f
-                    ? Color.Lerp(new Color(1f, 0.98f, 0.92f), new Color(1f, 0.57f, 0.31f), sunset)
-                    : new Color(0.48f, 0.65f, 1f);
-                sun.color = Color.Lerp(Color.Lerp(sun.color, new Color(0.77f, 0.85f, 0.94f),
-                    weather.Clouds * 0.66f), new Color(0.79f, 0.87f, 1f), weather.Flash);
-                float direct = 1.45f * SmoothRange(0f, 0.55f, height) + 0.10f * moonlight;
-                sun.intensity = direct * Mathf.Lerp(1, 0.30f, weather.Clouds) + 3.0f * weather.Flash;
+                    ? Color.Lerp(new Color(1f, 0.94f, 0.82f), new Color(1f, 0.56f, 0.30f), sunset)
+                    : new Color(0.45f, 0.64f, 1f);
+                sun.color = Color.Lerp(Color.Lerp(sun.color, new Color(0.80f, 0.87f, 0.94f),
+                    weather.Clouds * 0.55f), new Color(0.82f, 0.90f, 1f), weather.Flash);
+                float direct = 1.62f * SmoothRange(0f, 0.50f, height) + 0.12f * moonlight;
+                sun.intensity = direct * Mathf.Lerp(1, 0.36f, weather.Clouds) + 3.0f * weather.Flash;
                 LightShadows shadows = height >= 0f ? LightShadows.Soft : LightShadows.None;
                 if (sun.shadows != shadows)
                     sun.shadows = shadows;
             }
 
-            Color blueSky = Color.Lerp(new Color(0.56f, 0.65f, 0.73f), new Color(0.38f, 0.45f, 0.53f), weather.Clouds);
-            Color horizon = Color.Lerp(new Color(0.30f, 0.34f, 0.37f), new Color(0.25f, 0.30f, 0.34f), weather.Clouds);
-            Color ground = new Color(0.13f, 0.11f, 0.085f);
-            RenderSettings.ambientSkyColor = Color.Lerp(new Color(0.080f, 0.12f, 0.20f),
-                Color.Lerp(blueSky, new Color(0.57f, 0.40f, 0.34f), sunset * (1 - weather.Clouds)), skyLight);
-            RenderSettings.ambientEquatorColor = Color.Lerp(new Color(0.043f, 0.063f, 0.095f), horizon, skyLight);
-            RenderSettings.ambientGroundColor = Color.Lerp(new Color(0.023f, 0.033f, 0.049f), ground, skyLight);
-            Color haze = Color.Lerp(new Color(0.57f, 0.66f, 0.71f), new Color(0.43f, 0.52f, 0.60f), weather.Clouds);
-            haze = Color.Lerp(new Color(0.065f, 0.094f, 0.145f),
-                Color.Lerp(haze, new Color(0.68f, 0.49f, 0.40f), sunset * (1 - weather.Clouds) * 0.7f), skyLight);
+            Color blueSky = Color.Lerp(new Color(0.40f, 0.66f, 0.88f), new Color(0.36f, 0.48f, 0.58f), weather.Clouds);
+            Color horizon = Color.Lerp(new Color(0.46f, 0.54f, 0.56f), new Color(0.30f, 0.36f, 0.40f), weather.Clouds);
+            Color warmHorizon = Color.Lerp(horizon, new Color(0.68f, 0.44f, 0.34f), sunset * (1 - weather.Clouds));
+            Color ground = new Color(0.24f, 0.20f, 0.15f);
+            RenderSettings.ambientSkyColor = Color.Lerp(new Color(0.085f, 0.13f, 0.24f),
+                Color.Lerp(blueSky, new Color(0.74f, 0.44f, 0.48f), sunset * (1 - weather.Clouds)), skyLight);
+            RenderSettings.ambientEquatorColor = Color.Lerp(new Color(0.055f, 0.080f, 0.14f), warmHorizon, skyLight);
+            RenderSettings.ambientGroundColor = Color.Lerp(new Color(0.032f, 0.044f, 0.068f), ground, skyLight);
+            Color haze = Color.Lerp(new Color(0.56f, 0.78f, 0.87f), new Color(0.45f, 0.56f, 0.64f), weather.Clouds);
+            haze = Color.Lerp(new Color(0.065f, 0.10f, 0.18f),
+                Color.Lerp(haze, new Color(0.92f, 0.56f, 0.42f), sunset * (1 - weather.Clouds) * 0.82f), skyLight);
             RenderSettings.fogColor = haze;
-            RenderSettings.fogDensity = 0.0038f + weather.Mist * 0.006f + weather.Rain * 0.0034f;
-            bool volumetric = supportsAtmosphere && preset >= 2;
+            RenderSettings.fogDensity = 0.0024f + weather.Mist * 0.0052f + weather.Rain * 0.0030f;
+            bool volumetric = supportsAtmosphere && preset >= 3;
             if (RenderSettings.fog == volumetric)
                 RenderSettings.fog = !volumetric;
             Shader.SetGlobalColor(MistColor, haze);
-            Shader.SetGlobalVector(Mist, new Vector4(volumetric ? 1 : 0, 0.0016f + 0.015f * weather.Mist +
-                0.005f * weather.Rain, 0.045f, ultra ? 12 : 8));
-            RenderSettings.reflectionIntensity = originalReflections * Mathf.Lerp(0.46f, 1f, skyLight);
+            Shader.SetGlobalVector(Mist, new Vector4(volumetric ? 1 : 0, 0.0014f + 0.013f * weather.Mist +
+                0.0045f * weather.Rain, 0.045f, ultra ? 12 : 8));
+            RenderSettings.reflectionIntensity = originalReflections * Mathf.Lerp(0.50f, 1.05f, skyLight);
 
             if (skybox != null)
             {
-                SetColor(SkyTint, Color.Lerp(new Color(0.28f, 0.48f, 0.85f),
-                    Color.Lerp(Color.Lerp(new Color(0.48f, 0.59f, 0.75f), new Color(0.48f, 0.52f, 0.57f), weather.Clouds),
-                        new Color(0.91f, 0.66f, 0.51f), sunset * (1 - weather.Clouds)), skyLight));
-                SetColor(SkyGround, RenderSettings.fogColor);
+                Color tropicalZenith = Color.Lerp(new Color(0.15f, 0.46f, 0.84f), new Color(0.36f, 0.46f, 0.58f), weather.Clouds);
+                Color sunsetZenith = new Color(0.54f, 0.34f, 0.58f);
+                SetColor(SkyTint, Color.Lerp(new Color(0.08f, 0.14f, 0.30f),
+                    Color.Lerp(tropicalZenith, sunsetZenith, sunset * (1 - weather.Clouds)), skyLight));
+                Color tropicalHorizon = Color.Lerp(new Color(0.68f, 0.86f, 0.92f), new Color(0.48f, 0.56f, 0.64f), weather.Clouds);
+                Color sunsetHorizon = new Color(0.98f, 0.58f, 0.38f);
+                SetColor(SkyGround, Color.Lerp(new Color(0.08f, 0.12f, 0.22f),
+                    Color.Lerp(tropicalHorizon, sunsetHorizon, sunset * (1 - weather.Clouds)), skyLight));
                 SetColor(SunRadiance, sun != null ? sun.color * sun.intensity : Color.black);
                 if (skybox.HasProperty(SunDirection))
                     skybox.SetVector(SunDirection, (Vector4)sunDirection);
-                SetFloat(CloudCover, weather.Clouds);
+                SetFloat(CloudCover, Mathf.Max(weather.Clouds, 0.20f * skyLight));
                 SetFloat(CloudDrift, time - 12f);
-                SetFloat(Exposure, Mathf.Lerp(0.20f, 1.04f, skyLight) * Mathf.Lerp(1, 0.66f, weather.Clouds));
-                SetFloat(SunSize, Mathf.Lerp(0.014f, 0.041f, skyLight));
+                SetFloat(Exposure, Mathf.Lerp(0.28f, 1.12f, skyLight) * Mathf.Lerp(1, 0.72f, weather.Clouds));
+                SetFloat(SunSize, Mathf.Lerp(0.016f, 0.044f, skyLight));
             }
         }
 

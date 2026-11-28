@@ -2,8 +2,9 @@ Shader "CostaLivre/CoastalWater"
 {
     Properties
     {
-        _Deep ("Deep water", Color) = (0.038, 0.15, 0.18, 1)
-        _Sky ("Sky reflection", Color) = (0.25, 0.43, 0.48, 1)
+        _Deep ("Deep water", Color) = (0.025, 0.29, 0.40, 1)
+        _Shallow ("Shallow turquoise", Color) = (0.08, 0.64, 0.67, 1)
+        _Sky ("Sky reflection", Color) = (0.30, 0.71, 0.86, 1)
         _Daylight ("Daylight", Range(0, 1)) = 1
     }
 
@@ -24,6 +25,7 @@ Shader "CostaLivre/CoastalWater"
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _Deep;
+                half4 _Shallow;
                 half4 _Sky;
                 half _Daylight;
             CBUFFER_END
@@ -66,10 +68,14 @@ Shader "CostaLivre/CoastalWater"
                 half fresnel = 0.04h + 0.87h * pow(1.0h - saturate(dot(normal, view)), 4.0h);
                 Light sun = GetMainLight();
                 half alignment = saturate(dot(reflect(-view, normal), sun.direction));
-                half sparkle = 0.28h * pow(alignment, 36.0h) + 0.42h * pow(alignment, 120.0h);
-                half tint = 0.9h + 0.11h * sin(dot(waterPosition, float2(0.44, -0.23)) + time * 0.35);
-                half3 color = lerp(_Deep.rgb * tint, _Sky.rgb, fresnel) + sun.color * sparkle;
-                color *= lerp(half3(0.15h, 0.23h, 0.39h), half3(1, 1, 1), _Daylight);
+                half sparkle = 0.32h * pow(alignment, 32.0h) + 0.52h * pow(alignment, 110.0h);
+                half tint = 0.92h + 0.10h * sin(dot(waterPosition, float2(0.44, -0.23)) + time * 0.35);
+                half shallow = 1.0h - smoothstep(23.5h, 46.0h, (half)waterPosition.x);
+                half3 waterBase = lerp(_Deep.rgb, _Shallow.rgb, shallow * 0.85h) * tint;
+                half shoreFoam = (1.0h - smoothstep(24.2h, 26.8h, (half)waterPosition.x))
+                    * smoothstep(0.25h, 0.85h, (half)(0.5 + 0.5 * sin(waterPosition.y * 1.4 + time * 1.9 + slope.x * 8.0)));
+                half3 color = lerp(waterBase, _Sky.rgb, fresnel * 0.82h) + sun.color * sparkle + half3(0.86h, 0.94h, 0.95h) * (shoreFoam * 0.24h);
+                color *= lerp(half3(0.14h, 0.24h, 0.42h), half3(1, 1, 1), _Daylight);
                 return half4(MixFog(color, input.fog), 1.0h);
             }
             ENDHLSL

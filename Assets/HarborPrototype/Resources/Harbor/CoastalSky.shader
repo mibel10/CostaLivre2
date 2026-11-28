@@ -57,11 +57,12 @@ Shader "CostaLivre/CoastalSky"
                 float3 ray = normalize(input.direction);
                 float altitude = max(0, ray.y);
                 float sunAngle = saturate(dot(ray, _SunDirection.xyz));
-                float horizon = exp(-altitude * 5.3);
+                float horizon = exp(-altitude * 4.4);
                 float3 sky = lerp(_SkyTint.rgb, _GroundColor.rgb, horizon) * _Exposure;
-                float visibility = smoothstep(-0.02, 0.08, _SunDirection.y);
+                float visibility = smoothstep(-0.04, 0.08, _SunDirection.y);
                 float disk = smoothstep(1 - _SunSize * _SunSize * 1.2, 1 - _SunSize * _SunSize * 0.47, sunAngle);
-                sky += _SunRadiance.rgb * visibility * (disk * 3.2 + pow(sunAngle, 18) * 0.105);
+                float sunHalo = pow(sunAngle, 12) * 0.16 + pow(sunAngle, 4) * 0.06 * horizon;
+                sky += _SunRadiance.rgb * visibility * (disk * 3.4 + sunHalo);
 
                 if (ray.y > 0.012 && _CloudCover > 0.015)
                 {

@@ -16,7 +16,7 @@ namespace CostaLivre
         private static readonly int FogLightColor = Shader.PropertyToID("_CostaFogLightColor");
         private const float ScanRangeSquared = 66f * 66f;
         private static readonly int Emission = Shader.PropertyToID("_EmissionColor");
-        private static readonly Color Warm = new(1f, 0.68f, 0.34f);
+        private static readonly Color Warm = new(1f, 0.72f, 0.36f);
 
         private readonly Transform root;
         private readonly List<Vector3> lamps = new();

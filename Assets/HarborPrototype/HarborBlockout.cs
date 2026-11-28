@@ -40,11 +40,16 @@ namespace CostaLivre
         private Font signFont;
         private Material signMaterial;
         private Renderer bay;
+        private Renderer eastOcean;
         private Material bayBase;
         private Material water;
         private float waterDaylight = 1;
         private Material detailTemplate;
         private Material wearMaterial;
+        private Texture2D muralTexture;
+        private Material muralMaterial;
+        private readonly Mesh[] muralMeshes = new Mesh[4];
+        private readonly Dictionary<Color, Material> neonMaterials = new();
         private Mesh distantCanopy;
         private readonly Mesh[] wearMeshes = new Mesh[4];
         private HarborStreetLights streetLights;
@@ -60,12 +65,13 @@ namespace CostaLivre
         internal void Build()
         {
             collectingCity = true;
-            Color road = new(0.58f, 0.62f, 0.65f);
-            Color concrete = new(0.70f, 0.72f, 0.70f);
-            Color water = new(0.10f, 0.21f, 0.25f);
-            Color paint = new(0.58f, 0.51f, 0.35f);
+            Color road = new(0.32f, 0.33f, 0.35f);
+            Color concrete = new(0.84f, 0.80f, 0.72f);
+            Color waterColor = new(0.06f, 0.48f, 0.56f);
+            Color paint = new(0.90f, 0.78f, 0.40f);
 
-            bay = Box("Bay", new(22, -0.65f, 0), new(100, 0.15f, 110), water).GetComponent<Renderer>();
+            bay = Box("Bay", new(34, -0.65f, 0), new(130, 0.15f, 124), waterColor, bake: false).GetComponent<Renderer>();
+            eastOcean = Box("Coastal ocean", new(148, -0.65f, 390), new(140, 0.15f, 920), waterColor, bake: false).GetComponent<Renderer>();
             bayBase = bay.sharedMaterial;
             ApplyWater();
             Box("Harbor streets", new(0, -0.25f, 0), new(50, 0.5f, 44), road, true, "Asphalt", new(21, 19));
@@ -100,15 +106,17 @@ namespace CostaLivre
                     new(0.27f, 0.34f, 0.27f), new Color(0.20f, 0.20f, 0.18f));
             }
 
-            Warehouse(0, "REDE & CABO", 6.0f, new Color(0.66f, 0.73f, 0.67f));
-            Warehouse(1, "CÂMARA FRIA", 5.2f, new Color(0.77f, 0.80f, 0.84f));
-            Warehouse(2, "OFICINA NAVAL", 4.1f, new Color(0.83f, 0.76f, 0.65f));
-            Warehouse(3, "ARMAZÉM 04", 5.7f, new Color(0.78f, 0.69f, 0.59f));
+            Warehouse(0, "REDE & CABO", 6.0f, new Color(0.42f, 0.70f, 0.66f));
+            Warehouse(1, "CÂMARA FRIA", 5.2f, new Color(0.50f, 0.71f, 0.83f));
+            Warehouse(2, "OFICINA NAVAL", 4.1f, new Color(0.88f, 0.73f, 0.42f));
+            Warehouse(3, "ARMAZÉM 04", 5.7f, new Color(0.84f, 0.52f, 0.42f));
 
-            Container(new Vector3(20, 0, 5.5f), new Color(0.60f, 0.69f, 0.73f));
-            Container(new Vector3(20, 0, -6.5f), new Color(0.76f, 0.60f, 0.51f));
-            Container(new Vector3(13, 0, 17.5f), new Color(0.64f, 0.71f, 0.63f));
-            Container(new Vector3(-17.5f, 0, 13.5f), new Color(0.75f, 0.66f, 0.53f));
+            Container(new Vector3(20, 0, 5.5f), new Color(0.22f, 0.54f, 0.68f));
+            Container(new Vector3(20, 0, -6.5f), new Color(0.82f, 0.39f, 0.30f));
+            Container(new Vector3(13, 0, 17.5f), new Color(0.28f, 0.62f, 0.46f));
+            Container(new Vector3(-17.5f, 0, 13.5f), new Color(0.86f, 0.65f, 0.28f));
+            Mural(0, new Vector3(-11f, 2.35f, 12.28f), new Vector2(4.6f, 2.4f), 180f);
+            Mural(3, new Vector3(8.5f, 2.15f, -5.22f), new Vector2(4.2f, 2.2f), 180f);
             DressQuay();
 
             Pad("Cargo pickup", Cargo, Amber);
@@ -142,7 +150,10 @@ namespace CostaLivre
             }
         }
 
-        internal void TreeDetail(Transform tree, Renderer first, Renderer second, Vector3 center, Color tint)
+        internal void TreeDetail(Transform tree, Renderer first, Renderer second, Vector3 center, Color tint) =>
+            TreeDetail(tree, new[] { first, second }, center, tint);
+
+        internal void TreeDetail(Transform tree, Renderer[] close, Vector3 center, Color tint)
         {
             if (distantCanopy == null)
             {
@@ -181,7 +192,7 @@ namespace CostaLivre
             group.fadeMode = LODFadeMode.CrossFade;
             group.animateCrossFading = true;
             group.SetLODs(new[] {
-                new LOD(.055f, new[] { first, second }),
+                new LOD(.055f, close),
                 new LOD(.008f, new[] { simple })
             });
             group.RecalculateBounds();
@@ -368,12 +379,16 @@ namespace CostaLivre
         {
             Object.Destroy(water);
             Object.Destroy(wearMaterial);
+            Object.Destroy(muralMaterial);
+            Object.Destroy(muralTexture);
             streetLights?.Release();
             if (signMaterial != null)
             {
                 Font.textureRebuilt -= RefreshSignAtlas;
                 Object.Destroy(signMaterial);
             }
+            foreach (Material material in neonMaterials.Values)
+                Object.Destroy(material);
             foreach (Material material in runningLightMaterials.Values)
                 Object.Destroy(material);
             foreach (Material material in palette.Values)
@@ -443,8 +458,8 @@ namespace CostaLivre
 
         private void DressQuay()
         {
-            Color steel = new(0.24f, 0.27f, 0.26f);
-            Color crane = new(0.57f, 0.37f, 0.20f);
+            Color steel = new(0.24f, 0.28f, 0.30f);
+            Color crane = new(0.84f, 0.42f, 0.22f);
             for (int i = -2; i <= 2; i++)
             {
                 float z = 7.5f * i + 2;
@@ -565,6 +580,145 @@ namespace CostaLivre
         internal void BatchDecoration(Vector3 position, Vector3 size, Color color, Finish finish = Finish.Standard) =>
             cubeDetails.Add((position, size, SolidMaterial(color, finish),
                 finish == Finish.Standard ? ReflectionProbeUsage.BlendProbes : ReflectionProbeUsage.BlendProbesAndSkybox));
+
+        internal void NeonTrim(Vector3 position, Vector3 size, Color glow)
+        {
+            if (!neonMaterials.TryGetValue(glow, out Material material))
+            {
+                var template = Resources.Load<Material>("Harbor/StreetLamp");
+                material = new Material(template != null ? template : surfaceTemplate);
+                material.name = "Tropical neon trim";
+                material.color = glow;
+                material.EnableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor", glow * 2.1f);
+                neonMaterials.Add(glow, material);
+            }
+            cubeDetails.Add((position, size, material, ReflectionProbeUsage.Off));
+        }
+
+        internal void Mural(int design, Vector3 position, Vector2 size, float yaw = 0f)
+        {
+            design = ((design % 4) + 4) % 4;
+            if (muralMaterial == null)
+            {
+                muralTexture = CreateMuralAtlas();
+                muralMaterial = new Material(surfaceTemplate != null ? surfaceTemplate : new Material(shader));
+                muralMaterial.name = "Brazilian street mural atlas";
+                muralMaterial.color = Color.white;
+                muralMaterial.SetTexture("_BaseMap", muralTexture);
+                muralMaterial.SetFloat("_Smoothness", 0.14f);
+            }
+            if (muralMeshes[design] == null)
+            {
+                float u = (design % 2) * 0.5f;
+                float v = (1 - design / 2) * 0.5f;
+                var mesh = new Mesh
+                {
+                    name = "Street mural quad " + design,
+                    vertices = new Vector3[] { new(-0.5f, -0.5f, 0), new(-0.5f, 0.5f, 0), new(0.5f, 0.5f, 0), new(0.5f, -0.5f, 0) },
+                    uv = new Vector2[] { new(u, v), new(u, v + 0.5f), new(u + 0.5f, v + 0.5f), new(u + 0.5f, v) },
+                    triangles = new[] { 0, 1, 2, 0, 2, 3 }
+                };
+                mesh.RecalculateNormals();
+                muralMeshes[design] = mesh;
+                models.Add(mesh);
+            }
+            GameObject plaque = new GameObject("Street art mural");
+            plaque.transform.SetParent(root, false);
+            plaque.transform.SetLocalPositionAndRotation(position, Quaternion.Euler(0, yaw, 0));
+            plaque.transform.localScale = new Vector3(size.x, size.y, 1f);
+            plaque.AddComponent<MeshFilter>().sharedMesh = muralMeshes[design];
+            MeshRenderer renderer = plaque.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = muralMaterial;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            decoration.Add(plaque);
+        }
+
+        private static Texture2D CreateMuralAtlas()
+        {
+            const int size = 256;
+            const int half = size / 2;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, true)
+            {
+                name = "Tropical mural atlas",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+            var pixels = new Color32[size * size];
+
+            for (int y = 0; y < size; y++)
+            {
+                int tileY = y < half ? 1 : 0;
+                float ly = (y % half) / (float)half;
+                for (int x = 0; x < size; x++)
+                {
+                    int tileX = x < half ? 0 : 1;
+                    float lx = (x % half) / (float)half;
+                    int tile = tileY * 2 + tileX;
+                    Color c;
+                    if (tile == 0)
+                    {
+                        // Tropical sunset + turquoise waves + palm silhouette
+                        c = Color.Lerp(new Color(0.95f, 0.50f, 0.34f), new Color(0.32f, 0.24f, 0.56f), ly);
+                        float sunDist = Vector2.Distance(new Vector2(lx, ly), new Vector2(0.55f, 0.62f));
+                        if (sunDist < 0.22f)
+                            c = Color.Lerp(new Color(0.98f, 0.84f, 0.36f), new Color(0.96f, 0.48f, 0.30f), sunDist / 0.22f);
+                        float wave = 0.28f + 0.055f * Mathf.Sin(lx * 18f);
+                        if (ly < wave)
+                            c = ly < wave - 0.06f ? new Color(0.06f, 0.42f, 0.54f) : new Color(0.14f, 0.72f, 0.74f);
+                        if (Mathf.Abs(lx - (0.20f + ly * 0.08f)) < 0.025f && ly < 0.78f)
+                            c = new Color(0.12f, 0.14f, 0.18f);
+                    }
+                    else if (tile == 1)
+                    {
+                        // Geometric tropical foliage & arara color blocks
+                        float diag = lx * 1.15f + ly * 0.85f;
+                        c = diag < 0.65f ? new Color(0.15f, 0.56f, 0.44f)
+                            : diag < 1.10f ? new Color(0.94f, 0.76f, 0.24f)
+                            : diag < 1.50f ? new Color(0.18f, 0.46f, 0.76f)
+                            : new Color(0.88f, 0.36f, 0.32f);
+                        float leaf = Mathf.Sin((lx * 9f + ly * 5f)) * Mathf.Cos((ly * 8f - lx * 4f));
+                        if (leaf > 0.48f)
+                            c = Color.Lerp(c, new Color(0.96f, 0.92f, 0.80f), 0.55f);
+                    }
+                    else if (tile == 2)
+                    {
+                        // Urban Vice/Rio diagonal street art with bold rings
+                        c = new Color(0.14f, 0.16f, 0.22f);
+                        float stripe = Mathf.Repeat(lx * 3.5f - ly * 2.2f, 1f);
+                        if (stripe < 0.24f) c = new Color(0.92f, 0.34f, 0.56f);
+                        else if (stripe < 0.48f) c = new Color(0.16f, 0.76f, 0.78f);
+                        else if (stripe < 0.66f) c = new Color(0.96f, 0.72f, 0.26f);
+                        float ring = Mathf.Abs(Vector2.Distance(new Vector2(lx, ly), new Vector2(0.5f, 0.5f)) - 0.28f);
+                        if (ring < 0.045f)
+                            c = new Color(0.96f, 0.94f, 0.88f);
+                    }
+                    else
+                    {
+                        // Coastal azulejo & terracotta mosaic
+                        float gx = Mathf.Repeat(lx * 4f, 1f) - 0.5f;
+                        float gy = Mathf.Repeat(ly * 4f, 1f) - 0.5f;
+                        float diamond = Mathf.Abs(gx) + Mathf.Abs(gy);
+                        c = diamond < 0.22f ? new Color(0.92f, 0.68f, 0.28f)
+                            : diamond < 0.42f ? new Color(0.12f, 0.52f, 0.68f)
+                            : diamond < 0.58f ? new Color(0.92f, 0.89f, 0.82f)
+                            : new Color(0.80f, 0.42f, 0.32f);
+                    }
+                    // Subtle plaster grain & dark border frame
+                    float edge = Mathf.Min(Mathf.Min(lx, 1f - lx), Mathf.Min(ly, 1f - ly));
+                    if (edge < 0.03f)
+                        c *= 0.42f;
+                    float grain = (((x * 37 + y * 17) & 15) / 15f - 0.5f) * 0.045f;
+                    pixels[y * size + x] = new Color(
+                        Mathf.Clamp01(c.r + grain),
+                        Mathf.Clamp01(c.g + grain),
+                        Mathf.Clamp01(c.b + grain), 1f);
+                }
+            }
+            tex.SetPixels32(pixels);
+            tex.Apply(true, true);
+            return tex;
+        }
 
         internal void StreetLampDiffuser(Vector3 position, Vector3 size)
         {
@@ -833,7 +987,7 @@ namespace CostaLivre
 
         internal void SetWaterDaylight(float hour)
         {
-            if (water == null || !ultra)
+            if (water == null)
                 return;
             float light = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(-0.25f, 0.40f, HarborDaylight.SolarHeight(hour)));
             if (Mathf.Abs(waterDaylight - light) < 0.005f)
@@ -846,9 +1000,12 @@ namespace CostaLivre
         {
             if (bay == null)
                 return;
-            if (ultra && water == null && Resources.Load<Shader>("Harbor/CoastalWater") is Shader waterShader)
+            if (water == null && Resources.Load<Shader>("Harbor/CoastalWater") is Shader waterShader)
                 water = new Material(waterShader);
-            bay.sharedMaterial = ultra && water != null ? water : bayBase;
+            Material activeWater = water != null ? water : bayBase;
+            bay.sharedMaterial = activeWater;
+            if (eastOcean != null)
+                eastOcean.sharedMaterial = activeWater;
         }
 
         private void ApplySurfaceDetail(string surface, Material material)
@@ -902,8 +1059,8 @@ namespace CostaLivre
                 material.color = color;
                 float smoothness = finish switch
                 {
-                    Finish.Glass => 0.89f, Finish.Paint => 0.73f, Finish.Metal => 0.52f,
-                    Finish.Rubber => 0.07f, _ => 0.22f
+                    Finish.Glass => 0.92f, Finish.Paint => 0.78f, Finish.Metal => 0.58f,
+                    Finish.Rubber => 0.08f, _ => 0.25f
                 };
                 material.SetFloat("_Smoothness", smoothness);
                 material.SetFloat("_Metallic", finish == Finish.Metal ? 0.76f : finish == Finish.Paint ? 0.24f : 0f);
